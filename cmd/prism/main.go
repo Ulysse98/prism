@@ -21,9 +21,23 @@ const dataDir = "data"
 
 func main() {
 	fmt.Println("====================================")
-	fmt.Println("         PRISM NODE v0.13")
+	fmt.Println("         PRISM NODE v0.14")
 	fmt.Println("====================================")
 	fmt.Println()
+
+	if len(os.Args) < 2 {
+		printUsage()
+		return
+	}
+
+	command := strings.ToLower(os.Args[1])
+
+	// La commande node utilise son propre dossier de données
+	// et est gérée dans cmd/prism/node.go.
+	if command == "node" {
+		runNodeCommand(os.Args[2:])
+		return
+	}
 
 	chain, pos, wallets, created, err := loadOrCreateNode()
 	if err != nil {
@@ -35,13 +49,6 @@ func main() {
 		fmt.Println()
 	}
 
-	if len(os.Args) < 2 {
-		printUsage()
-		return
-	}
-
-	command := strings.ToLower(os.Args[1])
-
 	switch command {
 	case "status":
 		runStatus(chain, pos)
@@ -52,7 +59,7 @@ func main() {
 	case "balance":
 		if len(os.Args) != 3 {
 			fmt.Println("Usage:")
-			fmt.Println(`go run .\cmd\prism balance Alice`)
+			fmt.Println(`.\prism.exe balance Alice`)
 			return
 		}
 
@@ -79,7 +86,7 @@ func main() {
 	case "send":
 		if len(os.Args) != 5 {
 			fmt.Println("Usage:")
-			fmt.Println(`go run .\cmd\prism send Alice Bob 25`)
+			fmt.Println(`.\prism.exe send Alice Bob 25`)
 			return
 		}
 
@@ -98,7 +105,7 @@ func main() {
 	case "work":
 		if len(os.Args) < 4 {
 			fmt.Println("Usage:")
-			fmt.Println(`go run .\cmd\prism work Charlie 3 4 5`)
+			fmt.Println(`.\prism.exe work Charlie 3 4 5`)
 			return
 		}
 
@@ -180,24 +187,23 @@ func runWallets(
 ) {
 	fmt.Println("=== LOCAL WALLETS ===")
 
-	for _, name := range []string{
+	names := []string{
 		"Alice",
 		"Bob",
 		"Charlie",
-	} {
+	}
+
+	for _, name := range names {
 		currentWallet := wallets[name]
 
 		if currentWallet == nil {
 			continue
 		}
 
-		fmt.Printf(
-			"%s\n",
-			name,
-		)
+		fmt.Println(name)
 
-		fmt.Printf(
-			"  %s\n",
+		fmt.Println(
+			" ",
 			currentWallet.Address,
 		)
 	}
@@ -344,10 +350,14 @@ func runParticipation(
 		return
 	}
 
-	fmt.Println("=== PROOF OF USEFUL PARTICIPATION ===")
+	fmt.Println(
+		"=== PROOF OF USEFUL PARTICIPATION ===",
+	)
 
 	if len(scores) == 0 {
-		fmt.Println("No participation recorded yet.")
+		fmt.Println(
+			"No participation recorded yet.",
+		)
 		return
 	}
 
@@ -497,7 +507,9 @@ func runSend(
 		return err
 	}
 
-	fmt.Println("=== TRANSACTION CONFIRMED ===")
+	fmt.Println(
+		"=== TRANSACTION CONFIRMED ===",
+	)
 
 	fmt.Printf(
 		"%s -> %s: %d PRISM\n",
@@ -630,7 +642,9 @@ func runUsefulWork(
 		return err
 	}
 
-	fmt.Println("=== USEFUL WORK CONFIRMED ===")
+	fmt.Println(
+		"=== USEFUL WORK CONFIRMED ===",
+	)
 
 	fmt.Println(
 		"Worker:",
@@ -703,7 +717,11 @@ func loadOrCreateNode() (
 			return nil, nil, nil, false, err
 		}
 
-		return chain, pos, wallets, false, nil
+		return chain,
+			pos,
+			wallets,
+			false,
+			nil
 	}
 
 	chain, pos, wallets, err := createNode()
@@ -720,7 +738,11 @@ func loadOrCreateNode() (
 		return nil, nil, nil, false, err
 	}
 
-	return chain, pos, wallets, true, nil
+	return chain,
+		pos,
+		wallets,
+		true,
+		nil
 }
 
 func createNode() (
@@ -792,7 +814,10 @@ func createNode() (
 		return nil, nil, nil, err
 	}
 
-	return chain, pos, wallets, nil
+	return chain,
+		pos,
+		wallets,
+		nil
 }
 
 func registerValidator(
@@ -873,16 +898,22 @@ func resolveAddress(
 			name,
 			identifier,
 		) {
-			return currentWallet.Address, name, nil
+			return currentWallet.Address,
+				name,
+				nil
 		}
 
 		if currentWallet.Address == identifier {
-			return currentWallet.Address, name, nil
+			return currentWallet.Address,
+				name,
+				nil
 		}
 	}
 
 	if isPrismAddress(identifier) {
-		return identifier, shortAddress(identifier), nil
+		return identifier,
+			shortAddress(identifier),
+			nil
 	}
 
 	return "", "", fmt.Errorf(
@@ -909,7 +940,9 @@ func isPrismAddress(
 
 	encoded := address[len(prefix):]
 
-	decoded, err := hex.DecodeString(encoded)
+	decoded, err := hex.DecodeString(
+		encoded,
+	)
 	if err != nil {
 		return false
 	}
@@ -949,13 +982,46 @@ func shortAddress(
 func printUsage() {
 	fmt.Println("Prism CLI")
 	fmt.Println()
+
 	fmt.Println("Commands:")
-	fmt.Println(`  go run .\cmd\prism status`)
-	fmt.Println(`  go run .\cmd\prism wallets`)
-	fmt.Println(`  go run .\cmd\prism balance Alice`)
-	fmt.Println(`  go run .\cmd\prism validators`)
-	fmt.Println(`  go run .\cmd\prism participation`)
-	fmt.Println(`  go run .\cmd\prism send Alice Bob 25`)
-	fmt.Println(`  go run .\cmd\prism work Charlie 3 4 5`)
-	fmt.Println(`  go run .\cmd\prism help`)
+
+	fmt.Println(
+		`  .\prism.exe status`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe wallets`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe balance Alice`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe validators`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe participation`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe send Alice Bob 25`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe work Charlie 3 4 5`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe node --port 7001`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe node --port 7002 --peer 127.0.0.1:7001`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe help`,
+	)
 }
