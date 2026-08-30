@@ -1,7 +1,11 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
 
 	"prism/internal/blockchain"
 	"prism/internal/consensus"
@@ -17,144 +21,494 @@ const dataDir = "data"
 
 func main() {
 	fmt.Println("====================================")
-	fmt.Println("         PRISM NODE v0.12")
+	fmt.Println("         PRISM NODE v0.13")
 	fmt.Println("====================================")
 	fmt.Println()
 
-	var chain *blockchain.Blockchain
-	var pos *consensus.ProofOfStake
-	var wallets map[string]*wallet.Wallet
-	var err error
-
-	if storage.Exists(dataDir) {
-		fmt.Println("Existing Prism state detected.")
-		fmt.Println("Loading blockchain from disk...")
-
-		chain, pos, wallets, err = storage.Load(
-			dataDir,
-		)
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println("Blockchain loaded successfully.")
-	} else {
-		fmt.Println("No existing Prism state.")
-		fmt.Println("Creating new blockchain...")
-
-		chain, pos, wallets, err = createNode()
-		if err != nil {
-			panic(err)
-		}
-
-		if err := storage.Save(
-			dataDir,
-			chain,
-			pos,
-			wallets,
-		); err != nil {
-			panic(err)
-		}
-
-		fmt.Println("Genesis state saved to disk.")
-	}
-
-	alice := wallets["Alice"]
-	bob := wallets["Bob"]
-	charlie := wallets["Charlie"]
-
-	if alice == nil ||
-		bob == nil ||
-		charlie == nil {
-
-		panic(
-			"required wallets are missing",
-		)
-	}
-
-	fmt.Println()
-	fmt.Println("=== LOADED STATE ===")
-
-	fmt.Printf(
-		"Blocks currently stored: %d\n",
-		len(chain.Blocks),
-	)
-
-	lastBlock := chain.Blocks[len(chain.Blocks)-1]
-
-	fmt.Printf(
-		"Current height: %d\n",
-		lastBlock.Height,
-	)
-
-	fmt.Println(
-		"Current hash:",
-		lastBlock.Hash,
-	)
-
-	fmt.Printf(
-		"Chain valid: %t\n",
-		chain.ValidateChain(pos),
-	)
-
-	fmt.Println()
-	fmt.Println("Wallets:")
-
-	fmt.Println(
-		"Alice:  ",
-		shortAddress(alice.Address),
-	)
-
-	fmt.Println(
-		"Bob:    ",
-		shortAddress(bob.Address),
-	)
-
-	fmt.Println(
-		"Charlie:",
-		shortAddress(charlie.Address),
-	)
-
-	// ============================================
-	// CREATE ONE NEW TRANSACTION
-	// ============================================
-
-	pool := mempool.New()
-
-	fmt.Println()
-	fmt.Println("=== NEW TRANSACTION ===")
-
-	aliceNonce, err := pool.NextNonce(
-		alice.Address,
-		chain,
-	)
+	chain, pos, wallets, created, err := loadOrCreateNode()
 	if err != nil {
 		panic(err)
 	}
 
-	tx := transaction.New(
-		alice.Address,
-		bob.Address,
+	if created {
+		fmt.Println("New Prism state created.")
+		fmt.Println()
+	}
+
+	if len(os.Args) < 2 {
+		printUsage()
+		return
+	}
+
+	command := strings.ToLower(os.Args[1])
+
+	switch command {
+	case "status":
+		runStatus(chain, pos)
+
+	case "wallets":
+		runWallets(wallets)
+
+	case "balance":
+		if len(os.Args) != 3 {
+			fmt.Println("Usage:")
+			fmt.Println(`go run .\cmd\prism balance Alice`)
+			return
+		}
+
+		runBalance(
+			os.Args[2],
+			chain,
+			wallets,
+		)
+
+	case "validators":
+		runValidators(
+			chain,
+			pos,
+			wallets,
+		)
+
+	case "participation":
+		runParticipation(
+			chain,
+			pos,
+			wallets,
+		)
+
+	case "send":
+		if len(os.Args) != 5 {
+			fmt.Println("Usage:")
+			fmt.Println(`go run .\cmd\prism send Alice Bob 25`)
+			return
+		}
+
+		if err := runSend(
+			os.Args[2],
+			os.Args[3],
+			os.Args[4],
+			chain,
+			pos,
+			wallets,
+		); err != nil {
+			fmt.Println("Transaction failed:")
+			fmt.Println(err)
+		}
+
+	case "work":
+		if len(os.Args) < 4 {
+			fmt.Println("Usage:")
+			fmt.Println(`go run .\cmd\prism work Charlie 3 4 5`)
+			return
+		}
+
+		if err := runUsefulWork(
+			os.Args[2],
+			os.Args[3:],
+			chain,
+			pos,
+			wallets,
+		); err != nil {
+			fmt.Println("Useful Work failed:")
+			fmt.Println(err)
+		}
+
+	case "help":
+		printUsage()
+
+	default:
+		fmt.Printf(
+			"Unknown command: %s\n\n",
+			command,
+		)
+
+		printUsage()
+	}
+}
+
+func runStatus(
+	chain *blockchain.Blockchain,
+	pos *consensus.ProofOfStake,
+) {
+	lastBlock := chain.Blocks[len(chain.Blocks)-1]
+
+	totalSupply, err := chain.TotalSupply()
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("=== PRISM STATUS ===")
+
+	fmt.Printf(
+		"Blocks:       %d\n",
+		len(chain.Blocks),
+	)
+
+	fmt.Printf(
+		"Height:       %d\n",
+		lastBlock.Height,
+	)
+
+	fmt.Printf(
+		"Validators:   %d\n",
+		len(pos.Validators),
+	)
+
+	fmt.Printf(
+		"Total stake:  %d PRISM\n",
+		pos.TotalStake(),
+	)
+
+	fmt.Printf(
+		"Total supply: %d PRISM\n",
+		totalSupply,
+	)
+
+	fmt.Printf(
+		"Chain valid:  %t\n",
+		chain.ValidateChain(pos),
+	)
+
+	fmt.Println(
+		"Last hash:",
+		lastBlock.Hash,
+	)
+}
+
+func runWallets(
+	wallets map[string]*wallet.Wallet,
+) {
+	fmt.Println("=== LOCAL WALLETS ===")
+
+	for _, name := range []string{
+		"Alice",
+		"Bob",
+		"Charlie",
+	} {
+		currentWallet := wallets[name]
+
+		if currentWallet == nil {
+			continue
+		}
+
+		fmt.Printf(
+			"%s\n",
+			name,
+		)
+
+		fmt.Printf(
+			"  %s\n",
+			currentWallet.Address,
+		)
+	}
+}
+
+func runBalance(
+	identifier string,
+	chain *blockchain.Blockchain,
+	wallets map[string]*wallet.Wallet,
+) {
+	address, label, err := resolveAddress(
+		identifier,
+		wallets,
+	)
+	if err != nil {
+		fmt.Println("Balance lookup failed:")
+		fmt.Println(err)
+		return
+	}
+
+	total, err := chain.BalanceOf(address)
+	if err != nil {
+		panic(err)
+	}
+
+	available, err := chain.AvailableBalanceOf(address)
+	if err != nil {
+		panic(err)
+	}
+
+	locked := chain.LockedStakeOf(address)
+
+	nonce, err := chain.NonceOf(address)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf(
+		"=== BALANCE: %s ===\n",
+		label,
+	)
+
+	fmt.Println(
+		"Address:",
+		address,
+	)
+
+	fmt.Printf(
+		"Total:     %d PRISM\n",
+		total,
+	)
+
+	fmt.Printf(
+		"Locked:    %d PRISM\n",
+		locked,
+	)
+
+	fmt.Printf(
+		"Available: %d PRISM\n",
+		available,
+	)
+
+	fmt.Printf(
+		"Nonce:     %d\n",
+		nonce,
+	)
+}
+
+func runValidators(
+	chain *blockchain.Blockchain,
+	pos *consensus.ProofOfStake,
+	wallets map[string]*wallet.Wallet,
+) {
+	fmt.Println("=== VALIDATORS ===")
+
+	for index, validator := range pos.Validators {
+		name := walletNameForAddress(
+			validator.Address,
+			wallets,
+		)
+
+		total, err := chain.BalanceOf(
+			validator.Address,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		available, err := chain.AvailableBalanceOf(
+			validator.Address,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Printf(
+			"#%d %s\n",
+			index+1,
+			name,
+		)
+
+		fmt.Println(
+			"   Address:",
+			shortAddress(validator.Address),
+		)
+
+		fmt.Printf(
+			"   Stake: %d PRISM\n",
+			validator.Stake,
+		)
+
+		fmt.Printf(
+			"   Total balance: %d PRISM\n",
+			total,
+		)
+
+		fmt.Printf(
+			"   Available: %d PRISM\n",
+			available,
+		)
+	}
+
+	fmt.Printf(
+		"\nTotal stake: %d PRISM\n",
+		pos.TotalStake(),
+	)
+}
+
+func runParticipation(
+	chain *blockchain.Blockchain,
+	pos *consensus.ProofOfStake,
+	wallets map[string]*wallet.Wallet,
+) {
+	scores, err := participation.Calculate(
+		chain,
+		pos,
+	)
+	if err != nil {
+		fmt.Println(
+			"Unable to calculate participation:",
+		)
+
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Println("=== PROOF OF USEFUL PARTICIPATION ===")
+
+	if len(scores) == 0 {
+		fmt.Println("No participation recorded yet.")
+		return
+	}
+
+	for index, score := range scores {
+		name := walletNameForAddress(
+			score.Address,
+			wallets,
+		)
+
+		fmt.Printf(
+			"#%d %s\n",
+			index+1,
+			name,
+		)
+
+		fmt.Println(
+			"   Address:",
+			shortAddress(score.Address),
+		)
+
+		fmt.Printf(
+			"   Blocks proposed: %d\n",
+			score.BlocksProposed,
+		)
+
+		fmt.Printf(
+			"   Useful work units: %d\n",
+			score.UsefulWorkUnits,
+		)
+
+		fmt.Printf(
+			"   Proposer score: %d\n",
+			score.ProposerScore,
+		)
+
+		fmt.Printf(
+			"   Useful work score: %d\n",
+			score.UsefulWorkScore,
+		)
+
+		fmt.Printf(
+			"   Participation score: %d\n",
+			score.ParticipationScore,
+		)
+	}
+}
+
+func runSend(
+	fromIdentifier string,
+	toIdentifier string,
+	amountText string,
+	chain *blockchain.Blockchain,
+	pos *consensus.ProofOfStake,
+	wallets map[string]*wallet.Wallet,
+) error {
+	fromName, sender, err := resolveLocalWallet(
+		fromIdentifier,
+		wallets,
+	)
+	if err != nil {
+		return err
+	}
+
+	toAddress, toLabel, err := resolveAddress(
+		toIdentifier,
+		wallets,
+	)
+	if err != nil {
+		return err
+	}
+
+	amount, err := strconv.ParseUint(
+		amountText,
 		10,
-		aliceNonce,
-		alice.PublicKeyHex(),
+		64,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"invalid amount: %w",
+			err,
+		)
+	}
+
+	if amount == 0 {
+		return fmt.Errorf(
+			"amount must be greater than zero",
+		)
+	}
+
+	pool := mempool.New()
+
+	nonce, err := pool.NextNonce(
+		sender.Address,
+		chain,
+	)
+	if err != nil {
+		return err
+	}
+
+	tx := transaction.New(
+		sender.Address,
+		toAddress,
+		amount,
+		nonce,
+		sender.PublicKeyHex(),
 	)
 
 	if err := tx.Sign(
-		alice.PrivateKey,
+		sender.PrivateKey,
 	); err != nil {
-		panic(err)
+		return err
 	}
 
 	if err := pool.Add(
 		tx,
 		chain,
 	); err != nil {
-		panic(err)
+		return err
 	}
 
+	lastBlock := chain.Blocks[len(chain.Blocks)-1]
+
+	proposer, err := pos.SelectProposer(
+		lastBlock.Hash,
+		lastBlock.Height+1,
+	)
+	if err != nil {
+		return err
+	}
+
+	block, err := chain.AddBlock(
+		pool.Transactions(),
+		nil,
+		proposer.Address,
+		pos,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := storage.Save(
+		dataDir,
+		chain,
+		pos,
+		wallets,
+	); err != nil {
+		return err
+	}
+
+	fmt.Println("=== TRANSACTION CONFIRMED ===")
+
+	fmt.Printf(
+		"%s -> %s: %d PRISM\n",
+		fromName,
+		toLabel,
+		amount,
+	)
+
 	fmt.Println(
-		"Alice -> Bob: 10 PRISM",
+		"Transaction ID:",
+		tx.ID,
 	)
 
 	fmt.Printf(
@@ -162,48 +516,135 @@ func main() {
 		tx.Nonce,
 	)
 
-	// ============================================
-	// CREATE UNIQUE USEFUL WORK
-	// ============================================
+	fmt.Printf(
+		"Block: %d\n",
+		block.Height,
+	)
 
-	fmt.Println()
-	fmt.Println("=== NEW USEFUL WORK ===")
+	fmt.Println(
+		"Proposer:",
+		walletNameForAddress(
+			block.Proposer,
+			wallets,
+		),
+	)
 
-	nextHeight := lastBlock.Height + 1
+	fmt.Println(
+		"Block hash:",
+		block.Hash,
+	)
 
-	task, err := usefulwork.NewSumSquaresTask(
-		[]uint64{
-			nextHeight,
-			nextHeight + 1,
-			nextHeight + 2,
-		},
+	return nil
+}
+
+func runUsefulWork(
+	workerIdentifier string,
+	valueTexts []string,
+	chain *blockchain.Blockchain,
+	pos *consensus.ProofOfStake,
+	wallets map[string]*wallet.Wallet,
+) error {
+	workerName, workerWallet, err := resolveLocalWallet(
+		workerIdentifier,
+		wallets,
 	)
 	if err != nil {
-		panic(err)
+		return err
+	}
+
+	values := make(
+		[]uint64,
+		0,
+		len(valueTexts),
+	)
+
+	for _, valueText := range valueTexts {
+		value, err := strconv.ParseUint(
+			valueText,
+			10,
+			64,
+		)
+		if err != nil {
+			return fmt.Errorf(
+				"invalid work value %q: %w",
+				valueText,
+				err,
+			)
+		}
+
+		values = append(
+			values,
+			value,
+		)
+	}
+
+	task, err := usefulwork.NewSumSquaresTask(
+		values,
+	)
+	if err != nil {
+		return err
 	}
 
 	proof, err := usefulwork.Execute(
 		task,
-		charlie,
+		workerWallet,
 	)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	if err := usefulwork.VerifyProof(
 		proof,
 	); err != nil {
-		panic(err)
+		return err
 	}
+
+	lastBlock := chain.Blocks[len(chain.Blocks)-1]
+
+	proposer, err := pos.SelectProposer(
+		lastBlock.Hash,
+		lastBlock.Height+1,
+	)
+	if err != nil {
+		return err
+	}
+
+	block, err := chain.AddBlock(
+		nil,
+		[]usefulwork.Proof{
+			proof,
+		},
+		proposer.Address,
+		pos,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := storage.Save(
+		dataDir,
+		chain,
+		pos,
+		wallets,
+	); err != nil {
+		return err
+	}
+
+	fmt.Println("=== USEFUL WORK CONFIRMED ===")
 
 	fmt.Println(
 		"Worker:",
-		shortAddress(proof.Worker),
+		workerName,
 	)
 
 	fmt.Println(
 		"Task:",
 		task.Type,
+	)
+
+	fmt.Println(
+		"Task ID:",
+		task.ID,
 	)
 
 	fmt.Printf(
@@ -216,80 +657,59 @@ func main() {
 		proof.Score,
 	)
 
-	// ============================================
-	// PoS PROPOSER
-	// ============================================
-
-	proposer, err := pos.SelectProposer(
-		lastBlock.Hash,
-		nextHeight,
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println()
-	fmt.Println("=== PROPOSER ===")
-
-	fmt.Println(
-		"Selected:",
-		shortAddress(proposer.Address),
+	fmt.Printf(
+		"Worker reward: %d PRISM\n",
+		blockchain.UsefulWorkReward,
 	)
 
 	fmt.Printf(
-		"Stake: %d PRISM\n",
-		proposer.Stake,
-	)
-
-	// ============================================
-	// PRODUCE NEW BLOCK
-	// ============================================
-
-	block, err := chain.AddBlock(
-		pool.Transactions(),
-		[]usefulwork.Proof{
-			proof,
-		},
-		proposer.Address,
-		pos,
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	pool.Clear()
-
-	fmt.Println()
-	fmt.Println("=== BLOCK PRODUCED ===")
-
-	fmt.Printf(
-		"Height: %d\n",
+		"Block: %d\n",
 		block.Height,
 	)
 
 	fmt.Println(
-		"Proposer:",
-		shortAddress(block.Proposer),
+		"PoS proposer:",
+		walletNameForAddress(
+			block.Proposer,
+			wallets,
+		),
 	)
 
 	fmt.Printf(
-		"Transactions: %d\n",
-		len(block.Transactions),
-	)
-
-	fmt.Printf(
-		"Useful work proofs: %d\n",
-		len(block.UsefulWork),
+		"PoS reward: %d PRISM\n",
+		block.Reward,
 	)
 
 	fmt.Println(
-		"Hash:",
+		"Block hash:",
 		block.Hash,
 	)
 
-	// ============================================
-	// SAVE EVERYTHING
-	// ============================================
+	return nil
+}
+
+func loadOrCreateNode() (
+	*blockchain.Blockchain,
+	*consensus.ProofOfStake,
+	map[string]*wallet.Wallet,
+	bool,
+	error,
+) {
+	if storage.Exists(dataDir) {
+		chain, pos, wallets, err := storage.Load(
+			dataDir,
+		)
+		if err != nil {
+			return nil, nil, nil, false, err
+		}
+
+		return chain, pos, wallets, false, nil
+	}
+
+	chain, pos, wallets, err := createNode()
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
 
 	if err := storage.Save(
 		dataDir,
@@ -297,105 +717,10 @@ func main() {
 		pos,
 		wallets,
 	); err != nil {
-		panic(err)
+		return nil, nil, nil, false, err
 	}
 
-	fmt.Println()
-	fmt.Println("State saved to disk.")
-
-	// ============================================
-	// FINAL STATE
-	// ============================================
-
-	fmt.Println()
-	fmt.Println("=== FINAL ACCOUNT STATE ===")
-
-	printAccount(
-		"Alice",
-		alice.Address,
-		chain,
-	)
-
-	printAccount(
-		"Bob",
-		bob.Address,
-		chain,
-	)
-
-	printAccount(
-		"Charlie",
-		charlie.Address,
-		chain,
-	)
-
-	scores, err := participation.Calculate(
-		chain,
-		pos,
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println()
-	fmt.Println("=== PARTICIPATION ===")
-
-	fmt.Printf(
-		"Alice: %d points\n",
-		participation.ScoreOf(
-			scores,
-			alice.Address,
-		),
-	)
-
-	fmt.Printf(
-		"Bob: %d points\n",
-		participation.ScoreOf(
-			scores,
-			bob.Address,
-		),
-	)
-
-	fmt.Printf(
-		"Charlie: %d points\n",
-		participation.ScoreOf(
-			scores,
-			charlie.Address,
-		),
-	)
-
-	totalSupply, err := chain.TotalSupply()
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println()
-	fmt.Printf(
-		"Blocks: %d\n",
-		len(chain.Blocks),
-	)
-
-	fmt.Printf(
-		"Height: %d\n",
-		block.Height,
-	)
-
-	fmt.Printf(
-		"Total supply: %d PRISM\n",
-		totalSupply,
-	)
-
-	fmt.Printf(
-		"Chain valid: %t\n",
-		chain.ValidateChain(pos),
-	)
-
-	fmt.Println()
-	fmt.Println(
-		"Run Prism again to prove persistence.",
-	)
-
-	fmt.Println()
-	fmt.Println("Prism node is running.")
+	return chain, pos, wallets, true, nil
 }
 
 func createNode() (
@@ -404,7 +729,6 @@ func createNode() (
 	map[string]*wallet.Wallet,
 	error,
 ) {
-
 	alice, err := wallet.New()
 	if err != nil {
 		return nil, nil, nil, err
@@ -477,7 +801,6 @@ func registerValidator(
 	address string,
 	stake uint64,
 ) error {
-
 	if err := chain.LockStake(
 		address,
 		stake,
@@ -489,7 +812,6 @@ func registerValidator(
 		address,
 		stake,
 	); err != nil {
-
 		if unlockErr := chain.UnlockStake(
 			address,
 			stake,
@@ -503,43 +825,118 @@ func registerValidator(
 	return nil
 }
 
-func printAccount(
-	name string,
-	address string,
-	chain *blockchain.Blockchain,
+func resolveLocalWallet(
+	identifier string,
+	wallets map[string]*wallet.Wallet,
+) (
+	string,
+	*wallet.Wallet,
+	error,
 ) {
+	for name, currentWallet := range wallets {
+		if currentWallet == nil {
+			continue
+		}
 
-	balance, err := chain.BalanceOf(
-		address,
-	)
-	if err != nil {
-		panic(err)
+		if strings.EqualFold(
+			name,
+			identifier,
+		) {
+			return name, currentWallet, nil
+		}
+
+		if currentWallet.Address == identifier {
+			return name, currentWallet, nil
+		}
 	}
 
-	available, err := chain.AvailableBalanceOf(
-		address,
+	return "", nil, fmt.Errorf(
+		"local wallet not found: %s",
+		identifier,
 	)
-	if err != nil {
-		panic(err)
+}
+
+func resolveAddress(
+	identifier string,
+	wallets map[string]*wallet.Wallet,
+) (
+	string,
+	string,
+	error,
+) {
+	for name, currentWallet := range wallets {
+		if currentWallet == nil {
+			continue
+		}
+
+		if strings.EqualFold(
+			name,
+			identifier,
+		) {
+			return currentWallet.Address, name, nil
+		}
+
+		if currentWallet.Address == identifier {
+			return currentWallet.Address, name, nil
+		}
 	}
 
-	locked := chain.LockedStakeOf(
-		address,
-	)
+	if isPrismAddress(identifier) {
+		return identifier, shortAddress(identifier), nil
+	}
 
-	fmt.Printf(
-		"%s: total=%d | locked=%d | available=%d PRISM\n",
-		name,
-		balance,
-		locked,
-		available,
+	return "", "", fmt.Errorf(
+		"unknown Prism wallet or address: %s",
+		identifier,
 	)
+}
+
+func isPrismAddress(
+	address string,
+) bool {
+	const prefix = "prism_"
+
+	if !strings.HasPrefix(
+		address,
+		prefix,
+	) {
+		return false
+	}
+
+	if len(address) != 46 {
+		return false
+	}
+
+	encoded := address[len(prefix):]
+
+	decoded, err := hex.DecodeString(encoded)
+	if err != nil {
+		return false
+	}
+
+	return len(decoded) == 20
+}
+
+func walletNameForAddress(
+	address string,
+	wallets map[string]*wallet.Wallet,
+) string {
+	for name, currentWallet := range wallets {
+		if currentWallet == nil {
+			continue
+		}
+
+		if currentWallet.Address == address {
+			return name
+		}
+	}
+
+	return shortAddress(address)
 }
 
 func shortAddress(
 	address string,
 ) string {
-
 	if len(address) <= 22 {
 		return address
 	}
@@ -547,4 +944,18 @@ func shortAddress(
 	return address[:16] +
 		"..." +
 		address[len(address)-6:]
+}
+
+func printUsage() {
+	fmt.Println("Prism CLI")
+	fmt.Println()
+	fmt.Println("Commands:")
+	fmt.Println(`  go run .\cmd\prism status`)
+	fmt.Println(`  go run .\cmd\prism wallets`)
+	fmt.Println(`  go run .\cmd\prism balance Alice`)
+	fmt.Println(`  go run .\cmd\prism validators`)
+	fmt.Println(`  go run .\cmd\prism participation`)
+	fmt.Println(`  go run .\cmd\prism send Alice Bob 25`)
+	fmt.Println(`  go run .\cmd\prism work Charlie 3 4 5`)
+	fmt.Println(`  go run .\cmd\prism help`)
 }
