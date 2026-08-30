@@ -11,11 +11,14 @@ import (
 	"prism/internal/transaction"
 )
 
+const BlockReward uint64 = 5
+
 type Block struct {
 	Height       uint64                    `json:"height"`
 	Timestamp    time.Time                 `json:"timestamp"`
 	PreviousHash string                    `json:"previous_hash"`
 	Proposer     string                    `json:"proposer"`
+	Reward       uint64                    `json:"reward"`
 	Transactions []transaction.Transaction `json:"transactions"`
 	Hash         string                    `json:"hash"`
 }
@@ -27,11 +30,12 @@ func CalculateHash(block Block) string {
 	}
 
 	payload := fmt.Sprintf(
-		"%d|%s|%s|%s|%s",
+		"%d|%s|%s|%s|%d|%s",
 		block.Height,
 		block.Timestamp.UTC().Format(time.RFC3339Nano),
 		block.PreviousHash,
 		block.Proposer,
+		block.Reward,
 		string(transactionData),
 	)
 
@@ -93,6 +97,7 @@ func CreateGenesisBlock(
 		Timestamp:    time.Now().UTC(),
 		PreviousHash: "0",
 		Proposer:     "GENESIS",
+		Reward:       0,
 		Transactions: transactions,
 	}
 

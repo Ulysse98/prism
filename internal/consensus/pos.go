@@ -31,38 +31,42 @@ func (pos *ProofOfStake) Register(
 ) error {
 
 	if address == "" {
-		return fmt.Errorf("validator address cannot be empty")
+		return fmt.Errorf(
+			"validator address cannot be empty",
+		)
 	}
 
 	if address == "GENESIS" {
-		return fmt.Errorf("GENESIS cannot become a validator")
+		return fmt.Errorf(
+			"GENESIS cannot become a validator",
+		)
 	}
 
 	if stake == 0 {
-		return fmt.Errorf("validator stake must be greater than zero")
+		return fmt.Errorf(
+			"validator stake must be greater than zero",
+		)
 	}
 
 	for _, validator := range pos.Validators {
 		if validator.Address == address {
-			return fmt.Errorf("validator already registered")
+			return fmt.Errorf(
+				"validator already registered",
+			)
 		}
 	}
 
-	balance, err := chain.BalanceOf(address)
-	if err != nil {
-		return err
-	}
-
-	if balance < stake {
+	if pos.TotalStake() > math.MaxUint64-stake {
 		return fmt.Errorf(
-			"insufficient balance for stake: has %d PRISM, needs %d PRISM",
-			balance,
-			stake,
+			"total stake overflow",
 		)
 	}
 
-	if pos.TotalStake() > math.MaxUint64-stake {
-		return fmt.Errorf("total stake overflow")
+	if err := chain.LockStake(
+		address,
+		stake,
+	); err != nil {
+		return err
 	}
 
 	pos.Validators = append(
@@ -74,6 +78,49 @@ func (pos *ProofOfStake) Register(
 	)
 
 	return nil
+}
+
+func (pos *ProofOfStake) Unregister(
+	address string,
+	chain *blockchain.Blockchain,
+) error {
+
+	for index, validator := range pos.Validators {
+		if validator.Address != address {
+			continue
+		}
+
+		if err := chain.UnlockStake(
+			validator.Address,
+			validator.Stake,
+		); err != nil {
+			return err
+		}
+
+		pos.Validators = append(
+			pos.Validators[:index],
+			pos.Validators[index+1:]...,
+		)
+
+		return nil
+	}
+
+	return fmt.Errorf(
+		"validator not registered",
+	)
+}
+
+func (pos *ProofOfStake) StakeOf(
+	address string,
+) uint64 {
+
+	for _, validator := range pos.Validators {
+		if validator.Address == address {
+			return validator.Stake
+		}
+	}
+
+	return 0
 }
 
 func (pos *ProofOfStake) TotalStake() uint64 {

@@ -12,13 +12,9 @@ import (
 
 func main() {
 	fmt.Println("====================================")
-	fmt.Println("          PRISM NODE v0.7")
+	fmt.Println("          PRISM NODE v0.8")
 	fmt.Println("====================================")
 	fmt.Println()
-
-	// ============================================
-	// WALLETS
-	// ============================================
 
 	alice, err := wallet.New()
 	if err != nil {
@@ -35,15 +31,6 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Println("Validators:")
-	fmt.Println("Alice:  ", alice.Address)
-	fmt.Println("Bob:    ", bob.Address)
-	fmt.Println("Charlie:", charlie.Address)
-
-	// ============================================
-	// GENESIS
-	// ============================================
-
 	initialBalances := map[string]uint64{
 		alice.Address:   1200,
 		bob.Address:     800,
@@ -56,10 +43,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
-	// ============================================
-	// PROOF OF STAKE
-	// ============================================
 
 	pos := consensus.NewProofOfStake()
 
@@ -87,27 +70,72 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Println()
-	fmt.Println("=== PROOF OF STAKE ===")
+	fmt.Println("=== LOCKED STAKING ===")
 
-	fmt.Println("Alice stake:   500 PRISM")
-	fmt.Println("Bob stake:     300 PRISM")
-	fmt.Println("Charlie stake: 200 PRISM")
+	printAccount(
+		"Alice",
+		alice.Address,
+		chain,
+	)
+
+	printAccount(
+		"Bob",
+		bob.Address,
+		chain,
+	)
+
+	printAccount(
+		"Charlie",
+		charlie.Address,
+		chain,
+	)
 
 	fmt.Printf(
-		"Total stake:   %d PRISM\n",
+		"Total stake: %d PRISM\n",
 		pos.TotalStake(),
 	)
 
-	// ============================================
-	// MEMPOOL
-	// ============================================
-
 	pool := mempool.New()
 
-	// Alice -> Bob : 100 PRISM
+	fmt.Println()
+	fmt.Println("=== LOCKED STAKE SPEND TEST ===")
 
 	aliceNonce, err := pool.NextNonce(
+		alice.Address,
+		chain,
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	overspend := transaction.New(
+		alice.Address,
+		bob.Address,
+		800,
+		aliceNonce,
+		alice.PublicKeyHex(),
+	)
+
+	if err := overspend.Sign(
+		alice.PrivateKey,
+	); err != nil {
+		panic(err)
+	}
+
+	err = pool.Add(
+		overspend,
+		chain,
+	)
+
+	if err != nil {
+		fmt.Println("Transaction rejected:")
+		fmt.Println(err)
+	}
+
+	fmt.Println()
+	fmt.Println("=== VALID TRANSACTIONS ===")
+
+	aliceNonce, err = pool.NextNonce(
 		alice.Address,
 		chain,
 	)
@@ -123,15 +151,18 @@ func main() {
 		alice.PublicKeyHex(),
 	)
 
-	if err := tx1.Sign(alice.PrivateKey); err != nil {
+	if err := tx1.Sign(
+		alice.PrivateKey,
+	); err != nil {
 		panic(err)
 	}
 
-	if err := pool.Add(tx1, chain); err != nil {
+	if err := pool.Add(
+		tx1,
+		chain,
+	); err != nil {
 		panic(err)
 	}
-
-	// Bob -> Charlie : 50 PRISM
 
 	bobNonce, err := pool.NextNonce(
 		bob.Address,
@@ -149,36 +180,29 @@ func main() {
 		bob.PublicKeyHex(),
 	)
 
-	if err := tx2.Sign(bob.PrivateKey); err != nil {
+	if err := tx2.Sign(
+		bob.PrivateKey,
+	); err != nil {
 		panic(err)
 	}
 
-	if err := pool.Add(tx2, chain); err != nil {
+	if err := pool.Add(
+		tx2,
+		chain,
+	); err != nil {
 		panic(err)
 	}
-
-	fmt.Println()
-	fmt.Println("=== MEMPOOL ===")
 
 	fmt.Printf(
-		"Transactions waiting: %d\n",
+		"Mempool: %d transactions\n",
 		pool.Count(),
 	)
 
-	fmt.Println("Alice -> Bob: 100 PRISM")
-	fmt.Println("Bob -> Charlie: 50 PRISM")
-
-	// ============================================
-	// SELECT PROPOSER
-	// ============================================
-
 	lastBlock := chain.Blocks[len(chain.Blocks)-1]
-
-	nextHeight := lastBlock.Height + 1
 
 	proposer, err := pos.SelectProposer(
 		lastBlock.Hash,
-		nextHeight,
+		lastBlock.Height+1,
 	)
 	if err != nil {
 		panic(err)
@@ -193,13 +217,14 @@ func main() {
 	)
 
 	fmt.Printf(
-		"Validator stake: %d PRISM\n",
+		"Stake: %d PRISM\n",
 		proposer.Stake,
 	)
 
-	// ============================================
-	// BLOCK PRODUCTION
-	// ============================================
+	fmt.Printf(
+		"Block reward: %d PRISM\n",
+		blockchain.BlockReward,
+	)
 
 	block, err := chain.AddBlock(
 		pool.Transactions(),
@@ -225,6 +250,11 @@ func main() {
 	)
 
 	fmt.Printf(
+		"Reward: %d PRISM\n",
+		block.Reward,
+	)
+
+	fmt.Printf(
 		"Transactions: %d\n",
 		len(block.Transactions),
 	)
@@ -234,41 +264,42 @@ func main() {
 		block.Hash,
 	)
 
-	fmt.Println(
-		"Previous hash:",
-		block.PreviousHash,
-	)
-
-	// ============================================
-	// FINAL BALANCES
-	// ============================================
-
 	fmt.Println()
-	fmt.Println("=== FINAL BALANCES ===")
+	fmt.Println("=== FINAL ACCOUNT STATE ===")
 
-	printBalance(
+	printAccount(
 		"Alice",
 		alice.Address,
 		chain,
 	)
 
-	printBalance(
+	printAccount(
 		"Bob",
 		bob.Address,
 		chain,
 	)
 
-	printBalance(
+	printAccount(
 		"Charlie",
 		charlie.Address,
 		chain,
 	)
 
-	// ============================================
-	// FINAL VALIDATION
-	// ============================================
+	totalSupply, err := chain.TotalSupply()
+	if err != nil {
+		panic(err)
+	}
 
 	fmt.Println()
+	fmt.Printf(
+		"Total supply: %d PRISM\n",
+		totalSupply,
+	)
+
+	fmt.Printf(
+		"Total locked stake: %d PRISM\n",
+		pos.TotalStake(),
+	)
 
 	fmt.Printf(
 		"Chain valid: %t\n",
@@ -276,7 +307,7 @@ func main() {
 	)
 
 	fmt.Printf(
-		"Mempool transactions: %d\n",
+		"Mempool: %d transactions\n",
 		pool.Count(),
 	)
 
@@ -284,7 +315,7 @@ func main() {
 	fmt.Println("Prism node is running.")
 }
 
-func printBalance(
+func printAccount(
 	name string,
 	address string,
 	chain *blockchain.Blockchain,
@@ -295,14 +326,28 @@ func printBalance(
 		panic(err)
 	}
 
+	available, err := chain.AvailableBalanceOf(
+		address,
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	locked := chain.LockedStakeOf(address)
+
 	fmt.Printf(
-		"%s: %d PRISM\n",
+		"%s: total=%d | locked=%d | available=%d PRISM\n",
 		name,
 		balance,
+		locked,
+		available,
 	)
 }
 
-func shortAddress(address string) string {
+func shortAddress(
+	address string,
+) string {
+
 	if len(address) <= 22 {
 		return address
 	}

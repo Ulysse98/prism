@@ -14,8 +14,13 @@ type Mempool struct {
 
 func New() *Mempool {
 	return &Mempool{
-		transactions: make([]transaction.Transaction, 0),
-		ids:          make(map[string]struct{}),
+		transactions: make(
+			[]transaction.Transaction,
+			0,
+		),
+		ids: make(
+			map[string]struct{},
+		),
 	}
 }
 
@@ -91,7 +96,10 @@ func (mp *Mempool) Transactions() []transaction.Transaction {
 		len(mp.transactions),
 	)
 
-	copy(result, mp.transactions)
+	copy(
+		result,
+		mp.transactions,
+	)
 
 	return result
 }
@@ -115,13 +123,12 @@ func (mp *Mempool) stateWithPending(
 	chain *blockchain.Blockchain,
 ) (blockchain.State, error) {
 
-	state, err := chain.GetState()
+	state, err := chain.GetSpendableState()
 	if err != nil {
 		return blockchain.State{}, err
 	}
 
 	for _, tx := range mp.transactions {
-
 		if err := transaction.ValidateSigned(tx); err != nil {
 			return blockchain.State{}, fmt.Errorf(
 				"invalid transaction already in mempool: %w",

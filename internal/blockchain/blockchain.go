@@ -2,13 +2,15 @@ package blockchain
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"prism/internal/transaction"
 )
 
 type Blockchain struct {
-	Blocks []Block `json:"blocks"`
+	Blocks       []Block
+	LockedStakes map[string]uint64
 }
 
 type State struct {
@@ -26,8 +28,129 @@ func NewBlockchain(
 	}
 
 	return &Blockchain{
-		Blocks: []Block{genesis},
+		Blocks: []Block{
+			genesis,
+		},
+		LockedStakes: make(map[string]uint64),
 	}, nil
+}
+
+func (bc *Blockchain) LockStake(
+	address string,
+	amount uint64,
+) error {
+
+	if address == "" {
+		return fmt.Errorf(
+			"stake address cannot be empty",
+		)
+	}
+
+	if address == "GENESIS" {
+		return fmt.Errorf(
+			"GENESIS cannot stake",
+		)
+	}
+
+	if amount == 0 {
+		return fmt.Errorf(
+			"stake amount must be greater than zero",
+		)
+	}
+
+	balance, err := bc.BalanceOf(address)
+	if err != nil {
+		return err
+	}
+
+	currentLocked := bc.LockedStakes[address]
+
+	if balance < currentLocked {
+		return fmt.Errorf(
+			"locked stake exceeds account balance",
+		)
+	}
+
+	available := balance - currentLocked
+
+	if available < amount {
+		return fmt.Errorf(
+			"insufficient available balance for stake: has %d PRISM, needs %d PRISM",
+			available,
+			amount,
+		)
+	}
+
+	if currentLocked > math.MaxUint64-amount {
+		return fmt.Errorf(
+			"stake overflow",
+		)
+	}
+
+	bc.LockedStakes[address] += amount
+
+	return nil
+}
+
+func (bc *Blockchain) UnlockStake(
+	address string,
+	amount uint64,
+) error {
+
+	if amount == 0 {
+		return fmt.Errorf(
+			"unstake amount must be greater than zero",
+		)
+	}
+
+	currentLocked := bc.LockedStakes[address]
+
+	if currentLocked < amount {
+		return fmt.Errorf(
+			"cannot unlock %d PRISM: only %d PRISM locked",
+			amount,
+			currentLocked,
+		)
+	}
+
+	bc.LockedStakes[address] -= amount
+
+	if bc.LockedStakes[address] == 0 {
+		delete(
+			bc.LockedStakes,
+			address,
+		)
+	}
+
+	return nil
+}
+
+func (bc *Blockchain) LockedStakeOf(
+	address string,
+) uint64 {
+
+	return bc.LockedStakes[address]
+}
+
+func (bc *Blockchain) AvailableBalanceOf(
+	address string,
+) (uint64, error) {
+
+	balance, err := bc.BalanceOf(address)
+	if err != nil {
+		return 0, err
+	}
+
+	locked := bc.LockedStakeOf(address)
+
+	if locked > balance {
+		return 0, fmt.Errorf(
+			"locked stake exceeds balance for %s",
+			address,
+		)
+	}
+
+	return balance - locked, nil
 }
 
 func (bc *Blockchain) AddBlock(
@@ -53,7 +176,7 @@ func (bc *Blockchain) AddBlock(
 		)
 	}
 
-	state, err := bc.GetState()
+	state, err := bc.GetSpendableState()
 	if err != nil {
 		return Block{}, err
 	}
@@ -76,7 +199,7 @@ func (bc *Blockchain) AddBlock(
 
 		if state.Balances[tx.From] < tx.Amount {
 			return Block{}, fmt.Errorf(
-				"insufficient balance for %s: has %d PRISM, needs %d PRISM",
+				"insufficient available balance for %s: has %d PRISM, needs %d PRISM",
 				tx.From,
 				state.Balances[tx.From],
 				tx.Amount,
@@ -105,6 +228,7 @@ func (bc *Blockchain) AddBlock(
 		Timestamp:    time.Now().UTC(),
 		PreviousHash: previousBlock.Hash,
 		Proposer:     proposer,
+		Reward:       BlockReward,
 		Transactions: blockTransactions,
 	}
 
@@ -129,18 +253,61 @@ func (bc *Blockchain) GetState() (
 	}
 
 	for blockIndex, block := range bc.Blocks {
-		for _, tx := range block.Transactions {
 
-			if blockIndex == 0 {
+		if blockIndex == 0 {
+			if block.Proposer != "GENESIS" {
+				return State{}, fmt.Errorf(
+					"invalid genesis proposer",
+				)
+			}
+
+			if block.Reward != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain a reward",
+				)
+			}
+
+			for _, tx := range block.Transactions {
 				if err := transaction.ValidateGenesis(tx); err != nil {
 					return State{}, err
 				}
 
-				state.Balances[tx.To] += tx.Amount
+				if state.Balances[tx.To] > math.MaxUint64-tx.Amount {
+					return State{}, fmt.Errorf(
+						"genesis balance overflow",
+					)
+				}
 
-				continue
+				state.Balances[tx.To] += tx.Amount
 			}
 
+			continue
+		}
+
+		if block.Proposer == "" ||
+			block.Proposer == "GENESIS" {
+
+			return State{}, fmt.Errorf(
+				"invalid proposer in block %d",
+				blockIndex,
+			)
+		}
+
+		if block.Reward != BlockReward {
+			return State{}, fmt.Errorf(
+				"invalid reward in block %d",
+				blockIndex,
+			)
+		}
+
+		if len(block.Transactions) == 0 {
+			return State{}, fmt.Errorf(
+				"empty normal block at height %d",
+				block.Height,
+			)
+		}
+
+		for _, tx := range block.Transactions {
 			if err := transaction.ValidateSigned(tx); err != nil {
 				return State{}, err
 			}
@@ -163,10 +330,50 @@ func (bc *Blockchain) GetState() (
 				)
 			}
 
+			if state.Balances[tx.To] > math.MaxUint64-tx.Amount {
+				return State{}, fmt.Errorf(
+					"recipient balance overflow",
+				)
+			}
+
 			state.Balances[tx.From] -= tx.Amount
 			state.Balances[tx.To] += tx.Amount
 			state.Nonces[tx.From]++
 		}
+
+		if state.Balances[block.Proposer] >
+			math.MaxUint64-block.Reward {
+
+			return State{}, fmt.Errorf(
+				"block reward overflow",
+			)
+		}
+
+		state.Balances[block.Proposer] += block.Reward
+	}
+
+	return state, nil
+}
+
+func (bc *Blockchain) GetSpendableState() (
+	State,
+	error,
+) {
+
+	state, err := bc.GetState()
+	if err != nil {
+		return State{}, err
+	}
+
+	for address, locked := range bc.LockedStakes {
+		if state.Balances[address] < locked {
+			return State{}, fmt.Errorf(
+				"locked stake exceeds balance for %s",
+				address,
+			)
+		}
+
+		state.Balances[address] -= locked
 	}
 
 	return state, nil
@@ -196,6 +403,31 @@ func (bc *Blockchain) NonceOf(
 	return state.Nonces[account], nil
 }
 
+func (bc *Blockchain) TotalSupply() (
+	uint64,
+	error,
+) {
+
+	state, err := bc.GetState()
+	if err != nil {
+		return 0, err
+	}
+
+	var total uint64
+
+	for _, balance := range state.Balances {
+		if total > math.MaxUint64-balance {
+			return 0, fmt.Errorf(
+				"total supply overflow",
+			)
+		}
+
+		total += balance
+	}
+
+	return total, nil
+}
+
 func (bc *Blockchain) ValidateChain() bool {
 	if len(bc.Blocks) == 0 {
 		return false
@@ -212,6 +444,10 @@ func (bc *Blockchain) ValidateChain() bool {
 	}
 
 	if genesis.Proposer != "GENESIS" {
+		return false
+	}
+
+	if genesis.Reward != 0 {
 		return false
 	}
 
@@ -236,6 +472,14 @@ func (bc *Blockchain) ValidateChain() bool {
 		}
 
 		if current.Proposer == "GENESIS" {
+			return false
+		}
+
+		if current.Reward != BlockReward {
+			return false
+		}
+
+		if len(current.Transactions) == 0 {
 			return false
 		}
 
