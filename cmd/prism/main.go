@@ -21,7 +21,7 @@ const dataDir = "data"
 
 func main() {
 	fmt.Println("====================================")
-	fmt.Println("         PRISM NODE v0.15")
+	fmt.Println("         PRISM NODE v0.16")
 	fmt.Println("====================================")
 	fmt.Println()
 
@@ -32,10 +32,14 @@ func main() {
 
 	command := strings.ToLower(os.Args[1])
 
-	// La commande node utilise son propre dossier de données
-	// et est gérée dans cmd/prism/node.go.
+	// P2P node commands use their own data directories.
 	if command == "node" {
 		runNodeCommand(os.Args[2:])
+		return
+	}
+
+	if command == "node-produce" {
+		runNodeProduceCommand(os.Args[2:])
 		return
 	}
 
@@ -137,6 +141,11 @@ func runStatus(
 	chain *blockchain.Blockchain,
 	pos *consensus.ProofOfStake,
 ) {
+	if len(chain.Blocks) == 0 {
+		fmt.Println("Blockchain is empty.")
+		return
+	}
+
 	lastBlock := chain.Blocks[len(chain.Blocks)-1]
 
 	totalSupply, err := chain.TotalSupply()
@@ -146,40 +155,13 @@ func runStatus(
 
 	fmt.Println("=== PRISM STATUS ===")
 
-	fmt.Printf(
-		"Blocks:       %d\n",
-		len(chain.Blocks),
-	)
-
-	fmt.Printf(
-		"Height:       %d\n",
-		lastBlock.Height,
-	)
-
-	fmt.Printf(
-		"Validators:   %d\n",
-		len(pos.Validators),
-	)
-
-	fmt.Printf(
-		"Total stake:  %d PRISM\n",
-		pos.TotalStake(),
-	)
-
-	fmt.Printf(
-		"Total supply: %d PRISM\n",
-		totalSupply,
-	)
-
-	fmt.Printf(
-		"Chain valid:  %t\n",
-		chain.ValidateChain(pos),
-	)
-
-	fmt.Println(
-		"Last hash:",
-		lastBlock.Hash,
-	)
+	fmt.Printf("Blocks:       %d\n", len(chain.Blocks))
+	fmt.Printf("Height:       %d\n", lastBlock.Height)
+	fmt.Printf("Validators:   %d\n", len(pos.Validators))
+	fmt.Printf("Total stake:  %d PRISM\n", pos.TotalStake())
+	fmt.Printf("Total supply: %d PRISM\n", totalSupply)
+	fmt.Printf("Chain valid:  %t\n", chain.ValidateChain(pos))
+	fmt.Println("Last hash:", lastBlock.Hash)
 }
 
 func runWallets(
@@ -201,11 +183,7 @@ func runWallets(
 		}
 
 		fmt.Println(name)
-
-		fmt.Println(
-			" ",
-			currentWallet.Address,
-		)
+		fmt.Println(" ", currentWallet.Address)
 	}
 }
 
@@ -241,35 +219,12 @@ func runBalance(
 		panic(err)
 	}
 
-	fmt.Printf(
-		"=== BALANCE: %s ===\n",
-		label,
-	)
-
-	fmt.Println(
-		"Address:",
-		address,
-	)
-
-	fmt.Printf(
-		"Total:     %d PRISM\n",
-		total,
-	)
-
-	fmt.Printf(
-		"Locked:    %d PRISM\n",
-		locked,
-	)
-
-	fmt.Printf(
-		"Available: %d PRISM\n",
-		available,
-	)
-
-	fmt.Printf(
-		"Nonce:     %d\n",
-		nonce,
-	)
+	fmt.Printf("=== BALANCE: %s ===\n", label)
+	fmt.Println("Address:", address)
+	fmt.Printf("Total:     %d PRISM\n", total)
+	fmt.Printf("Locked:    %d PRISM\n", locked)
+	fmt.Printf("Available: %d PRISM\n", available)
+	fmt.Printf("Nonce:     %d\n", nonce)
 }
 
 func runValidators(
@@ -867,11 +822,15 @@ func resolveLocalWallet(
 			name,
 			identifier,
 		) {
-			return name, currentWallet, nil
+			return name,
+				currentWallet,
+				nil
 		}
 
 		if currentWallet.Address == identifier {
-			return name, currentWallet, nil
+			return name,
+				currentWallet,
+				nil
 		}
 	}
 
@@ -982,7 +941,6 @@ func shortAddress(
 func printUsage() {
 	fmt.Println("Prism CLI")
 	fmt.Println()
-
 	fmt.Println("Commands:")
 
 	fmt.Println(
@@ -1019,6 +977,10 @@ func printUsage() {
 
 	fmt.Println(
 		`  .\prism.exe node --port 7002 --peer 127.0.0.1:7001`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe node-produce --port 7001`,
 	)
 
 	fmt.Println(
