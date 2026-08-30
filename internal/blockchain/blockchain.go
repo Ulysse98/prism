@@ -32,7 +32,20 @@ func NewBlockchain(
 
 func (bc *Blockchain) AddBlock(
 	transactions []transaction.Transaction,
+	proposer string,
 ) (Block, error) {
+
+	if proposer == "" {
+		return Block{}, fmt.Errorf(
+			"block proposer cannot be empty",
+		)
+	}
+
+	if proposer == "GENESIS" {
+		return Block{}, fmt.Errorf(
+			"GENESIS cannot propose normal blocks",
+		)
+	}
 
 	if len(transactions) == 0 {
 		return Block{}, fmt.Errorf(
@@ -91,6 +104,7 @@ func (bc *Blockchain) AddBlock(
 		Height:       previousBlock.Height + 1,
 		Timestamp:    time.Now().UTC(),
 		PreviousHash: previousBlock.Hash,
+		Proposer:     proposer,
 		Transactions: blockTransactions,
 	}
 
@@ -135,8 +149,10 @@ func (bc *Blockchain) GetState() (
 
 			if tx.Nonce != expectedNonce {
 				return State{}, fmt.Errorf(
-					"invalid chain nonce for %s",
+					"invalid chain nonce for %s: expected %d, got %d",
 					tx.From,
+					expectedNonce,
+					tx.Nonce,
 				)
 			}
 
@@ -195,6 +211,10 @@ func (bc *Blockchain) ValidateChain() bool {
 		return false
 	}
 
+	if genesis.Proposer != "GENESIS" {
+		return false
+	}
+
 	if CalculateHash(genesis) != genesis.Hash {
 		return false
 	}
@@ -208,6 +228,14 @@ func (bc *Blockchain) ValidateChain() bool {
 		}
 
 		if current.PreviousHash != previous.Hash {
+			return false
+		}
+
+		if current.Proposer == "" {
+			return false
+		}
+
+		if current.Proposer == "GENESIS" {
 			return false
 		}
 

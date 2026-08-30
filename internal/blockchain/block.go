@@ -15,23 +15,23 @@ type Block struct {
 	Height       uint64                    `json:"height"`
 	Timestamp    time.Time                 `json:"timestamp"`
 	PreviousHash string                    `json:"previous_hash"`
+	Proposer     string                    `json:"proposer"`
 	Transactions []transaction.Transaction `json:"transactions"`
 	Hash         string                    `json:"hash"`
 }
 
 func CalculateHash(block Block) string {
-	transactionData, err := json.Marshal(
-		block.Transactions,
-	)
+	transactionData, err := json.Marshal(block.Transactions)
 	if err != nil {
 		panic(err)
 	}
 
 	payload := fmt.Sprintf(
-		"%d|%s|%s|%s",
+		"%d|%s|%s|%s|%s",
 		block.Height,
 		block.Timestamp.UTC().Format(time.RFC3339Nano),
 		block.PreviousHash,
+		block.Proposer,
 		string(transactionData),
 	)
 
@@ -44,11 +44,7 @@ func CreateGenesisBlock(
 	initialBalances map[string]uint64,
 ) (Block, error) {
 
-	accounts := make(
-		[]string,
-		0,
-		len(initialBalances),
-	)
+	accounts := make([]string, 0, len(initialBalances))
 
 	for account := range initialBalances {
 		accounts = append(accounts, account)
@@ -56,10 +52,7 @@ func CreateGenesisBlock(
 
 	sort.Strings(accounts)
 
-	transactions := make(
-		[]transaction.Transaction,
-		0,
-	)
+	transactions := make([]transaction.Transaction, 0)
 
 	for _, account := range accounts {
 		if account == "" {
@@ -99,6 +92,7 @@ func CreateGenesisBlock(
 		Height:       0,
 		Timestamp:    time.Now().UTC(),
 		PreviousHash: "0",
+		Proposer:     "GENESIS",
 		Transactions: transactions,
 	}
 
