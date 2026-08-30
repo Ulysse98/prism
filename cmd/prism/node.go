@@ -13,9 +13,7 @@ import (
 	"prism/internal/wallet"
 )
 
-func runNodeCommand(
-	args []string,
-) {
+func runNodeCommand(args []string) {
 	flags := flag.NewFlagSet(
 		"node",
 		flag.ContinueOnError,
@@ -102,8 +100,6 @@ func runNodeCommand(
 		return
 	}
 
-	lastBlock := chain.Blocks[len(chain.Blocks)-1]
-
 	listenAddr := fmt.Sprintf(
 		"127.0.0.1:%d",
 		*port,
@@ -120,13 +116,13 @@ func runNodeCommand(
 	server := p2p.NewServer(
 		nodeID,
 		listenAddr,
-		lastBlock.Height,
-		lastBlock.Hash,
+		dataPath,
+		chain,
+		pos,
+		wallets,
 	)
 
-	if err := server.Run(
-		*peer,
-	); err != nil {
+	if err := server.Run(*peer); err != nil {
 		fmt.Println()
 		fmt.Println("P2P node stopped:")
 		fmt.Println(err)

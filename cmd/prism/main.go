@@ -21,7 +21,7 @@ const dataDir = "data"
 
 func main() {
 	fmt.Println("====================================")
-	fmt.Println("         PRISM NODE v0.14")
+	fmt.Println("         PRISM NODE v0.15")
 	fmt.Println("====================================")
 	fmt.Println()
 
