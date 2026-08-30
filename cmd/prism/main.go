@@ -4,15 +4,20 @@ import (
 	"fmt"
 
 	"prism/internal/blockchain"
+	"prism/internal/mempool"
 	"prism/internal/transaction"
 	"prism/internal/wallet"
 )
 
 func main() {
 	fmt.Println("====================================")
-	fmt.Println("          PRISM NODE v0.5")
+	fmt.Println("          PRISM NODE v0.6")
 	fmt.Println("====================================")
 	fmt.Println()
+
+	// --------------------------------------------
+	// WALLETS
+	// --------------------------------------------
 
 	alice, err := wallet.New()
 	if err != nil {
@@ -29,25 +34,28 @@ func main() {
 		panic(err)
 	}
 
-	hacker, err := wallet.New()
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("Wallets created:")
+	fmt.Println("Wallets:")
 	fmt.Println("Alice:  ", alice.Address)
 	fmt.Println("Bob:    ", bob.Address)
 	fmt.Println("Charlie:", charlie.Address)
+
+	// --------------------------------------------
+	// GENESIS
+	// --------------------------------------------
 
 	initialBalances := map[string]uint64{
 		alice.Address: 1000,
 		bob.Address:   250,
 	}
 
-	chain, err := blockchain.NewBlockchain(initialBalances)
+	chain, err := blockchain.NewBlockchain(
+		initialBalances,
+	)
 	if err != nil {
 		panic(err)
 	}
+
+	pool := mempool.New()
 
 	fmt.Println()
 	fmt.Println("Genesis balances:")
@@ -59,14 +67,17 @@ func main() {
 		charlie.Address,
 	)
 
-	// ============================================
-	// SIGNED TRANSACTIONS
-	// ============================================
+	// --------------------------------------------
+	// TRANSACTION #1
+	// --------------------------------------------
 
 	fmt.Println()
-	fmt.Println("=== SIGNED BLOCK #1 ===")
+	fmt.Println("=== ADD TX #1 TO MEMPOOL ===")
 
-	aliceNonce, err := chain.NonceOf(alice.Address)
+	aliceNonce, err := pool.NextNonce(
+		alice.Address,
+		chain,
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -83,7 +94,27 @@ func main() {
 		panic(err)
 	}
 
-	bobNonce, err := chain.NonceOf(bob.Address)
+	if err := pool.Add(tx1, chain); err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Alice -> Bob: 125 PRISM")
+	fmt.Printf(
+		"Mempool transactions: %d\n",
+		pool.Count(),
+	)
+
+	// --------------------------------------------
+	// TRANSACTION #2
+	// --------------------------------------------
+
+	fmt.Println()
+	fmt.Println("=== ADD TX #2 TO MEMPOOL ===")
+
+	bobNonce, err := pool.NextNonce(
+		bob.Address,
+		chain,
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -100,22 +131,108 @@ func main() {
 		panic(err)
 	}
 
-	_, err = chain.AddBlock(
-		[]transaction.Transaction{
-			tx1,
-			tx2,
-		},
+	if err := pool.Add(tx2, chain); err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Bob -> Charlie: 50 PRISM")
+
+	fmt.Printf(
+		"Mempool transactions: %d\n",
+		pool.Count(),
 	)
 
+	// --------------------------------------------
+	// DUPLICATE TEST
+	// --------------------------------------------
+
+	fmt.Println()
+	fmt.Println("=== DUPLICATE TEST ===")
+
+	err = pool.Add(tx1, chain)
+
+	if err != nil {
+		fmt.Println("Duplicate rejected:")
+		fmt.Println(err)
+	}
+
+	// --------------------------------------------
+	// PENDING OVERSPEND TEST
+	// --------------------------------------------
+
+	fmt.Println()
+	fmt.Println("=== PENDING OVERSPEND TEST ===")
+
+	aliceNonce, err = pool.NextNonce(
+		alice.Address,
+		chain,
+	)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println("Alice -> Bob: 125 PRISM [SIGNED]")
-	fmt.Println("Bob -> Charlie: 50 PRISM [SIGNED]")
+	overspend := transaction.New(
+		alice.Address,
+		charlie.Address,
+		900,
+		aliceNonce,
+		alice.PublicKeyHex(),
+	)
+
+	if err := overspend.Sign(alice.PrivateKey); err != nil {
+		panic(err)
+	}
+
+	err = pool.Add(
+		overspend,
+		chain,
+	)
+
+	if err != nil {
+		fmt.Println("Overspend rejected:")
+		fmt.Println(err)
+	}
+
+	// --------------------------------------------
+	// BLOCK PRODUCTION
+	// --------------------------------------------
 
 	fmt.Println()
-	fmt.Println("Balances:")
+	fmt.Println("=== PRODUCE BLOCK ===")
+
+	pendingTransactions := pool.Transactions()
+
+	block, err := chain.AddBlock(
+		pendingTransactions,
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf(
+		"Block #%d produced\n",
+		block.Height,
+	)
+
+	fmt.Printf(
+		"Transactions included: %d\n",
+		len(block.Transactions),
+	)
+
+	// Les transactions sont maintenant confirmées.
+	pool.Clear()
+
+	fmt.Printf(
+		"Mempool transactions after block: %d\n",
+		pool.Count(),
+	)
+
+	// --------------------------------------------
+	// FINAL STATE
+	// --------------------------------------------
+
+	fmt.Println()
+	fmt.Println("Confirmed balances:")
 
 	printBalances(
 		chain,
@@ -123,63 +240,6 @@ func main() {
 		bob.Address,
 		charlie.Address,
 	)
-
-	// ============================================
-	// FORGED TRANSACTION TEST
-	// ============================================
-
-	fmt.Println()
-	fmt.Println("=== FORGED TRANSACTION TEST ===")
-
-	aliceNonce, err = chain.NonceOf(alice.Address)
-	if err != nil {
-		panic(err)
-	}
-
-	// Hacker prétend envoyer les PRISM d'Alice,
-	// mais utilise sa propre clé.
-	forgedTx := transaction.New(
-		alice.Address,
-		hacker.Address,
-		100,
-		aliceNonce,
-		hacker.PublicKeyHex(),
-	)
-
-	if err := forgedTx.Sign(hacker.PrivateKey); err != nil {
-		panic(err)
-	}
-
-	_, err = chain.AddBlock(
-		[]transaction.Transaction{
-			forgedTx,
-		},
-	)
-
-	if err != nil {
-		fmt.Println("Forged transaction rejected:")
-		fmt.Println(err)
-	}
-
-	// ============================================
-	// REPLAY ATTACK TEST
-	// ============================================
-
-	fmt.Println()
-	fmt.Println("=== REPLAY ATTACK TEST ===")
-
-	// On essaie de réutiliser l'ancienne transaction
-	// d'Alice dont le nonce était 0.
-	_, err = chain.AddBlock(
-		[]transaction.Transaction{
-			tx1,
-		},
-	)
-
-	if err != nil {
-		fmt.Println("Replay rejected:")
-		fmt.Println(err)
-	}
 
 	fmt.Println()
 	fmt.Printf(
@@ -197,6 +257,7 @@ func printBalances(
 	bob string,
 	charlie string,
 ) {
+
 	aliceBalance, err := chain.BalanceOf(alice)
 	if err != nil {
 		panic(err)
@@ -212,7 +273,18 @@ func printBalances(
 		panic(err)
 	}
 
-	fmt.Printf("Alice:   %d PRISM\n", aliceBalance)
-	fmt.Printf("Bob:     %d PRISM\n", bobBalance)
-	fmt.Printf("Charlie: %d PRISM\n", charlieBalance)
+	fmt.Printf(
+		"Alice:   %d PRISM\n",
+		aliceBalance,
+	)
+
+	fmt.Printf(
+		"Bob:     %d PRISM\n",
+		bobBalance,
+	)
+
+	fmt.Printf(
+		"Charlie: %d PRISM\n",
+		charlieBalance,
+	)
 }
