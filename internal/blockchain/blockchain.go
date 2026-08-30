@@ -7,6 +7,7 @@ import (
 
 	"prism/internal/consensus"
 	"prism/internal/transaction"
+	"prism/internal/usefulwork"
 )
 
 type Blockchain struct {
@@ -19,44 +20,29 @@ type State struct {
 	Nonces   map[string]uint64
 }
 
-func NewBlockchain(
-	initialBalances map[string]uint64,
-) (*Blockchain, error) {
-
+func NewBlockchain(initialBalances map[string]uint64) (*Blockchain, error) {
 	genesis, err := CreateGenesisBlock(initialBalances)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Blockchain{
-		Blocks: []Block{
-			genesis,
-		},
+		Blocks:       []Block{genesis},
 		LockedStakes: make(map[string]uint64),
 	}, nil
 }
 
-func (bc *Blockchain) LockStake(
-	address string,
-	amount uint64,
-) error {
-
+func (bc *Blockchain) LockStake(address string, amount uint64) error {
 	if address == "" {
-		return fmt.Errorf(
-			"stake address cannot be empty",
-		)
+		return fmt.Errorf("stake address cannot be empty")
 	}
 
 	if address == "GENESIS" {
-		return fmt.Errorf(
-			"GENESIS cannot stake",
-		)
+		return fmt.Errorf("GENESIS cannot stake")
 	}
 
 	if amount == 0 {
-		return fmt.Errorf(
-			"stake amount must be greater than zero",
-		)
+		return fmt.Errorf("stake amount must be greater than zero")
 	}
 
 	balance, err := bc.BalanceOf(address)
@@ -67,9 +53,7 @@ func (bc *Blockchain) LockStake(
 	currentLocked := bc.LockedStakes[address]
 
 	if balance < currentLocked {
-		return fmt.Errorf(
-			"locked stake exceeds account balance",
-		)
+		return fmt.Errorf("locked stake exceeds account balance")
 	}
 
 	available := balance - currentLocked
@@ -83,9 +67,7 @@ func (bc *Blockchain) LockStake(
 	}
 
 	if currentLocked > math.MaxUint64-amount {
-		return fmt.Errorf(
-			"stake overflow",
-		)
+		return fmt.Errorf("stake overflow")
 	}
 
 	bc.LockedStakes[address] += amount
@@ -93,15 +75,9 @@ func (bc *Blockchain) LockStake(
 	return nil
 }
 
-func (bc *Blockchain) UnlockStake(
-	address string,
-	amount uint64,
-) error {
-
+func (bc *Blockchain) UnlockStake(address string, amount uint64) error {
 	if amount == 0 {
-		return fmt.Errorf(
-			"unstake amount must be greater than zero",
-		)
+		return fmt.Errorf("unstake amount must be greater than zero")
 	}
 
 	currentLocked := bc.LockedStakes[address]
@@ -117,26 +93,17 @@ func (bc *Blockchain) UnlockStake(
 	bc.LockedStakes[address] -= amount
 
 	if bc.LockedStakes[address] == 0 {
-		delete(
-			bc.LockedStakes,
-			address,
-		)
+		delete(bc.LockedStakes, address)
 	}
 
 	return nil
 }
 
-func (bc *Blockchain) LockedStakeOf(
-	address string,
-) uint64 {
-
+func (bc *Blockchain) LockedStakeOf(address string) uint64 {
 	return bc.LockedStakes[address]
 }
 
-func (bc *Blockchain) AvailableBalanceOf(
-	address string,
-) (uint64, error) {
-
+func (bc *Blockchain) AvailableBalanceOf(address string) (uint64, error) {
 	balance, err := bc.BalanceOf(address)
 	if err != nil {
 		return 0, err
@@ -156,32 +123,24 @@ func (bc *Blockchain) AvailableBalanceOf(
 
 func (bc *Blockchain) AddBlock(
 	transactions []transaction.Transaction,
+	workProofs []usefulwork.Proof,
 	proposer string,
 	pos *consensus.ProofOfStake,
 ) (Block, error) {
-
 	if pos == nil {
-		return Block{}, fmt.Errorf(
-			"proof of stake engine cannot be nil",
-		)
+		return Block{}, fmt.Errorf("proof of stake engine cannot be nil")
 	}
 
 	if proposer == "" {
-		return Block{}, fmt.Errorf(
-			"block proposer cannot be empty",
-		)
+		return Block{}, fmt.Errorf("block proposer cannot be empty")
 	}
 
 	if proposer == "GENESIS" {
-		return Block{}, fmt.Errorf(
-			"GENESIS cannot propose normal blocks",
-		)
+		return Block{}, fmt.Errorf("GENESIS cannot propose normal blocks")
 	}
 
-	if len(transactions) == 0 {
-		return Block{}, fmt.Errorf(
-			"cannot create an empty block",
-		)
+	if len(transactions) == 0 && len(workProofs) == 0 {
+		return Block{}, fmt.Errorf("cannot create an empty block")
 	}
 
 	if err := bc.ValidateValidatorSet(pos); err != nil {
@@ -243,15 +202,52 @@ func (bc *Blockchain) AddBlock(
 		state.Nonces[tx.From]++
 	}
 
+	usedTasks := make(map[string]struct{})
+
+	for _, block := range bc.Blocks {
+		for _, proof := range block.UsefulWork {
+			usedTasks[proof.Task.ID] = struct{}{}
+		}
+	}
+
+	newTasks := make(map[string]struct{})
+
+	for _, proof := range workProofs {
+		if err := usefulwork.VerifyProof(proof); err != nil {
+			return Block{}, fmt.Errorf(
+				"invalid useful work proof: %w",
+				err,
+			)
+		}
+
+		if _, exists := usedTasks[proof.Task.ID]; exists {
+			return Block{}, fmt.Errorf(
+				"useful work task already rewarded: %s",
+				proof.Task.ID,
+			)
+		}
+
+		if _, exists := newTasks[proof.Task.ID]; exists {
+			return Block{}, fmt.Errorf(
+				"duplicate useful work task in block: %s",
+				proof.Task.ID,
+			)
+		}
+
+		newTasks[proof.Task.ID] = struct{}{}
+	}
+
 	blockTransactions := make(
 		[]transaction.Transaction,
 		len(transactions),
 	)
+	copy(blockTransactions, transactions)
 
-	copy(
-		blockTransactions,
-		transactions,
+	blockWork := make(
+		[]usefulwork.Proof,
+		len(workProofs),
 	)
+	copy(blockWork, workProofs)
 
 	block := Block{
 		Height:       nextHeight,
@@ -260,14 +256,12 @@ func (bc *Blockchain) AddBlock(
 		Proposer:     proposer,
 		Reward:       BlockReward,
 		Transactions: blockTransactions,
+		UsefulWork:   blockWork,
 	}
 
 	block.Hash = CalculateHash(block)
 
-	bc.Blocks = append(
-		bc.Blocks,
-		block,
-	)
+	bc.Blocks = append(bc.Blocks, block)
 
 	return block, nil
 }
@@ -275,23 +269,16 @@ func (bc *Blockchain) AddBlock(
 func (bc *Blockchain) ValidateValidatorSet(
 	pos *consensus.ProofOfStake,
 ) error {
-
 	if pos == nil {
-		return fmt.Errorf(
-			"proof of stake engine cannot be nil",
-		)
+		return fmt.Errorf("proof of stake engine cannot be nil")
 	}
 
 	if len(pos.Validators) == 0 {
-		return fmt.Errorf(
-			"no validators registered",
-		)
+		return fmt.Errorf("no validators registered")
 	}
 
 	for _, validator := range pos.Validators {
-		locked := bc.LockedStakeOf(
-			validator.Address,
-		)
+		locked := bc.LockedStakeOf(validator.Address)
 
 		if locked != validator.Stake {
 			return fmt.Errorf(
@@ -319,28 +306,29 @@ func (bc *Blockchain) ValidateValidatorSet(
 	return nil
 }
 
-func (bc *Blockchain) GetState() (
-	State,
-	error,
-) {
-
+func (bc *Blockchain) GetState() (State, error) {
 	state := State{
 		Balances: make(map[string]uint64),
 		Nonces:   make(map[string]uint64),
 	}
 
-	for blockIndex, block := range bc.Blocks {
+	usedTasks := make(map[string]struct{})
 
+	for blockIndex, block := range bc.Blocks {
 		if blockIndex == 0 {
 			if block.Proposer != "GENESIS" {
-				return State{}, fmt.Errorf(
-					"invalid genesis proposer",
-				)
+				return State{}, fmt.Errorf("invalid genesis proposer")
 			}
 
 			if block.Reward != 0 {
 				return State{}, fmt.Errorf(
 					"genesis block cannot contain a reward",
+				)
+			}
+
+			if len(block.UsefulWork) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain useful work",
 				)
 			}
 
@@ -361,9 +349,7 @@ func (bc *Blockchain) GetState() (
 			continue
 		}
 
-		if block.Proposer == "" ||
-			block.Proposer == "GENESIS" {
-
+		if block.Proposer == "" || block.Proposer == "GENESIS" {
 			return State{}, fmt.Errorf(
 				"invalid proposer in block %d",
 				blockIndex,
@@ -377,7 +363,7 @@ func (bc *Blockchain) GetState() (
 			)
 		}
 
-		if len(block.Transactions) == 0 {
+		if len(block.Transactions) == 0 && len(block.UsefulWork) == 0 {
 			return State{}, fmt.Errorf(
 				"empty normal block at height %d",
 				block.Height,
@@ -418,9 +404,35 @@ func (bc *Blockchain) GetState() (
 			state.Nonces[tx.From]++
 		}
 
+		for _, proof := range block.UsefulWork {
+			if err := usefulwork.VerifyProof(proof); err != nil {
+				return State{}, fmt.Errorf(
+					"invalid useful work in block %d: %w",
+					blockIndex,
+					err,
+				)
+			}
+
+			if _, exists := usedTasks[proof.Task.ID]; exists {
+				return State{}, fmt.Errorf(
+					"useful work task rewarded more than once",
+				)
+			}
+
+			usedTasks[proof.Task.ID] = struct{}{}
+
+			if state.Balances[proof.Worker] >
+				math.MaxUint64-UsefulWorkReward {
+				return State{}, fmt.Errorf(
+					"useful work reward overflow",
+				)
+			}
+
+			state.Balances[proof.Worker] += UsefulWorkReward
+		}
+
 		if state.Balances[block.Proposer] >
 			math.MaxUint64-block.Reward {
-
 			return State{}, fmt.Errorf(
 				"block reward overflow",
 			)
@@ -432,11 +444,7 @@ func (bc *Blockchain) GetState() (
 	return state, nil
 }
 
-func (bc *Blockchain) GetSpendableState() (
-	State,
-	error,
-) {
-
+func (bc *Blockchain) GetSpendableState() (State, error) {
 	state, err := bc.GetState()
 	if err != nil {
 		return State{}, err
@@ -456,10 +464,7 @@ func (bc *Blockchain) GetSpendableState() (
 	return state, nil
 }
 
-func (bc *Blockchain) BalanceOf(
-	account string,
-) (uint64, error) {
-
+func (bc *Blockchain) BalanceOf(account string) (uint64, error) {
 	state, err := bc.GetState()
 	if err != nil {
 		return 0, err
@@ -468,10 +473,7 @@ func (bc *Blockchain) BalanceOf(
 	return state.Balances[account], nil
 }
 
-func (bc *Blockchain) NonceOf(
-	account string,
-) (uint64, error) {
-
+func (bc *Blockchain) NonceOf(account string) (uint64, error) {
 	state, err := bc.GetState()
 	if err != nil {
 		return 0, err
@@ -480,11 +482,7 @@ func (bc *Blockchain) NonceOf(
 	return state.Nonces[account], nil
 }
 
-func (bc *Blockchain) TotalSupply() (
-	uint64,
-	error,
-) {
-
+func (bc *Blockchain) TotalSupply() (uint64, error) {
 	state, err := bc.GetState()
 	if err != nil {
 		return 0, err
@@ -508,7 +506,6 @@ func (bc *Blockchain) TotalSupply() (
 func (bc *Blockchain) ValidateChain(
 	pos *consensus.ProofOfStake,
 ) bool {
-
 	if len(bc.Blocks) == 0 {
 		return false
 	}
@@ -535,6 +532,10 @@ func (bc *Blockchain) ValidateChain(
 		return false
 	}
 
+	if len(genesis.UsefulWork) != 0 {
+		return false
+	}
+
 	if CalculateHash(genesis) != genesis.Hash {
 		return false
 	}
@@ -551,11 +552,8 @@ func (bc *Blockchain) ValidateChain(
 			return false
 		}
 
-		if current.Proposer == "" {
-			return false
-		}
-
-		if current.Proposer == "GENESIS" {
+		if current.Proposer == "" ||
+			current.Proposer == "GENESIS" {
 			return false
 		}
 
@@ -563,7 +561,8 @@ func (bc *Blockchain) ValidateChain(
 			return false
 		}
 
-		if len(current.Transactions) == 0 {
+		if len(current.Transactions) == 0 &&
+			len(current.UsefulWork) == 0 {
 			return false
 		}
 

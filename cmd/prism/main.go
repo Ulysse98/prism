@@ -7,12 +7,13 @@ import (
 	"prism/internal/consensus"
 	"prism/internal/mempool"
 	"prism/internal/transaction"
+	"prism/internal/usefulwork"
 	"prism/internal/wallet"
 )
 
 func main() {
 	fmt.Println("====================================")
-	fmt.Println("          PRISM NODE v0.9")
+	fmt.Println("         PRISM NODE v0.10")
 	fmt.Println("====================================")
 	fmt.Println()
 
@@ -67,25 +68,10 @@ func main() {
 		200,
 	)
 
-	fmt.Println("=== VALIDATOR SET ===")
-
-	printValidator(
-		"Alice",
-		alice.Address,
-		pos,
-	)
-
-	printValidator(
-		"Bob",
-		bob.Address,
-		pos,
-	)
-
-	printValidator(
-		"Charlie",
-		charlie.Address,
-		pos,
-	)
+	fmt.Println("=== PROOF OF STAKE ===")
+	fmt.Println("Alice stake:   500 PRISM")
+	fmt.Println("Bob stake:     300 PRISM")
+	fmt.Println("Charlie stake: 200 PRISM")
 
 	fmt.Printf(
 		"Total stake: %d PRISM\n",
@@ -162,6 +148,76 @@ func main() {
 		pool.Count(),
 	)
 
+	// ============================================
+	// PROOF OF USEFUL WORK
+	// ============================================
+
+	fmt.Println()
+	fmt.Println("=== PROOF OF USEFUL WORK ===")
+
+	task, err := usefulwork.NewSumSquaresTask(
+		[]uint64{
+			3,
+			4,
+			5,
+			12,
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	proof, err := usefulwork.Execute(
+		task,
+		charlie,
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(
+		"Task:",
+		task.Type,
+	)
+
+	fmt.Println(
+		"Worker:",
+		shortAddress(proof.Worker),
+	)
+
+	fmt.Println(
+		"Input: [3 4 5 12]",
+	)
+
+	fmt.Printf(
+		"Result: %d\n",
+		proof.Result,
+	)
+
+	fmt.Printf(
+		"Work score: %d\n",
+		proof.Score,
+	)
+
+	fmt.Printf(
+		"Useful work reward: %d PRISM\n",
+		blockchain.UsefulWorkReward,
+	)
+
+	if err := usefulwork.VerifyProof(
+		proof,
+	); err != nil {
+		panic(err)
+	}
+
+	fmt.Println(
+		"Proof verification: VALID",
+	)
+
+	// ============================================
+	// SELECT PoS PROPOSER
+	// ============================================
+
 	lastBlock := chain.Blocks[len(chain.Blocks)-1]
 
 	proposer, err := pos.SelectProposer(
@@ -173,10 +229,10 @@ func main() {
 	}
 
 	fmt.Println()
-	fmt.Println("=== CONSENSUS ===")
+	fmt.Println("=== PoS PROPOSER ===")
 
 	fmt.Println(
-		"Expected proposer:",
+		"Selected proposer:",
 		shortAddress(proposer.Address),
 	)
 
@@ -186,39 +242,43 @@ func main() {
 	)
 
 	// ============================================
-	// WRONG PROPOSER TEST
+	// FORGED USEFUL WORK TEST
 	// ============================================
 
-	wrongProposer := chooseWrongProposer(
-		proposer.Address,
-		alice.Address,
-		bob.Address,
-		charlie.Address,
-	)
-
 	fmt.Println()
-	fmt.Println("=== WRONG PROPOSER TEST ===")
+	fmt.Println("=== FORGED USEFUL WORK TEST ===")
+
+	tamperedProof := proof
+	tamperedProof.Result++
 
 	_, err = chain.AddBlock(
 		pool.Transactions(),
-		wrongProposer,
+		[]usefulwork.Proof{
+			tamperedProof,
+		},
+		proposer.Address,
 		pos,
 	)
 
 	if err != nil {
-		fmt.Println("Forged proposer rejected:")
+		fmt.Println(
+			"Forged useful work rejected:",
+		)
 		fmt.Println(err)
 	}
 
 	// ============================================
-	// CORRECT BLOCK
+	// VALID BLOCK
 	// ============================================
 
 	fmt.Println()
-	fmt.Println("=== VALID BLOCK PRODUCTION ===")
+	fmt.Println("=== VALID HYBRID BLOCK ===")
 
 	block, err := chain.AddBlock(
 		pool.Transactions(),
+		[]usefulwork.Proof{
+			proof,
+		},
 		proposer.Address,
 		pos,
 	)
@@ -229,17 +289,17 @@ func main() {
 	pool.Clear()
 
 	fmt.Printf(
-		"Block height: %d\n",
+		"Height: %d\n",
 		block.Height,
 	)
 
 	fmt.Println(
-		"Proposer:",
+		"PoS proposer:",
 		shortAddress(block.Proposer),
 	)
 
 	fmt.Printf(
-		"Reward: %d PRISM\n",
+		"PoS reward: %d PRISM\n",
 		block.Reward,
 	)
 
@@ -248,8 +308,25 @@ func main() {
 		len(block.Transactions),
 	)
 
+	fmt.Printf(
+		"Useful work proofs: %d\n",
+		len(block.UsefulWork),
+	)
+
 	fmt.Println(
-		"Hash:",
+		"Useful worker:",
+		shortAddress(
+			block.UsefulWork[0].Worker,
+		),
+	)
+
+	fmt.Printf(
+		"Useful result: %d\n",
+		block.UsefulWork[0].Result,
+	)
+
+	fmt.Println(
+		"Block hash:",
 		block.Hash,
 	)
 
@@ -281,29 +358,28 @@ func main() {
 	)
 
 	// ============================================
-	// HISTORICAL PROPOSER TAMPER TEST
+	// HISTORICAL PoUW TAMPER TEST
 	// ============================================
 
 	fmt.Println()
-	fmt.Println("=== HISTORICAL PROPOSER TAMPER TEST ===")
+	fmt.Println("=== HISTORICAL PoUW TAMPER TEST ===")
 
-	originalProposer := chain.Blocks[1].Proposer
+	originalProof := chain.Blocks[1].UsefulWork[0]
 
-	chain.Blocks[1].Proposer = wrongProposer
+	chain.Blocks[1].UsefulWork[0].Result++
 
-	// Même si l'attaquant recalcule le hash,
-	// le consensus PoS doit encore refuser le bloc.
+	// Même en recalculant le hash du bloc,
+	// le résultat de calcul reste faux.
 	chain.Blocks[1].Hash = blockchain.CalculateHash(
 		chain.Blocks[1],
 	)
 
 	fmt.Printf(
-		"Chain valid after forged proposer: %t\n",
+		"Chain valid after forged work: %t\n",
 		chain.ValidateChain(pos),
 	)
 
-	// Restauration du bloc original.
-	chain.Blocks[1].Proposer = originalProposer
+	chain.Blocks[1].UsefulWork[0] = originalProof
 
 	chain.Blocks[1].Hash = blockchain.CalculateHash(
 		chain.Blocks[1],
@@ -364,26 +440,15 @@ func registerValidator(
 	}
 }
 
-func printValidator(
-	name string,
-	address string,
-	pos *consensus.ProofOfStake,
-) {
-
-	fmt.Printf(
-		"%s: %d PRISM staked\n",
-		name,
-		pos.StakeOf(address),
-	)
-}
-
 func printAccount(
 	name string,
 	address string,
 	chain *blockchain.Blockchain,
 ) {
 
-	balance, err := chain.BalanceOf(address)
+	balance, err := chain.BalanceOf(
+		address,
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -395,7 +460,9 @@ func printAccount(
 		panic(err)
 	}
 
-	locked := chain.LockedStakeOf(address)
+	locked := chain.LockedStakeOf(
+		address,
+	)
 
 	fmt.Printf(
 		"%s: total=%d | locked=%d | available=%d PRISM\n",
@@ -403,22 +470,6 @@ func printAccount(
 		balance,
 		locked,
 		available,
-	)
-}
-
-func chooseWrongProposer(
-	expected string,
-	addresses ...string,
-) string {
-
-	for _, address := range addresses {
-		if address != expected {
-			return address
-		}
-	}
-
-	panic(
-		"unable to find alternative proposer",
 	)
 }
 

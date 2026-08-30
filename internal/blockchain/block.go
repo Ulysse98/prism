@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"prism/internal/transaction"
+	"prism/internal/usefulwork"
 )
 
 const BlockReward uint64 = 5
+const UsefulWorkReward uint64 = 2
 
 type Block struct {
 	Height       uint64                    `json:"height"`
@@ -20,26 +22,44 @@ type Block struct {
 	Proposer     string                    `json:"proposer"`
 	Reward       uint64                    `json:"reward"`
 	Transactions []transaction.Transaction `json:"transactions"`
+	UsefulWork   []usefulwork.Proof        `json:"useful_work"`
 	Hash         string                    `json:"hash"`
 }
 
-func CalculateHash(block Block) string {
-	transactionData, err := json.Marshal(block.Transactions)
+func CalculateHash(
+	block Block,
+) string {
+
+	transactionData, err := json.Marshal(
+		block.Transactions,
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	usefulWorkData, err := json.Marshal(
+		block.UsefulWork,
+	)
 	if err != nil {
 		panic(err)
 	}
 
 	payload := fmt.Sprintf(
-		"%d|%s|%s|%s|%d|%s",
+		"%d|%s|%s|%s|%d|%s|%s",
 		block.Height,
-		block.Timestamp.UTC().Format(time.RFC3339Nano),
+		block.Timestamp.UTC().Format(
+			time.RFC3339Nano,
+		),
 		block.PreviousHash,
 		block.Proposer,
 		block.Reward,
 		string(transactionData),
+		string(usefulWorkData),
 	)
 
-	hash := sha256.Sum256([]byte(payload))
+	hash := sha256.Sum256(
+		[]byte(payload),
+	)
 
 	return hex.EncodeToString(hash[:])
 }
@@ -48,15 +68,25 @@ func CreateGenesisBlock(
 	initialBalances map[string]uint64,
 ) (Block, error) {
 
-	accounts := make([]string, 0, len(initialBalances))
+	accounts := make(
+		[]string,
+		0,
+		len(initialBalances),
+	)
 
 	for account := range initialBalances {
-		accounts = append(accounts, account)
+		accounts = append(
+			accounts,
+			account,
+		)
 	}
 
 	sort.Strings(accounts)
 
-	transactions := make([]transaction.Transaction, 0)
+	transactions := make(
+		[]transaction.Transaction,
+		0,
+	)
 
 	for _, account := range accounts {
 		if account == "" {
@@ -82,7 +112,9 @@ func CreateGenesisBlock(
 			amount,
 		)
 
-		if err := transaction.ValidateGenesis(tx); err != nil {
+		if err := transaction.ValidateGenesis(
+			tx,
+		); err != nil {
 			return Block{}, err
 		}
 
@@ -99,6 +131,7 @@ func CreateGenesisBlock(
 		Proposer:     "GENESIS",
 		Reward:       0,
 		Transactions: transactions,
+		UsefulWork:   []usefulwork.Proof{},
 	}
 
 	block.Hash = CalculateHash(block)
