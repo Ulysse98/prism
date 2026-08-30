@@ -5,6 +5,7 @@ import (
 	"math"
 	"time"
 
+	"prism/internal/consensus"
 	"prism/internal/transaction"
 )
 
@@ -156,7 +157,14 @@ func (bc *Blockchain) AvailableBalanceOf(
 func (bc *Blockchain) AddBlock(
 	transactions []transaction.Transaction,
 	proposer string,
+	pos *consensus.ProofOfStake,
 ) (Block, error) {
+
+	if pos == nil {
+		return Block{}, fmt.Errorf(
+			"proof of stake engine cannot be nil",
+		)
+	}
 
 	if proposer == "" {
 		return Block{}, fmt.Errorf(
@@ -173,6 +181,30 @@ func (bc *Blockchain) AddBlock(
 	if len(transactions) == 0 {
 		return Block{}, fmt.Errorf(
 			"cannot create an empty block",
+		)
+	}
+
+	if err := bc.ValidateValidatorSet(pos); err != nil {
+		return Block{}, err
+	}
+
+	previousBlock := bc.Blocks[len(bc.Blocks)-1]
+	nextHeight := previousBlock.Height + 1
+
+	expectedProposer, err := pos.SelectProposer(
+		previousBlock.Hash,
+		nextHeight,
+	)
+	if err != nil {
+		return Block{}, err
+	}
+
+	if proposer != expectedProposer.Address {
+		return Block{}, fmt.Errorf(
+			"invalid proposer for height %d: expected %s, got %s",
+			nextHeight,
+			expectedProposer.Address,
+			proposer,
 		)
 	}
 
@@ -211,8 +243,6 @@ func (bc *Blockchain) AddBlock(
 		state.Nonces[tx.From]++
 	}
 
-	previousBlock := bc.Blocks[len(bc.Blocks)-1]
-
 	blockTransactions := make(
 		[]transaction.Transaction,
 		len(transactions),
@@ -224,7 +254,7 @@ func (bc *Blockchain) AddBlock(
 	)
 
 	block := Block{
-		Height:       previousBlock.Height + 1,
+		Height:       nextHeight,
 		Timestamp:    time.Now().UTC(),
 		PreviousHash: previousBlock.Hash,
 		Proposer:     proposer,
@@ -240,6 +270,53 @@ func (bc *Blockchain) AddBlock(
 	)
 
 	return block, nil
+}
+
+func (bc *Blockchain) ValidateValidatorSet(
+	pos *consensus.ProofOfStake,
+) error {
+
+	if pos == nil {
+		return fmt.Errorf(
+			"proof of stake engine cannot be nil",
+		)
+	}
+
+	if len(pos.Validators) == 0 {
+		return fmt.Errorf(
+			"no validators registered",
+		)
+	}
+
+	for _, validator := range pos.Validators {
+		locked := bc.LockedStakeOf(
+			validator.Address,
+		)
+
+		if locked != validator.Stake {
+			return fmt.Errorf(
+				"validator stake mismatch for %s: consensus=%d locked=%d",
+				validator.Address,
+				validator.Stake,
+				locked,
+			)
+		}
+	}
+
+	for address, locked := range bc.LockedStakes {
+		if locked == 0 {
+			continue
+		}
+
+		if pos.StakeOf(address) != locked {
+			return fmt.Errorf(
+				"locked stake has no matching validator for %s",
+				address,
+			)
+		}
+	}
+
+	return nil
 }
 
 func (bc *Blockchain) GetState() (
@@ -428,8 +505,15 @@ func (bc *Blockchain) TotalSupply() (
 	return total, nil
 }
 
-func (bc *Blockchain) ValidateChain() bool {
+func (bc *Blockchain) ValidateChain(
+	pos *consensus.ProofOfStake,
+) bool {
+
 	if len(bc.Blocks) == 0 {
+		return false
+	}
+
+	if err := bc.ValidateValidatorSet(pos); err != nil {
 		return false
 	}
 
@@ -483,12 +567,30 @@ func (bc *Blockchain) ValidateChain() bool {
 			return false
 		}
 
+		expectedProposer, err := pos.SelectProposer(
+			previous.Hash,
+			current.Height,
+		)
+		if err != nil {
+			return false
+		}
+
+		if current.Proposer != expectedProposer.Address {
+			return false
+		}
+
 		if CalculateHash(current) != current.Hash {
 			return false
 		}
 	}
 
-	_, err := bc.GetState()
+	if _, err := bc.GetState(); err != nil {
+		return false
+	}
 
-	return err == nil
+	if _, err := bc.GetSpendableState(); err != nil {
+		return false
+	}
+
+	return true
 }

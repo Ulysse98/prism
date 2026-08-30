@@ -5,8 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-
-	"prism/internal/blockchain"
 )
 
 type Validator struct {
@@ -27,7 +25,6 @@ func NewProofOfStake() *ProofOfStake {
 func (pos *ProofOfStake) Register(
 	address string,
 	stake uint64,
-	chain *blockchain.Blockchain,
 ) error {
 
 	if address == "" {
@@ -62,13 +59,6 @@ func (pos *ProofOfStake) Register(
 		)
 	}
 
-	if err := chain.LockStake(
-		address,
-		stake,
-	); err != nil {
-		return err
-	}
-
 	pos.Validators = append(
 		pos.Validators,
 		Validator{
@@ -82,30 +72,24 @@ func (pos *ProofOfStake) Register(
 
 func (pos *ProofOfStake) Unregister(
 	address string,
-	chain *blockchain.Blockchain,
-) error {
+) (uint64, error) {
 
 	for index, validator := range pos.Validators {
 		if validator.Address != address {
 			continue
 		}
 
-		if err := chain.UnlockStake(
-			validator.Address,
-			validator.Stake,
-		); err != nil {
-			return err
-		}
+		stake := validator.Stake
 
 		pos.Validators = append(
 			pos.Validators[:index],
 			pos.Validators[index+1:]...,
 		)
 
-		return nil
+		return stake, nil
 	}
 
-	return fmt.Errorf(
+	return 0, fmt.Errorf(
 		"validator not registered",
 	)
 }
@@ -121,6 +105,13 @@ func (pos *ProofOfStake) StakeOf(
 	}
 
 	return 0
+}
+
+func (pos *ProofOfStake) IsValidator(
+	address string,
+) bool {
+
+	return pos.StakeOf(address) > 0
 }
 
 func (pos *ProofOfStake) TotalStake() uint64 {
