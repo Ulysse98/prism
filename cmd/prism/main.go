@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -20,10 +21,16 @@ import (
 const dataDir = "data"
 
 func main() {
-	fmt.Println("====================================")
-	fmt.Println("         PRISM NODE v0.17")
-	fmt.Println("====================================")
-	fmt.Println()
+	jsonWorkLog := len(os.Args) == 3 &&
+		strings.EqualFold(os.Args[1], "worklog") &&
+		os.Args[2] == "--json"
+
+	if !jsonWorkLog {
+		fmt.Println("====================================")
+		fmt.Println("         PRISM NODE v0.17")
+		fmt.Println("====================================")
+		fmt.Println()
+	}
 
 	if len(os.Args) < 2 {
 		printUsage()
@@ -48,7 +55,7 @@ func main() {
 		panic(err)
 	}
 
-	if created {
+	if created && !jsonWorkLog {
 		fmt.Println("New Prism state created.")
 		fmt.Println()
 	}
@@ -125,10 +132,31 @@ func main() {
 		}
 
 	case "worklog":
-		runWorkLog(
+		if len(os.Args) == 2 {
+			runWorkLog(
+				chain,
+				wallets,
+			)
+			return
+		}
+
+		if len(os.Args) != 3 || os.Args[2] != "--json" {
+			fmt.Println("Usage:")
+			fmt.Println(`.\prism.exe worklog`)
+			fmt.Println(`.\prism.exe worklog --json`)
+			return
+		}
+
+		if err := runWorkLogJSON(
 			chain,
 			wallets,
-		)
+		); err != nil {
+			fmt.Fprintln(
+				os.Stderr,
+				"Work log JSON failed:",
+				err,
+			)
+		}
 
 	case "help":
 		printUsage()
@@ -750,6 +778,59 @@ func runWorkLog(
 	}
 }
 
+func runWorkLogJSON(
+	chain *blockchain.Blockchain,
+	wallets map[string]*wallet.Wallet,
+) error {
+	entries := make(
+		[]map[string]any,
+		0,
+	)
+
+	for blockIndex := len(chain.Blocks) - 1; blockIndex >= 0; blockIndex-- {
+		block := chain.Blocks[blockIndex]
+
+		for proofIndex := len(block.UsefulWork) - 1; proofIndex >= 0; proofIndex-- {
+			proof := block.UsefulWork[proofIndex]
+
+			verifyErr := usefulwork.VerifyProof(proof)
+
+			entry := map[string]any{
+				"block":          block.Height,
+				"worker":         walletNameForAddress(proof.Worker, wallets),
+				"worker_address": proof.Worker,
+				"task":           proof.Task.Type,
+				"task_id":        proof.Task.ID,
+				"result":         proof.Result,
+				"score":          proof.Score,
+				"reward":         blockchain.UsefulWorkReward,
+				"verified":       verifyErr == nil,
+				"output_hash":    proof.OutputHash,
+				"proof_id":       proof.ID,
+				"block_hash":     block.Hash,
+			}
+
+			if verifyErr != nil {
+				entry["verification_error"] = verifyErr.Error()
+			}
+
+			entries = append(
+				entries,
+				entry,
+			)
+		}
+	}
+
+	encoder := json.NewEncoder(os.Stdout)
+
+	encoder.SetIndent(
+		"",
+		"  ",
+	)
+
+	return encoder.Encode(entries)
+}
+
 func loadOrCreateNode() (
 	*blockchain.Blockchain,
 	*consensus.ProofOfStake,
@@ -1066,6 +1147,10 @@ func printUsage() {
 
 	fmt.Println(
 		`  .\prism.exe worklog`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe worklog --json`,
 	)
 
 	fmt.Println(
