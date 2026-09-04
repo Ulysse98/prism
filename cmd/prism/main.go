@@ -21,7 +21,7 @@ const dataDir = "data"
 
 func main() {
 	fmt.Println("====================================")
-	fmt.Println("         PRISM NODE v0.16")
+	fmt.Println("         PRISM NODE v0.17")
 	fmt.Println("====================================")
 	fmt.Println()
 
@@ -123,6 +123,12 @@ func main() {
 			fmt.Println("Useful Work failed:")
 			fmt.Println(err)
 		}
+
+	case "worklog":
+		runWorkLog(
+			chain,
+			wallets,
+		)
 
 	case "help":
 		printUsage()
@@ -657,6 +663,93 @@ func runUsefulWork(
 	return nil
 }
 
+func runWorkLog(
+	chain *blockchain.Blockchain,
+	wallets map[string]*wallet.Wallet,
+) {
+	fmt.Println("=== USEFUL WORK HISTORY ===")
+	fmt.Println()
+
+	found := false
+
+	for blockIndex := len(chain.Blocks) - 1; blockIndex >= 0; blockIndex-- {
+		block := chain.Blocks[blockIndex]
+
+		for proofIndex := len(block.UsefulWork) - 1; proofIndex >= 0; proofIndex-- {
+			proof := block.UsefulWork[proofIndex]
+			found = true
+
+			fmt.Printf("Block:       %d\n", block.Height)
+
+			fmt.Println(
+				"Worker:",
+				walletNameForAddress(
+					proof.Worker,
+					wallets,
+				),
+			)
+
+			fmt.Println(
+				"Address:",
+				shortAddress(proof.Worker),
+			)
+
+			fmt.Println(
+				"Task:",
+				proof.Task.Type,
+			)
+
+			fmt.Println(
+				"Task ID:",
+				proof.Task.ID,
+			)
+
+			fmt.Printf(
+				"Result:      %d\n",
+				proof.Result,
+			)
+
+			fmt.Printf(
+				"Score:       %d\n",
+				proof.Score,
+			)
+
+			fmt.Printf(
+				"Reward:      %d PRISM\n",
+				blockchain.UsefulWorkReward,
+			)
+
+			if err := usefulwork.VerifyProof(proof); err != nil {
+				fmt.Println("Proof:       INVALID")
+				fmt.Println("Error:", err)
+			} else {
+				fmt.Println("Proof:       VERIFIED")
+			}
+
+			fmt.Println(
+				"Output hash:",
+				proof.OutputHash,
+			)
+
+			fmt.Println(
+				"Proof ID:",
+				proof.ID,
+			)
+
+			fmt.Println(
+				"Block hash:",
+				block.Hash,
+			)
+
+			fmt.Println()
+		}
+	}
+
+	if !found {
+		fmt.Println("No useful work recorded yet.")
+	}
+}
+
 func loadOrCreateNode() (
 	*blockchain.Blockchain,
 	*consensus.ProofOfStake,
@@ -969,6 +1062,10 @@ func printUsage() {
 
 	fmt.Println(
 		`  .\prism.exe work Charlie 3 4 5`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe worklog`,
 	)
 
 	fmt.Println(
