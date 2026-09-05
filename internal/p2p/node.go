@@ -166,6 +166,8 @@ func (s *Server) Run(peer string) error {
 				err,
 			)
 		}
+
+		go s.syncPeerLoop(peer)
 	}
 
 	fmt.Println()
@@ -174,6 +176,25 @@ func (s *Server) Run(peer string) error {
 	)
 
 	return <-errCh
+}
+
+func (s *Server) syncPeerLoop(
+	peer string,
+) {
+	ticker := time.NewTicker(
+		5 * time.Second,
+	)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if err := s.Connect(peer); err != nil {
+			fmt.Println()
+			fmt.Println(
+				"Background peer sync failed:",
+				err,
+			)
+		}
+	}
 }
 
 func (s *Server) Connect(address string) error {
