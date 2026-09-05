@@ -26,6 +26,12 @@ func runNodeCommand(
 
 	flags.SetOutput(os.Stdout)
 
+	host := flags.String(
+		"host",
+		"127.0.0.1",
+		"TCP host/interface used by the Prism node",
+	)
+
 	port := flags.Int(
 		"port",
 		7001,
@@ -101,7 +107,8 @@ func runNodeCommand(
 	}
 
 	listenAddr := fmt.Sprintf(
-		"127.0.0.1:%d",
+		"%s:%d",
+		*host,
 		*port,
 	)
 
