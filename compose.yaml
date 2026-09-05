@@ -1,0 +1,82 @@
+﻿services:
+
+  node-1:
+    image: prism-node:v0.17
+    build:
+      context: .
+    container_name: prism-node-1
+    command:
+      - node
+      - --host
+      - 0.0.0.0
+      - --port
+      - "7001"
+    ports:
+      - "7001:7001"
+    volumes:
+      - node1-data:/app/data
+    networks:
+      - prism-net
+    restart: on-failure
+
+  node-2:
+    image: prism-node:v0.17
+    container_name: prism-node-2
+    command:
+      - node
+      - --host
+      - 0.0.0.0
+      - --port
+      - "7002"
+      - --peer
+      - prism-node-1:7001
+    ports:
+      - "7002:7002"
+    volumes:
+      - node2-data:/app/data
+    networks:
+      - prism-net
+    depends_on:
+      - node-1
+    restart: on-failure
+
+  node-3:
+    image: prism-node:v0.17
+    container_name: prism-node-3
+    command:
+      - node
+      - --host
+      - 0.0.0.0
+      - --port
+      - "7003"
+      - --peer
+      - prism-node-1:7001
+    ports:
+      - "7003:7003"
+    volumes:
+      - node3-data:/app/data
+    networks:
+      - prism-net
+    depends_on:
+      - node-1
+    restart: on-failure
+
+volumes:
+
+  node1-data:
+    external: true
+    name: prism-devnet-node1-data
+
+  node2-data:
+    external: true
+    name: prism-devnet-node2-data
+
+  node3-data:
+    external: true
+    name: prism-devnet-node3-data
+
+networks:
+
+  prism-net:
+    external: true
+    name: prism-net
