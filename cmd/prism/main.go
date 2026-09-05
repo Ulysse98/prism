@@ -452,6 +452,20 @@ func runHuman(
 		return err
 	}
 
+	humanRegistry, err := identity.NewHumanRegistry(
+		filepath.Join(
+			dataDir,
+			"worldid-humans.json",
+		),
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := humanRegistry.MarkVerified(address); err != nil {
+		return err
+	}
+
 	fmt.Println("=== HUMANITY VERIFIED ===")
 	fmt.Println()
 	fmt.Println("Participant:", participantName)
@@ -461,6 +475,7 @@ func runHuman(
 	fmt.Println("Proof: VERIFIED")
 	fmt.Println("Nullifier:", nullifier)
 	fmt.Println("Replay check: PASSED")
+	fmt.Println("Human registry: UPDATED")
 	fmt.Println()
 	fmt.Println("Eligible for Proof of Useful Participation: YES")
 
