@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"prism/internal/identity"
 	"prism/internal/transaction"
 	"prism/internal/usefulwork"
 )
@@ -23,6 +24,7 @@ type Block struct {
 	Reward       uint64                    `json:"reward"`
 	Transactions []transaction.Transaction `json:"transactions"`
 	UsefulWork   []usefulwork.Proof        `json:"useful_work"`
+	Humanity     []identity.Attestation    `json:"humanity,omitempty"`
 	Hash         string                    `json:"hash"`
 }
 
@@ -44,8 +46,42 @@ func CalculateHash(
 		panic(err)
 	}
 
+	// Legacy hash format.
+	//
+	// Blocks created before humanity attestations existed must
+	// retain exactly the same hash so existing Prism chains
+	// continue to validate.
+	if len(block.Humanity) == 0 {
+		payload := fmt.Sprintf(
+			"%d|%s|%s|%s|%d|%s|%s",
+			block.Height,
+			block.Timestamp.UTC().Format(
+				time.RFC3339Nano,
+			),
+			block.PreviousHash,
+			block.Proposer,
+			block.Reward,
+			string(transactionData),
+			string(usefulWorkData),
+		)
+
+		hash := sha256.Sum256(
+			[]byte(payload),
+		)
+
+		return hex.EncodeToString(hash[:])
+	}
+
+	humanityData, err := json.Marshal(
+		block.Humanity,
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	// Humanity-aware hash format.
 	payload := fmt.Sprintf(
-		"%d|%s|%s|%s|%d|%s|%s",
+		"%d|%s|%s|%s|%d|%s|%s|%s",
 		block.Height,
 		block.Timestamp.UTC().Format(
 			time.RFC3339Nano,
@@ -55,6 +91,7 @@ func CalculateHash(
 		block.Reward,
 		string(transactionData),
 		string(usefulWorkData),
+		string(humanityData),
 	)
 
 	hash := sha256.Sum256(
@@ -63,7 +100,6 @@ func CalculateHash(
 
 	return hex.EncodeToString(hash[:])
 }
-
 func CreateGenesisBlock(
 	initialBalances map[string]uint64,
 ) (Block, error) {
