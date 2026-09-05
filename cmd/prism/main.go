@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"prism/internal/blockchain"
 	"prism/internal/consensus"
+	"prism/internal/identity"
 	"prism/internal/mempool"
 	"prism/internal/participation"
 	"prism/internal/storage"
@@ -93,6 +95,23 @@ func main() {
 			pos,
 			wallets,
 		)
+
+	case "human":
+		if len(os.Args) != 5 {
+			fmt.Println("Usage:")
+			fmt.Println(`.\prism.exe human Alice proof_001 nullifier_001`)
+			return
+		}
+
+		if err := runHuman(
+			os.Args[2],
+			os.Args[3],
+			os.Args[4],
+			wallets,
+		); err != nil {
+			fmt.Println("Humanity proof rejected:")
+			fmt.Println(err)
+		}
 
 	case "send":
 		if len(os.Args) != 5 {
@@ -392,6 +411,60 @@ func runParticipation(
 			score.ParticipationScore,
 		)
 	}
+}
+
+func runHuman(
+	participantIdentifier string,
+	proofText string,
+	nullifier string,
+	wallets map[string]*wallet.Wallet,
+) error {
+	const worldIDAction = "prism_poup"
+
+	address, participantName, err := resolveAddress(
+		participantIdentifier,
+		wallets,
+	)
+	if err != nil {
+		return err
+	}
+
+	verifier, err := identity.NewWorldIDVerifier(
+		filepath.Join(
+			dataDir,
+			"worldid-nullifiers.json",
+		),
+	)
+	if err != nil {
+		return err
+	}
+
+	proof := identity.WorldIDProof{
+		Nullifier: nullifier,
+		Proof:     proofText,
+		Action:    worldIDAction,
+	}
+
+	if err := verifier.Verify(
+		proof,
+		worldIDAction,
+	); err != nil {
+		return err
+	}
+
+	fmt.Println("=== HUMANITY VERIFIED ===")
+	fmt.Println()
+	fmt.Println("Participant:", participantName)
+	fmt.Println("Address:", shortAddress(address))
+	fmt.Println("Provider: World ID")
+	fmt.Println("Action:", worldIDAction)
+	fmt.Println("Proof: VERIFIED")
+	fmt.Println("Nullifier:", nullifier)
+	fmt.Println("Replay check: PASSED")
+	fmt.Println()
+	fmt.Println("Eligible for Proof of Useful Participation: YES")
+
+	return nil
 }
 
 func runSend(
@@ -1135,6 +1208,10 @@ func printUsage() {
 
 	fmt.Println(
 		`  .\prism.exe participation`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe human Alice proof_001 nullifier_001`,
 	)
 
 	fmt.Println(
