@@ -345,9 +345,24 @@ func runParticipation(
 	pos *consensus.ProofOfStake,
 	wallets map[string]*wallet.Wallet,
 ) {
+	humanRegistry, err := identity.NewHumanRegistry(
+		filepath.Join(
+			dataDir,
+			"worldid-humans.json",
+		),
+	)
+	if err != nil {
+		fmt.Println(
+			"Unable to load humanity registry:",
+		)
+		fmt.Println(err)
+		return
+	}
+
 	scores, err := participation.Calculate(
 		chain,
 		pos,
+		humanRegistry,
 	)
 	if err != nil {
 		fmt.Println(
@@ -361,10 +376,12 @@ func runParticipation(
 	fmt.Println(
 		"=== PROOF OF USEFUL PARTICIPATION ===",
 	)
+	fmt.Println("Human verification: REQUIRED")
+	fmt.Println()
 
 	if len(scores) == 0 {
 		fmt.Println(
-			"No participation recorded yet.",
+			"No humanity-verified participation recorded yet.",
 		)
 		return
 	}
@@ -384,6 +401,10 @@ func runParticipation(
 		fmt.Println(
 			"   Address:",
 			shortAddress(score.Address),
+		)
+
+		fmt.Println(
+			"   Humanity: VERIFIED",
 		)
 
 		fmt.Printf(

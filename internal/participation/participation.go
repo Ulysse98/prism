@@ -14,6 +14,12 @@ const (
 	UsefulWorkPointMultiple uint64 = 2
 )
 
+// EligibilityChecker represents a source capable of determining
+// whether a Prism address is eligible for Proof of Useful Participation.
+type EligibilityChecker interface {
+	IsVerified(address string) bool
+}
+
 type Score struct {
 	Address            string `json:"address"`
 	BlocksProposed     uint64 `json:"blocks_proposed"`
@@ -26,6 +32,7 @@ type Score struct {
 func Calculate(
 	chain *blockchain.Blockchain,
 	pos *consensus.ProofOfStake,
+	eligibility EligibilityChecker,
 ) ([]Score, error) {
 
 	if chain == nil {
@@ -37,6 +44,12 @@ func Calculate(
 	if pos == nil {
 		return nil, fmt.Errorf(
 			"proof of stake engine cannot be nil",
+		)
+	}
+
+	if eligibility == nil {
+		return nil, fmt.Errorf(
+			"participation eligibility checker cannot be nil",
 		)
 	}
 
@@ -55,30 +68,40 @@ func Calculate(
 			continue
 		}
 
-		proposerScore := getOrCreate(
-			scores,
-			block.Proposer,
-		)
-
-		if proposerScore.BlocksProposed == math.MaxUint64 {
-			return nil, fmt.Errorf(
-				"blocks proposed counter overflow",
+		// PoUP proposer points only count for humanity-verified addresses.
+		if eligibility.IsVerified(block.Proposer) {
+			proposerScore := getOrCreate(
+				scores,
+				block.Proposer,
 			)
+
+			if proposerScore.BlocksProposed == math.MaxUint64 {
+				return nil, fmt.Errorf(
+					"blocks proposed counter overflow",
+				)
+			}
+
+			proposerScore.BlocksProposed++
+
+			if proposerScore.ProposerScore >
+				math.MaxUint64-ProposerPoints {
+
+				return nil, fmt.Errorf(
+					"proposer score overflow",
+				)
+			}
+
+			proposerScore.ProposerScore += ProposerPoints
 		}
-
-		proposerScore.BlocksProposed++
-
-		if proposerScore.ProposerScore >
-			math.MaxUint64-ProposerPoints {
-
-			return nil, fmt.Errorf(
-				"proposer score overflow",
-			)
-		}
-
-		proposerScore.ProposerScore += ProposerPoints
 
 		for _, proof := range block.UsefulWork {
+			// Useful Work remains permissionless.
+			// It contributes to PoUP only when the worker
+			// has completed humanity verification.
+			if !eligibility.IsVerified(proof.Worker) {
+				continue
+			}
+
 			workerScore := getOrCreate(
 				scores,
 				proof.Worker,
