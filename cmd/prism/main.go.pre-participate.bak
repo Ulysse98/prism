@@ -96,22 +96,6 @@ func main() {
 			wallets,
 		)
 
-	case "participate":
-		if len(os.Args) != 3 {
-			fmt.Println("Usage:")
-			fmt.Println(`.\prism.exe participate Bob`)
-			return
-		}
-
-		if err := runParticipate(
-			os.Args[2],
-			chain,
-			pos,
-			wallets,
-		); err != nil {
-			fmt.Println("Participation rejected:")
-			fmt.Println(err)
-		}
 	case "human":
 		if len(os.Args) != 5 {
 			fmt.Println("Usage:")
