@@ -1,16 +1,21 @@
-# Prism v0.17
+# Prism v0.18 â€” ETHOnline 2026
 
 > **Proof of Stake secures. Proof of Useful Work computes. Proof of Useful Participation rewards contribution.**
 
 Prism is an experimental blockchain protocol written in Go for **ETHOnline 2026**.
 
-The v0.17 prototype explores a hybrid architecture where three different signals have different jobs:
+**Software version:** Prism v0.18
+**P2P protocol:** 0.17
+
+The v0.18 prototype explores a hybrid architecture where three different signals have different jobs:
 
 - **Proof of Stake (PoS)** selects block proposers and provides the economic security layer.
 - **Proof of Useful Work (PoUW)** verifies deterministic computation and rewards useful work.
 - **Proof of Useful Participation (PoUP)** measures meaningful contribution and is gated by a human-uniqueness attestation in the current prototype.
 
-Prism v0.17 also runs as a persistent **three-node Docker devnet** with P2P handshakes, Chain IDs, periodic synchronization, fork checks, full remote-chain validation, and automatic catch-up after a node has been offline.
+Prism v0.18 extends the persistent **three-node Docker devnet** with a read-only HTTP API and Android companion application. The devnet provides P2P handshakes, Chain IDs, periodic synchronization, fork checks, full remote-chain validation, and automatic catch-up after a node has been offline.
+
+The v0.18 API exposes live chain status, validators, useful-work proofs, humanity attestations, and Proof of Useful Participation scores.
 
 ## Why Prism?
 
@@ -40,7 +45,7 @@ The prototype includes:
 
 Workers execute deterministic tasks that can be verified before inclusion in a block.
 
-The current PoUW primitive is a **sum-of-squares task**. It is intentionally simple: the goal of v0.17 is to demonstrate the protocol path from task execution to proof verification, block inclusion, scoring, and reward.
+The current PoUW primitive is a **sum-of-squares task**. It is intentionally simple: the goal of v0.18 is to demonstrate the protocol path from task execution to proof verification, block inclusion, scoring, and reward.
 
 ### 3. Humanity-gated Proof of Useful Participation
 
@@ -61,11 +66,11 @@ For ETHOnline, participation eligibility is gated by a World ID-style humanity p
 - on-chain humanity attestations
 - cross-address replay protection
 
-**Prototype limitation:** v0.17 does not yet perform production World ID cryptographic proof verification against the live World ID verification service. The current verifier enforces the prototype proof envelope, action matching, and persistent nullifier uniqueness. No biometric or passport data is stored by Prism.
+**Prototype limitation:** v0.18 does not yet perform production World ID cryptographic proof verification against the live World ID verification service. The current verifier enforces the prototype proof envelope, action matching, and persistent nullifier uniqueness. No biometric or passport data is stored by Prism.
 
 ## Three-node self-synchronizing devnet
 
-Prism v0.17 can run three persistent Dockerized nodes:
+Prism v0.18 uses a persistent three-node Dockerized devnet:
 
 ```text
                     prism-node-1
@@ -92,7 +97,7 @@ If a node is behind, it requests the remote state, validates the entire received
 
 ### Recovery scenario demonstrated
 
-The v0.17 devnet has been tested with this sequence:
+The Prism devnet has been tested with this sequence:
 
 ```text
 Node 1: height 2 ---- produce blocks ----> height 4
@@ -148,7 +153,7 @@ Clone and test:
 ```powershell
 git clone https://github.com/Ulysse98/prism.git
 cd prism
-git switch ethonline-v0.17
+git switch ethonline-v0.18
 go test ./...
 ```
 
@@ -234,7 +239,7 @@ Produce a block directly against a node state:
 go run ./cmd/prism node-produce --port 7001
 ```
 
-## v0.17 capabilities
+## v0.18 capabilities
 
 - Genesis block creation
 - persistent blockchain state
@@ -263,17 +268,67 @@ go run ./cmd/prism node-produce --port 7001
 - persistent synchronized state
 - offline-node automatic catch-up
 - three-node Docker Compose devnet
+- read-only HTTP API
+- live chain health and status endpoints
+- validator API
+- useful-work proof API
+- participation score API
+- humanity attestation API
+- Android companion application
+
+## HTTP API and Android client
+
+Prism v0.18 exposes persistent node state through a read-only HTTP API.
+
+Available endpoints:
+
+```text
+GET /api/v1/health
+GET /api/v1/status
+GET /api/v1/validators
+GET /api/v1/participation
+GET /api/v1/work
+GET /api/v1/humanity
+```
+
+The Android client displays:
+
+- network health and chain height
+- block count and total PRISM supply
+- validator state and total stake
+- verified Proof of Useful Work entries
+- humanity-gated participation scores
+- on-chain World ID-style humanity attestations
+
+The ETHOnline demo follows this end-to-end path:
+
+```text
+Useful Work / Humanity Attestation
+              |
+              v
+         Prism Block
+              |
+              v
+     Persistent Docker State
+              |
+              v
+        Prism HTTP API
+              |
+              v
+        Android Client
+```
 
 ## Scope
 
-Prism v0.17 is a **research prototype**, not a production L1.
+Prism v0.18 is a **research prototype**, not a production L1.
 
 The ETHOnline build focuses on making the core idea executable and inspectable:
 
 1. separate stake, useful work, and participation;
 2. attach those signals to real block production and rewards;
 3. gate participation with a human-uniqueness primitive;
-4. prove the chain can operate and recover across multiple persistent nodes.
+4. prove the chain can operate and recover across multiple persistent nodes;
+5. expose the resulting state through an HTTP API and mobile interface.
 
 ## Project
 
@@ -289,4 +344,4 @@ Whitepaper: [`Prism Blockchain Whitepaper.pdf`](Prism%20Blockchain%20Whitepaper.
 
 ---
 
-**Prism v0.17 — ETHOnline 2026**
+**Prism v0.18 â€” ETHOnline 2026**
