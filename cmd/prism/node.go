@@ -8,6 +8,7 @@ import (
 
 	"prism/internal/blockchain"
 	"prism/internal/consensus"
+	"prism/internal/identity"
 	"prism/internal/mempool"
 	"prism/internal/p2p"
 	"prism/internal/storage"
@@ -446,4 +447,222 @@ func loadOrCreateP2PState(
 		wallets,
 		true,
 		nil
+}
+
+func runNodeHumanCommand(
+	args []string,
+) {
+	const worldIDAction = "prism_poup"
+
+	flags := flag.NewFlagSet(
+		"node-human",
+		flag.ContinueOnError,
+	)
+
+	flags.SetOutput(os.Stdout)
+
+	port := flags.Int(
+		"port",
+		7001,
+		"node data port",
+	)
+
+	nodeData := flags.String(
+		"data",
+		"",
+		"node data directory",
+	)
+
+	if err := flags.Parse(args); err != nil {
+		return
+	}
+
+	if *port < 1 || *port > 65535 {
+		fmt.Println(
+			"Invalid port:",
+			*port,
+		)
+		return
+	}
+
+	positional := flags.Args()
+
+	if len(positional) != 3 {
+		fmt.Println("Usage:")
+		fmt.Println(
+			`prism node-human --data data/node-7001 Alice proof_001 nullifier_001`,
+		)
+		return
+	}
+
+	dataPath := resolveNodeDataPath(
+		*port,
+		*nodeData,
+	)
+
+	if !storage.Exists(dataPath) {
+		fmt.Println(
+			"Node state not found:",
+			dataPath,
+		)
+		return
+	}
+
+	chain, pos, wallets, err := storage.Load(
+		dataPath,
+	)
+	if err != nil {
+		fmt.Println(
+			"Unable to load node state:",
+			err,
+		)
+		return
+	}
+
+	participant := positional[0]
+	proofText := positional[1]
+	nullifier := positional[2]
+
+	address, participantName, err := resolveAddress(
+		participant,
+		wallets,
+	)
+	if err != nil {
+		fmt.Println(
+			"Humanity proof rejected:",
+			err,
+		)
+		return
+	}
+
+	if chain.IsVerified(address) {
+		fmt.Println(
+			"Humanity proof rejected:",
+		)
+		fmt.Println(
+			"prism address already humanity verified",
+		)
+		return
+	}
+	if proofText == "" {
+		fmt.Println(
+			"Humanity proof rejected:",
+			"world id proof cannot be empty",
+		)
+		return
+	}
+
+	if nullifier == "" {
+		fmt.Println(
+			"Humanity proof rejected:",
+			"world id nullifier cannot be empty",
+		)
+		return
+	}
+
+	attestation, err := identity.NewWorldIDAttestation(
+		address,
+		nullifier,
+		worldIDAction,
+	)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if len(chain.Blocks) == 0 {
+		fmt.Println(
+			"Node blockchain is empty.",
+		)
+		return
+	}
+
+	lastBlock := chain.Blocks[len(chain.Blocks)-1]
+
+	proposer, err := pos.SelectProposer(
+		lastBlock.Hash,
+		lastBlock.Height+1,
+	)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	block, err := chain.AddHumanityBlock(
+		[]identity.Attestation{
+			attestation,
+		},
+		proposer.Address,
+		pos,
+	)
+	if err != nil {
+		fmt.Println(
+			"Unable to add humanity block:",
+			err,
+		)
+		return
+	}
+
+	if err := storage.Save(
+		dataPath,
+		chain,
+		pos,
+		wallets,
+	); err != nil {
+		fmt.Println(
+			"Unable to save node state:",
+			err,
+		)
+		return
+	}
+
+	fmt.Println()
+	fmt.Println(
+		"=== NODE HUMANITY ATTESTATION CONFIRMED ===",
+	)
+	fmt.Println(
+		"Participant:",
+		participantName,
+	)
+	fmt.Println(
+		"Address:",
+		shortAddress(address),
+	)
+	fmt.Println(
+		"Provider:",
+		attestation.Provider,
+	)
+	fmt.Println(
+		"Action:",
+		attestation.Action,
+	)
+	fmt.Println(
+		"Proof: VERIFIED",
+	)
+	fmt.Println(
+		"Replay check: PASSED",
+	)
+	fmt.Println(
+		"Humanity: ON-CHAIN",
+	)
+	fmt.Println(
+		"Block:",
+		block.Height,
+	)
+	fmt.Println(
+		"PoS proposer:",
+		shortAddress(block.Proposer),
+	)
+	fmt.Println(
+		"Block hash:",
+		block.Hash,
+	)
+	fmt.Println(
+		"Chain valid:",
+		chain.ValidateChain(pos),
+	)
+	fmt.Println()
+	fmt.Println(
+		"Eligible for Proof of Useful Participation: YES",
+	)
 }

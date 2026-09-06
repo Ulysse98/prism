@@ -52,6 +52,11 @@ func main() {
 		return
 	}
 
+	if command == "node-human" {
+		runNodeHumanCommand(os.Args[2:])
+		return
+	}
+
 	if command == "api" {
 		runAPICommand(os.Args[2:])
 		return
@@ -1360,6 +1365,10 @@ func printUsage() {
 
 	fmt.Println(
 		`  .\prism.exe node-produce --port 7001`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe node-human --data data/node-7001 Alice proof_001 nullifier_001`,
 	)
 
 	fmt.Println(
