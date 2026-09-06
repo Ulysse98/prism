@@ -29,7 +29,7 @@ func main() {
 
 	if !jsonWorkLog {
 		fmt.Println("====================================")
-		fmt.Println("         PRISM NODE v0.17")
+		fmt.Println("         PRISM NODE v0.18")
 		fmt.Println("====================================")
 		fmt.Println()
 	}
@@ -49,6 +49,11 @@ func main() {
 
 	if command == "node-produce" {
 		runNodeProduceCommand(os.Args[2:])
+		return
+	}
+
+	if command == "api" {
+		runAPICommand(os.Args[2:])
 		return
 	}
 
@@ -1339,6 +1344,10 @@ func printUsage() {
 
 	fmt.Println(
 		`  .\prism.exe worklog --json`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe api --data data/node-7001 --port 8080`,
 	)
 
 	fmt.Println(
