@@ -465,11 +465,36 @@ func (bc *Blockchain) addBlock(
 func (bc *Blockchain) IsVerified(
 	address string,
 ) bool {
+	if address == "" || len(bc.Blocks) == 0 {
+		return false
+	}
+
+	lastBlock := bc.Blocks[len(bc.Blocks)-1]
+
+	return bc.IsVerifiedAtHeight(
+		address,
+		lastBlock.Height,
+	)
+}
+
+// IsVerifiedAtHeight reports whether an address had a valid
+// humanity attestation recorded at or before the given block height.
+//
+// This prevents Proof of Useful Participation from retroactively
+// rewarding activity performed before humanity verification.
+func (bc *Blockchain) IsVerifiedAtHeight(
+	address string,
+	height uint64,
+) bool {
 	if address == "" {
 		return false
 	}
 
 	for _, block := range bc.Blocks {
+		if block.Height > height {
+			break
+		}
+
 		for _, attestation := range block.Humanity {
 			if attestation.Address != address {
 				continue

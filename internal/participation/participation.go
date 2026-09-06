@@ -17,7 +17,7 @@ const (
 // EligibilityChecker represents a source capable of determining
 // whether a Prism address is eligible for Proof of Useful Participation.
 type EligibilityChecker interface {
-	IsVerified(address string) bool
+	IsVerifiedAtHeight(address string, height uint64) bool
 }
 
 type Score struct {
@@ -69,7 +69,7 @@ func Calculate(
 		}
 
 		// PoUP proposer points only count for humanity-verified addresses.
-		if eligibility.IsVerified(block.Proposer) {
+		if eligibility.IsVerifiedAtHeight(block.Proposer, block.Height) {
 			proposerScore := getOrCreate(
 				scores,
 				block.Proposer,
@@ -98,7 +98,7 @@ func Calculate(
 			// Useful Work remains permissionless.
 			// It contributes to PoUP only when the worker
 			// has completed humanity verification.
-			if !eligibility.IsVerified(proof.Worker) {
+			if !eligibility.IsVerifiedAtHeight(proof.Worker, block.Height) {
 				continue
 			}
 
