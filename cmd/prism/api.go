@@ -8,9 +8,11 @@ import (
 	"os"
 	"time"
 
+	"prism/internal/blockchain"
 	"prism/internal/p2p"
 	"prism/internal/participation"
 	"prism/internal/storage"
+	"prism/internal/usefulwork"
 )
 
 type apiServer struct {
@@ -59,6 +61,30 @@ type apiParticipationResponse struct {
 	ProposerScore      uint64 `json:"proposerScore"`
 	UsefulWorkScore    uint64 `json:"usefulWorkScore"`
 	ParticipationScore uint64 `json:"participationScore"`
+}
+
+type apiWorkResponse struct {
+	Block         uint64 `json:"block"`
+	Worker        string `json:"worker"`
+	WorkerAddress string `json:"workerAddress"`
+	Task          string `json:"task"`
+	TaskID        string `json:"taskId"`
+	Result        uint64 `json:"result"`
+	Score         uint64 `json:"score"`
+	Reward        uint64 `json:"reward"`
+	Verified      bool   `json:"verified"`
+	OutputHash    string `json:"outputHash"`
+	ProofID       string `json:"proofId"`
+	BlockHash     string `json:"blockHash"`
+}
+
+type apiHumanityResponse struct {
+	Block         uint64 `json:"block"`
+	Name          string `json:"name"`
+	Address       string `json:"address"`
+	Provider      string `json:"provider"`
+	Action        string `json:"action"`
+	NullifierHash string `json:"nullifierHash"`
 }
 
 func runAPICommand(args []string) {
@@ -133,6 +159,15 @@ func runAPICommand(args []string) {
 		api.handleParticipation,
 	)
 
+	mux.HandleFunc(
+		"/api/v1/work",
+		api.handleWork,
+	)
+
+	mux.HandleFunc(
+		"/api/v1/humanity",
+		api.handleHumanity,
+	)
 	listenAddress := fmt.Sprintf(
 		"%s:%d",
 		*host,
@@ -157,6 +192,8 @@ func runAPICommand(args []string) {
 	fmt.Println("  GET /api/v1/status")
 	fmt.Println("  GET /api/v1/validators")
 	fmt.Println("  GET /api/v1/participation")
+	fmt.Println("  GET /api/v1/work")
+	fmt.Println("  GET /api/v1/humanity")
 	fmt.Println()
 
 	fmt.Println(
@@ -433,6 +470,137 @@ func (api *apiServer) handleParticipation(
 	)
 }
 
+func (api *apiServer) handleWork(
+	writer http.ResponseWriter,
+	request *http.Request,
+) {
+	if !apiGETOnly(writer, request) {
+		return
+	}
+
+	chain, _, wallets, err := storage.Load(
+		api.dataPath,
+	)
+	if err != nil {
+		apiWriteError(
+			writer,
+			http.StatusInternalServerError,
+			err,
+		)
+		return
+	}
+
+	results := make(
+		[]apiWorkResponse,
+		0,
+	)
+
+	for blockIndex := len(chain.Blocks) - 1; blockIndex >= 0; blockIndex-- {
+		block := chain.Blocks[blockIndex]
+
+		for proofIndex := len(block.UsefulWork) - 1; proofIndex >= 0; proofIndex-- {
+			proof := block.UsefulWork[proofIndex]
+
+			verifyErr := usefulwork.VerifyProof(
+				proof,
+			)
+
+			results = append(
+				results,
+				apiWorkResponse{
+					Block: block.Height,
+					Worker: walletNameForAddress(
+						proof.Worker,
+						wallets,
+					),
+					WorkerAddress: proof.Worker,
+					Task:          proof.Task.Type,
+					TaskID:        proof.Task.ID,
+					Result:        proof.Result,
+					Score:         proof.Score,
+					Reward:        blockchain.UsefulWorkReward,
+					Verified:      verifyErr == nil,
+					OutputHash:    proof.OutputHash,
+					ProofID:       proof.ID,
+					BlockHash:     block.Hash,
+				},
+			)
+		}
+	}
+
+	apiWriteJSON(
+		writer,
+		http.StatusOK,
+		map[string]any{
+			"count":   len(results),
+			"entries": results,
+		},
+	)
+}
+
+func (api *apiServer) handleHumanity(
+	writer http.ResponseWriter,
+	request *http.Request,
+) {
+	if !apiGETOnly(writer, request) {
+		return
+	}
+
+	chain, _, wallets, err := storage.Load(
+		api.dataPath,
+	)
+	if err != nil {
+		apiWriteError(
+			writer,
+			http.StatusInternalServerError,
+			err,
+		)
+		return
+	}
+
+	results := make(
+		[]apiHumanityResponse,
+		0,
+	)
+
+	seen := make(
+		map[string]struct{},
+	)
+
+	for _, block := range chain.Blocks {
+		for _, attestation := range block.Humanity {
+			if _, exists := seen[attestation.Address]; exists {
+				continue
+			}
+
+			seen[attestation.Address] = struct{}{}
+
+			results = append(
+				results,
+				apiHumanityResponse{
+					Block: block.Height,
+					Name: walletNameForAddress(
+						attestation.Address,
+						wallets,
+					),
+					Address:       attestation.Address,
+					Provider:      attestation.Provider,
+					Action:        attestation.Action,
+					NullifierHash: attestation.NullifierHash,
+				},
+			)
+		}
+	}
+
+	apiWriteJSON(
+		writer,
+		http.StatusOK,
+		map[string]any{
+			"count":      len(results),
+			"identities": results,
+		},
+	)
+}
 func apiGETOnly(
 	writer http.ResponseWriter,
 	request *http.Request,
