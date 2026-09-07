@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "verify": "tsx bridge.ts"
+    "verify": "tsx bridge.ts",
+    "server": "tsx server.ts",
+    "agent": "tsx agent.ts"
   },
   "keywords": [],
   "author": "",
