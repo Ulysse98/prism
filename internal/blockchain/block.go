@@ -10,6 +10,7 @@ import (
 
 	"prism/internal/consensus"
 	"prism/internal/identity"
+	"prism/internal/poup"
 	"prism/internal/transaction"
 	"prism/internal/usefulwork"
 )
@@ -20,15 +21,16 @@ const BlockReward uint64 = consensus.DefaultProposerReward
 const UsefulWorkReward uint64 = consensus.DefaultUsefulWorkReward
 
 type Block struct {
-	Height       uint64                    `json:"height"`
-	Timestamp    time.Time                 `json:"timestamp"`
-	PreviousHash string                    `json:"previous_hash"`
-	Proposer     string                    `json:"proposer"`
-	Reward       uint64                    `json:"reward"`
-	Transactions []transaction.Transaction `json:"transactions"`
-	UsefulWork   []usefulwork.Proof        `json:"useful_work"`
-	Humanity     []identity.Attestation    `json:"humanity,omitempty"`
-	Hash         string                    `json:"hash"`
+	Height              uint64                    `json:"height"`
+	Timestamp           time.Time                 `json:"timestamp"`
+	PreviousHash        string                    `json:"previous_hash"`
+	Proposer            string                    `json:"proposer"`
+	Reward              uint64                    `json:"reward"`
+	Transactions        []transaction.Transaction `json:"transactions"`
+	UsefulWork          []usefulwork.Proof        `json:"useful_work"`
+	Humanity            []identity.Attestation    `json:"humanity,omitempty"`
+	ParticipationClaims []poup.Claim              `json:"participation_claims,omitempty"`
+	Hash                string                    `json:"hash"`
 }
 
 func CalculateHash(
@@ -47,6 +49,47 @@ func CalculateHash(
 	)
 	if err != nil {
 		panic(err)
+	}
+
+	// PoUP claim-aware hash format.
+	//
+	// Existing blocks without participation claims continue
+	// through the legacy or humanity-aware formats below.
+	if len(block.ParticipationClaims) > 0 {
+		humanityData, err := json.Marshal(
+			block.Humanity,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		claimData, err := json.Marshal(
+			block.ParticipationClaims,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		payload := fmt.Sprintf(
+			"poup-v1|%d|%s|%s|%s|%d|%s|%s|%s|%s",
+			block.Height,
+			block.Timestamp.UTC().Format(
+				time.RFC3339Nano,
+			),
+			block.PreviousHash,
+			block.Proposer,
+			block.Reward,
+			string(transactionData),
+			string(usefulWorkData),
+			string(humanityData),
+			string(claimData),
+		)
+
+		hash := sha256.Sum256(
+			[]byte(payload),
+		)
+
+		return hex.EncodeToString(hash[:])
 	}
 
 	// Legacy hash format.
