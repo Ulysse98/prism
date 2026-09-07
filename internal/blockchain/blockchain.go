@@ -14,6 +14,7 @@ import (
 type Blockchain struct {
 	Blocks       []Block
 	LockedStakes map[string]uint64
+	Config       ChainConfig `json:"config"`
 }
 
 type State struct {
@@ -34,6 +35,7 @@ func NewBlockchain(
 	return &Blockchain{
 		Blocks:       []Block{genesis},
 		LockedStakes: make(map[string]uint64),
+		Config:       DefaultChainConfig(),
 	}, nil
 }
 
