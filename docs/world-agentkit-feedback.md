@@ -104,3 +104,9 @@ The current Prism integration successfully demonstrates the security-critical ne
 Authenticated agent wallet -> AgentBook lookup -> unregistered agent -> PoUP DENIED.
 
 The positive path will additionally create a Prism humanity attestation once an AgentBook-registered test agent is available.
+
+### Sandbox access request
+
+World ID Sandbox Beta access was requested during ETHOnline 2026.
+
+Status: access request submitted; waiting for Firebase App Distribution invitation before performing the Sandbox proof flow.
