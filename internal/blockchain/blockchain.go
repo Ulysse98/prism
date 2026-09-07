@@ -460,6 +460,103 @@ func (bc *Blockchain) addBlock(
 	return block, nil
 }
 
+// AppendValidatedBlock validates and appends an exact block
+// received from another Prism node.
+//
+// Unlike AddBlock, this method never recreates the block timestamp
+// or hash. The received block is validated as part of a candidate
+// chain before the local chain is mutated.
+func (bc *Blockchain) AppendValidatedBlock(
+	block Block,
+	pos *consensus.ProofOfStake,
+) error {
+	if bc == nil {
+		return fmt.Errorf(
+			"blockchain cannot be nil",
+		)
+	}
+
+	if pos == nil {
+		return fmt.Errorf(
+			"proof of stake engine cannot be nil",
+		)
+	}
+
+	if len(bc.Blocks) == 0 {
+		return fmt.Errorf(
+			"blockchain has no genesis block",
+		)
+	}
+
+	previous := bc.Blocks[len(bc.Blocks)-1]
+
+	if block.Height != previous.Height+1 {
+		return fmt.Errorf(
+			"invalid received block height: expected %d, got %d",
+			previous.Height+1,
+			block.Height,
+		)
+	}
+
+	if block.PreviousHash != previous.Hash {
+		return fmt.Errorf(
+			"received block does not extend local tip",
+		)
+	}
+
+	if block.Hash == "" {
+		return fmt.Errorf(
+			"received block hash cannot be empty",
+		)
+	}
+
+	if CalculateHash(block) != block.Hash {
+		return fmt.Errorf(
+			"invalid received block hash",
+		)
+	}
+
+	candidateBlocks := make(
+		[]Block,
+		len(bc.Blocks),
+		len(bc.Blocks)+1,
+	)
+
+	copy(
+		candidateBlocks,
+		bc.Blocks,
+	)
+
+	candidateBlocks = append(
+		candidateBlocks,
+		block,
+	)
+
+	lockedStakes := make(
+		map[string]uint64,
+		len(bc.LockedStakes),
+	)
+
+	for address, amount := range bc.LockedStakes {
+		lockedStakes[address] = amount
+	}
+
+	candidate := &Blockchain{
+		Blocks:       candidateBlocks,
+		LockedStakes: lockedStakes,
+	}
+
+	if !candidate.ValidateChain(pos) {
+		return fmt.Errorf(
+			"received block failed chain validation",
+		)
+	}
+
+	bc.Blocks = candidateBlocks
+
+	return nil
+}
+
 // IsVerified reports whether an address has a valid
 // humanity attestation recorded in the Prism blockchain.
 func (bc *Blockchain) IsVerified(
