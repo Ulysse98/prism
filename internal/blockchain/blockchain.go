@@ -590,6 +590,7 @@ func (bc *Blockchain) AppendValidatedBlock(
 	candidate := &Blockchain{
 		Blocks:       candidateBlocks,
 		LockedStakes: lockedStakes,
+		Config:       bc.Config,
 	}
 
 	if !candidate.ValidateChain(pos) {
@@ -1151,6 +1152,12 @@ func (bc *Blockchain) ValidateChain(
 		consensus.DefaultSupplyPolicy()
 
 	if err := supplyPolicy.Validate(); err != nil {
+		return false
+	}
+
+	if _, err :=
+		bc.Config.Canonical(); err != nil {
+
 		return false
 	}
 
