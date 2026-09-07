@@ -1,6 +1,11 @@
 package participation
 
-import "testing"
+import (
+	"testing"
+
+	"prism/internal/blockchain"
+	"prism/internal/consensus"
+)
 
 type neverEligible struct{}
 
@@ -124,6 +129,76 @@ func TestEvaluatePeriodRewardRejectsEmptyAddress(
 	); err == nil {
 		t.Fatal(
 			"expected empty reward address to fail",
+		)
+	}
+}
+
+func TestBoundedParticipationRewardUsesFullAmount(
+	t *testing.T,
+) {
+	amount, err :=
+		boundedParticipationRewardAmount(
+			10,
+			blockchain.EmissionState{},
+			consensus.DefaultSupplyPolicy(),
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if amount != 10 {
+		t.Fatalf(
+			"expected full PoUP reward 10, got %d",
+			amount,
+		)
+	}
+}
+
+func TestBoundedParticipationRewardUsesFinalPartialAmount(
+	t *testing.T,
+) {
+	amount, err :=
+		boundedParticipationRewardAmount(
+			10,
+			blockchain.EmissionState{
+				ParticipationEmission: 19_999_997,
+			},
+			consensus.DefaultSupplyPolicy(),
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if amount != 3 {
+		t.Fatalf(
+			"expected final PoUP reward 3, got %d",
+			amount,
+		)
+	}
+}
+
+func TestBoundedParticipationRewardReturnsZeroWhenExhausted(
+	t *testing.T,
+) {
+	amount, err :=
+		boundedParticipationRewardAmount(
+			10,
+			blockchain.EmissionState{
+				ParticipationEmission: 20_000_000,
+			},
+			consensus.DefaultSupplyPolicy(),
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if amount != 0 {
+		t.Fatalf(
+			"expected exhausted PoUP reward 0, got %d",
+			amount,
 		)
 	}
 }

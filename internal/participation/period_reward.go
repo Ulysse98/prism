@@ -16,6 +16,38 @@ type PeriodReward struct {
 	Amount  uint64 `json:"amount"`
 }
 
+func boundedParticipationRewardAmount(
+	rawAmount uint64,
+	emission blockchain.EmissionState,
+	supplyPolicy consensus.SupplyPolicy,
+) (
+	uint64,
+	error,
+) {
+	if err := supplyPolicy.Validate(); err != nil {
+		return 0, fmt.Errorf(
+			"invalid supply policy: %w",
+			err,
+		)
+	}
+
+	amount, err :=
+		consensus.BoundedPoolReward(
+			rawAmount,
+			emission.ParticipationEmission,
+			supplyPolicy.ParticipationRewardPool,
+		)
+
+	if err != nil {
+		return 0, fmt.Errorf(
+			"cannot bound participation reward: %w",
+			err,
+		)
+	}
+
+	return amount, nil
+}
+
 func EvaluatePeriodReward(
 	chain *blockchain.Blockchain,
 	pos *consensus.ProofOfStake,
@@ -82,9 +114,10 @@ func EvaluatePeriodReward(
 		points,
 	)
 
-	policy := consensus.DefaultRewardPolicy()
+	rewardPolicy :=
+		consensus.DefaultRewardPolicy()
 
-	if err := policy.Validate(); err != nil {
+	if err := rewardPolicy.Validate(); err != nil {
 		return PeriodReward{}, fmt.Errorf(
 			"invalid reward policy: %w",
 			err,
@@ -92,7 +125,7 @@ func EvaluatePeriodReward(
 	}
 
 	if units > 0 &&
-		policy.ParticipationReward >
+		rewardPolicy.ParticipationReward >
 			math.MaxUint64/units {
 
 		return PeriodReward{}, fmt.Errorf(
@@ -100,8 +133,29 @@ func EvaluatePeriodReward(
 		)
 	}
 
-	amount :=
-		units * policy.ParticipationReward
+	rawAmount :=
+		units * rewardPolicy.ParticipationReward
+
+	emission, err :=
+		chain.GetEmissionState()
+
+	if err != nil {
+		return PeriodReward{}, fmt.Errorf(
+			"cannot calculate participation emissions: %w",
+			err,
+		)
+	}
+
+	amount, err :=
+		boundedParticipationRewardAmount(
+			rawAmount,
+			emission,
+			consensus.DefaultSupplyPolicy(),
+		)
+
+	if err != nil {
+		return PeriodReward{}, err
+	}
 
 	return PeriodReward{
 		Address: address,
