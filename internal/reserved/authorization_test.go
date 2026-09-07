@@ -7,9 +7,15 @@ import (
 	"prism/internal/wallet"
 )
 
-func TestSignedAuthorizationValidates(
+const testChainID = "prism-test-chain"
+
+func newSignedAuthorization(
 	t *testing.T,
-) {
+	pool consensus.ReservedPool,
+	amount uint64,
+) Authorization {
+	t.Helper()
+
 	authorizer, err :=
 		wallet.New()
 
@@ -26,9 +32,11 @@ func TestSignedAuthorizationValidates(
 
 	authorization :=
 		NewAuthorization(
-			consensus.ReservedPoolTreasury,
+			testChainID,
+			1,
+			pool,
 			recipient.Address,
-			100,
+			amount,
 			authorizer.Address,
 			authorizer.PublicKeyHex(),
 		)
@@ -41,9 +49,23 @@ func TestSignedAuthorizationValidates(
 		t.Fatal(err)
 	}
 
+	return authorization
+}
+
+func TestSignedAuthorizationValidates(
+	t *testing.T,
+) {
+	authorization :=
+		newSignedAuthorization(
+			t,
+			consensus.ReservedPoolTreasury,
+			100,
+		)
+
 	if err :=
-		ValidateSigned(
+		ValidateSignedForChain(
 			authorization,
+			testChainID,
 		); err != nil {
 
 		t.Fatal(err)
@@ -53,36 +75,12 @@ func TestSignedAuthorizationValidates(
 func TestAuthorizationRejectsTampering(
 	t *testing.T,
 ) {
-	authorizer, err :=
-		wallet.New()
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	recipient, err :=
-		wallet.New()
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	authorization :=
-		NewAuthorization(
+		newSignedAuthorization(
+			t,
 			consensus.ReservedPoolEcosystem,
-			recipient.Address,
 			100,
-			authorizer.Address,
-			authorizer.PublicKeyHex(),
 		)
-
-	if err :=
-		authorization.Sign(
-			authorizer.PrivateKey,
-		); err != nil {
-
-		t.Fatal(err)
-	}
 
 	authorization.Amount = 101
 
@@ -100,29 +98,12 @@ func TestAuthorizationRejectsTampering(
 func TestAuthorizationRejectsUnknownPool(
 	t *testing.T,
 ) {
-	authorizer, err :=
-		wallet.New()
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	authorization :=
-		NewAuthorization(
+		newSignedAuthorization(
+			t,
 			consensus.ReservedPool("unknown"),
-			"recipient",
 			100,
-			authorizer.Address,
-			authorizer.PublicKeyHex(),
 		)
-
-	if err :=
-		authorization.Sign(
-			authorizer.PrivateKey,
-		); err != nil {
-
-		t.Fatal(err)
-	}
 
 	if err :=
 		ValidateSigned(
@@ -138,29 +119,12 @@ func TestAuthorizationRejectsUnknownPool(
 func TestAuthorizationRejectsPoolAllocationOverflow(
 	t *testing.T,
 ) {
-	authorizer, err :=
-		wallet.New()
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	authorization :=
-		NewAuthorization(
+		newSignedAuthorization(
+			t,
 			consensus.ReservedPoolLiquidity,
-			"recipient",
 			5_000_001,
-			authorizer.Address,
-			authorizer.PublicKeyHex(),
 		)
-
-	if err :=
-		authorization.Sign(
-			authorizer.PrivateKey,
-		); err != nil {
-
-		t.Fatal(err)
-	}
 
 	if err :=
 		ValidateSigned(
@@ -169,6 +133,51 @@ func TestAuthorizationRejectsPoolAllocationOverflow(
 
 		t.Fatal(
 			"expected pool allocation overflow to fail",
+		)
+	}
+}
+
+func TestAuthorizationRejectsWrongChain(
+	t *testing.T,
+) {
+	authorization :=
+		newSignedAuthorization(
+			t,
+			consensus.ReservedPoolTreasury,
+			100,
+		)
+
+	if err :=
+		ValidateSignedForChain(
+			authorization,
+			"other-chain",
+		); err == nil {
+
+		t.Fatal(
+			"expected chain ID mismatch to fail",
+		)
+	}
+}
+
+func TestAuthorizationNonceIsSigned(
+	t *testing.T,
+) {
+	authorization :=
+		newSignedAuthorization(
+			t,
+			consensus.ReservedPoolTeam,
+			100,
+		)
+
+	authorization.Nonce++
+
+	if err :=
+		ValidateSigned(
+			authorization,
+		); err == nil {
+
+		t.Fatal(
+			"expected nonce tampering to fail",
 		)
 	}
 }

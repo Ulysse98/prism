@@ -14,6 +14,9 @@ import (
 type Authorization struct {
 	ID string `json:"id"`
 
+	ChainID string `json:"chain_id"`
+	Nonce   uint64 `json:"nonce"`
+
 	Pool      consensus.ReservedPool `json:"pool"`
 	Recipient string                 `json:"recipient"`
 	Amount    uint64                 `json:"amount"`
@@ -24,6 +27,8 @@ type Authorization struct {
 }
 
 func NewAuthorization(
+	chainID string,
+	nonce uint64,
 	pool consensus.ReservedPool,
 	recipient string,
 	amount uint64,
@@ -31,6 +36,8 @@ func NewAuthorization(
 	publicKey string,
 ) Authorization {
 	authorization := Authorization{
+		ChainID:    chainID,
+		Nonce:      nonce,
 		Pool:       pool,
 		Recipient:  recipient,
 		Amount:     amount,
@@ -48,7 +55,9 @@ func authorizationPayload(
 	authorization Authorization,
 ) string {
 	return fmt.Sprintf(
-		"reserved-v1|%s|%s|%d|%s|%s",
+		"reserved-v1|%s|%d|%s|%s|%d|%s|%s",
+		authorization.ChainID,
+		authorization.Nonce,
 		authorization.Pool,
 		authorization.Recipient,
 		authorization.Amount,
@@ -133,6 +142,18 @@ func (authorization *Authorization) Sign(
 func ValidateSigned(
 	authorization Authorization,
 ) error {
+	if authorization.ChainID == "" {
+		return fmt.Errorf(
+			"reserved authorization chain ID cannot be empty",
+		)
+	}
+
+	if authorization.Nonce == 0 {
+		return fmt.Errorf(
+			"reserved authorization nonce must be greater than zero",
+		)
+	}
+
 	policy :=
 		consensus.DefaultSupplyPolicy()
 
@@ -250,6 +271,35 @@ func ValidateSigned(
 	) {
 		return fmt.Errorf(
 			"invalid reserved authorization signature",
+		)
+	}
+
+	return nil
+}
+
+func ValidateSignedForChain(
+	authorization Authorization,
+	expectedChainID string,
+) error {
+	if expectedChainID == "" {
+		return fmt.Errorf(
+			"expected chain ID cannot be empty",
+		)
+	}
+
+	if err :=
+		ValidateSigned(
+			authorization,
+		); err != nil {
+
+		return err
+	}
+
+	if authorization.ChainID !=
+		expectedChainID {
+
+		return fmt.Errorf(
+			"reserved authorization chain ID mismatch",
 		)
 	}
 
