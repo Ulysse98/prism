@@ -111,6 +111,51 @@ func (mp *Mempool) Has(
 	return exists
 }
 
+func (mp *Mempool) RemoveCommitted(
+	committed []transaction.Transaction,
+) {
+	if len(committed) == 0 ||
+		len(mp.transactions) == 0 {
+
+		return
+	}
+
+	committedIDs := make(
+		map[string]struct{},
+		len(committed),
+	)
+
+	for _, tx := range committed {
+		committedIDs[tx.ID] = struct{}{}
+	}
+
+	remaining := make(
+		[]transaction.Transaction,
+		0,
+		len(mp.transactions),
+	)
+
+	ids := make(
+		map[string]struct{},
+	)
+
+	for _, tx := range mp.transactions {
+		if _, exists := committedIDs[tx.ID]; exists {
+			continue
+		}
+
+		remaining = append(
+			remaining,
+			tx,
+		)
+
+		ids[tx.ID] = struct{}{}
+	}
+
+	mp.transactions = remaining
+	mp.ids = ids
+}
+
 func (mp *Mempool) Count() int {
 	return len(mp.transactions)
 }

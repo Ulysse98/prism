@@ -28,6 +28,8 @@ const (
 	MessagePeers          = "peers"
 	MessageTransaction    = "transaction"
 	MessageTransactionAck = "transaction_ack"
+	MessageBlock          = "block"
+	MessageBlockAck       = "block_ack"
 )
 
 type HelloMessage struct {
@@ -69,6 +71,19 @@ type TransactionAck struct {
 	TransactionID string `json:"transaction_id"`
 	Accepted      bool   `json:"accepted"`
 	Error         string `json:"error,omitempty"`
+}
+
+type BlockMessage struct {
+	Type    string           `json:"type"`
+	ChainID string           `json:"chain_id"`
+	Block   blockchain.Block `json:"block"`
+}
+
+type BlockAck struct {
+	Type      string `json:"type"`
+	BlockHash string `json:"block_hash"`
+	Accepted  bool   `json:"accepted"`
+	Error     string `json:"error,omitempty"`
 }
 
 type Server struct {
@@ -477,6 +492,115 @@ func (s *Server) SendTransaction(
 	if !ack.Accepted {
 		if ack.Error == "" {
 			ack.Error = "transaction rejected"
+		}
+
+		return fmt.Errorf(
+			"%s",
+			ack.Error,
+		)
+	}
+
+	return nil
+}
+
+func (s *Server) SendBlock(
+	address string,
+	block blockchain.Block,
+) error {
+	if block.Hash == "" {
+		return fmt.Errorf(
+			"outgoing block hash cannot be empty",
+		)
+	}
+
+	if blockchain.CalculateHash(block) != block.Hash {
+		return fmt.Errorf(
+			"invalid outgoing block hash",
+		)
+	}
+
+	conn, err := net.DialTimeout(
+		"tcp",
+		address,
+		5*time.Second,
+	)
+	if err != nil {
+		return err
+	}
+
+	defer conn.Close()
+
+	if err := conn.SetDeadline(
+		time.Now().Add(10 * time.Second),
+	); err != nil {
+		return err
+	}
+
+	encoder := json.NewEncoder(conn)
+	decoder := json.NewDecoder(conn)
+
+	local := s.hello()
+
+	if err := encoder.Encode(local); err != nil {
+		return err
+	}
+
+	var remote HelloMessage
+
+	if err := decoder.Decode(&remote); err != nil {
+		return err
+	}
+
+	if err := validateHello(remote); err != nil {
+		return err
+	}
+
+	if remote.NodeID == s.NodeID {
+		return fmt.Errorf(
+			"refusing self block submission",
+		)
+	}
+
+	if remote.ChainID != local.ChainID {
+		return fmt.Errorf(
+			"block peer network mismatch: local=%s remote=%s",
+			local.ChainID,
+			remote.ChainID,
+		)
+	}
+
+	message := BlockMessage{
+		Type:    MessageBlock,
+		ChainID: local.ChainID,
+		Block:   block,
+	}
+
+	if err := encoder.Encode(message); err != nil {
+		return err
+	}
+
+	var ack BlockAck
+
+	if err := decoder.Decode(&ack); err != nil {
+		return err
+	}
+
+	if ack.Type != MessageBlockAck {
+		return fmt.Errorf(
+			"unexpected block response: %s",
+			ack.Type,
+		)
+	}
+
+	if ack.BlockHash != block.Hash {
+		return fmt.Errorf(
+			"block acknowledgement hash mismatch",
+		)
+	}
+
+	if !ack.Accepted {
+		if ack.Error == "" {
+			ack.Error = "block rejected"
 		}
 
 		return fmt.Errorf(
@@ -1083,6 +1207,94 @@ func (s *Server) handleIncoming(
 				hello.NodeID,
 			)
 
+		case MessageBlock:
+			var message BlockMessage
+
+			if err := json.Unmarshal(
+				raw,
+				&message,
+			); err != nil {
+				_ = encoder.Encode(
+					BlockAck{
+						Type:     MessageBlockAck,
+						Accepted: false,
+						Error:    "invalid block message",
+					},
+				)
+				continue
+			}
+
+			local := s.hello()
+
+			ack := BlockAck{
+				Type:      MessageBlockAck,
+				BlockHash: message.Block.Hash,
+			}
+
+			if hello.ChainID != local.ChainID ||
+				message.ChainID != local.ChainID {
+
+				ack.Error = "block network mismatch"
+
+				if err := encoder.Encode(ack); err != nil {
+					return
+				}
+
+				fmt.Println(
+					"Block rejected: network mismatch",
+				)
+
+				continue
+			}
+
+			appended, err := s.acceptBlock(
+				message.Block,
+			)
+
+			if err != nil {
+				ack.Error = err.Error()
+
+				if err := encoder.Encode(ack); err != nil {
+					return
+				}
+
+				fmt.Printf(
+					"Block rejected: height=%d hash=%s: %v\n",
+					message.Block.Height,
+					shortHash(message.Block.Hash),
+					err,
+				)
+
+				continue
+			}
+
+			ack.Accepted = true
+
+			if err := encoder.Encode(ack); err != nil {
+				return
+			}
+
+			if !appended {
+				fmt.Printf(
+					"Block already known: height=%d hash=%s\n",
+					message.Block.Height,
+					shortHash(message.Block.Hash),
+				)
+
+				continue
+			}
+
+			fmt.Printf(
+				"Block accepted: height=%d hash=%s\n",
+				message.Block.Height,
+				shortHash(message.Block.Hash),
+			)
+
+			go s.broadcastBlock(
+				message.Block,
+				hello.NodeID,
+			)
+
 		default:
 			fmt.Println(
 				"Unsupported P2P request:",
@@ -1171,6 +1383,128 @@ func (s *Server) broadcastTransaction(
 			fmt.Printf(
 				"Transaction broadcast accepted: %s -> %s\n",
 				tx.ID,
+				currentPeer.NodeID,
+			)
+		}()
+	}
+}
+
+func (s *Server) acceptBlock(
+	block blockchain.Block,
+) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.Chain == nil {
+		return false, fmt.Errorf(
+			"blockchain cannot be nil",
+		)
+	}
+
+	if s.PoS == nil {
+		return false, fmt.Errorf(
+			"proof of stake engine cannot be nil",
+		)
+	}
+
+	if len(s.Chain.Blocks) == 0 {
+		return false, fmt.Errorf(
+			"blockchain has no genesis block",
+		)
+	}
+
+	localTip := s.Chain.Blocks[len(s.Chain.Blocks)-1]
+
+	if block.Height <= localTip.Height {
+		if block.Height < uint64(len(s.Chain.Blocks)) {
+			existing := s.Chain.Blocks[int(block.Height)]
+
+			if existing.Hash == block.Hash {
+				return false, nil
+			}
+		}
+
+		return false, fmt.Errorf(
+			"conflicting or stale block at height %d",
+			block.Height,
+		)
+	}
+
+	oldLength := len(s.Chain.Blocks)
+
+	if err := s.Chain.AppendValidatedBlock(
+		block,
+		s.PoS,
+	); err != nil {
+		return false, err
+	}
+
+	if err := storage.Save(
+		s.DataDir,
+		s.Chain,
+		s.PoS,
+		s.Wallets,
+	); err != nil {
+
+		s.Chain.Blocks =
+			s.Chain.Blocks[:oldLength]
+
+		return false, fmt.Errorf(
+			"unable to persist received block: %w",
+			err,
+		)
+	}
+
+	s.poolMu.Lock()
+
+	if s.Pool != nil {
+		s.Pool.RemoveCommitted(
+			block.Transactions,
+		)
+	}
+
+	s.poolMu.Unlock()
+
+	return true, nil
+}
+
+func (s *Server) broadcastBlock(
+	block blockchain.Block,
+	excludeNodeID string,
+) {
+	local := s.hello()
+
+	for _, peer := range s.Peers.List() {
+		if peer.NodeID == "" ||
+			peer.Address == "" ||
+			peer.NodeID == s.NodeID ||
+			peer.NodeID == excludeNodeID ||
+			peer.ChainID != local.ChainID {
+
+			continue
+		}
+
+		currentPeer := peer
+
+		go func() {
+			if err := s.SendBlock(
+				currentPeer.Address,
+				block,
+			); err != nil {
+
+				fmt.Printf(
+					"Block broadcast failed: height=%d -> %s: %v\n",
+					block.Height,
+					currentPeer.NodeID,
+					err,
+				)
+
+				return
+			}
+
+			fmt.Printf(
+				"Block broadcast accepted: height=%d -> %s\n",
+				block.Height,
 				currentPeer.NodeID,
 			)
 		}()

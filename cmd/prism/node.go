@@ -388,6 +388,12 @@ func runNodeProduceCommand(
 		"node data directory",
 	)
 
+	peer := flags.String(
+		"peer",
+		"",
+		"destination Prism peer for block broadcast",
+	)
+
 	if err := flags.Parse(args); err != nil {
 		return
 	}
@@ -603,6 +609,41 @@ func runNodeProduceCommand(
 		"Node state saved:",
 		dataPath,
 	)
+
+	if *peer != "" {
+		server := p2p.NewServer(
+			p2p.MakeNodeID(alice.Address),
+			fmt.Sprintf(
+				"0.0.0.0:%d",
+				*port,
+			),
+			dataPath,
+			chain,
+			pos,
+			wallets,
+		)
+
+		fmt.Println()
+		fmt.Println(
+			"Broadcasting block to:",
+			*peer,
+		)
+
+		if err := server.SendBlock(
+			*peer,
+			block,
+		); err != nil {
+			fmt.Println(
+				"Block submission rejected:",
+				err,
+			)
+			return
+		}
+
+		fmt.Println(
+			"Block submission: ACCEPTED",
+		)
+	}
 }
 
 func resolveNodeDataPath(
