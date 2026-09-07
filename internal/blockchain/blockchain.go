@@ -208,6 +208,16 @@ func (bc *Blockchain) addBlock(
 		)
 	}
 
+	supplyPolicy :=
+		consensus.DefaultSupplyPolicy()
+
+	if err := supplyPolicy.Validate(); err != nil {
+		return Block{}, fmt.Errorf(
+			"invalid supply policy: %w",
+			err,
+		)
+	}
+
 	if pos == nil {
 		return Block{}, fmt.Errorf(
 			"proof of stake engine cannot be nil",
@@ -432,6 +442,30 @@ func (bc *Blockchain) addBlock(
 			struct{}{}
 	}
 
+	emission, err :=
+		bc.GetEmissionState()
+
+	if err != nil {
+		return Block{}, fmt.Errorf(
+			"cannot calculate current emissions: %w",
+			err,
+		)
+	}
+
+	proposerReward, err :=
+		consensus.BoundedPoolReward(
+			rewardPolicy.ProposerReward,
+			emission.ProposerEmission,
+			supplyPolicy.ProposerRewardPool,
+		)
+
+	if err != nil {
+		return Block{}, fmt.Errorf(
+			"cannot calculate proposer reward: %w",
+			err,
+		)
+	}
+
 	blockTransactions := append(
 		[]transaction.Transaction(nil),
 		transactions...,
@@ -452,7 +486,7 @@ func (bc *Blockchain) addBlock(
 		Timestamp:    time.Now().UTC(),
 		PreviousHash: previousBlock.Hash,
 		Proposer:     proposer,
-		Reward:       rewardPolicy.ProposerReward,
+		Reward:       proposerReward,
 		Transactions: blockTransactions,
 		UsefulWork:   blockWork,
 		Humanity:     blockHumanity,
@@ -681,6 +715,16 @@ func (bc *Blockchain) GetState() (
 		)
 	}
 
+	supplyPolicy :=
+		consensus.DefaultSupplyPolicy()
+
+	if err := supplyPolicy.Validate(); err != nil {
+		return State{}, fmt.Errorf(
+			"invalid supply policy: %w",
+			err,
+		)
+	}
+
 	state := State{
 		Balances: make(map[string]uint64),
 		Nonces:   make(map[string]uint64),
@@ -701,6 +745,8 @@ func (bc *Blockchain) GetState() (
 	usedParticipationClaims := make(
 		map[participationClaimKey]struct{},
 	)
+
+	var proposerEmission uint64
 
 	for blockIndex, block := range bc.Blocks {
 		if blockIndex == 0 {
@@ -764,10 +810,27 @@ func (bc *Blockchain) GetState() (
 			)
 		}
 
-		if block.Reward != rewardPolicy.ProposerReward {
+		expectedProposerReward, err :=
+			consensus.BoundedPoolReward(
+				rewardPolicy.ProposerReward,
+				proposerEmission,
+				supplyPolicy.ProposerRewardPool,
+			)
+
+		if err != nil {
 			return State{}, fmt.Errorf(
-				"invalid reward in block %d",
+				"invalid proposer emission in block %d: %w",
 				blockIndex,
+				err,
+			)
+		}
+
+		if block.Reward != expectedProposerReward {
+			return State{}, fmt.Errorf(
+				"invalid reward in block %d: expected %d, got %d",
+				blockIndex,
+				expectedProposerReward,
+				block.Reward,
 			)
 		}
 
@@ -951,6 +1014,9 @@ func (bc *Blockchain) GetState() (
 
 		state.Balances[block.Proposer] +=
 			block.Reward
+
+		proposerEmission +=
+			block.Reward
 	}
 
 	return state, nil
@@ -1034,6 +1100,13 @@ func (bc *Blockchain) ValidateChain(
 		return false
 	}
 
+	supplyPolicy :=
+		consensus.DefaultSupplyPolicy()
+
+	if err := supplyPolicy.Validate(); err != nil {
+		return false
+	}
+
 	if len(bc.Blocks) == 0 {
 		return false
 	}
@@ -1078,6 +1151,8 @@ func (bc *Blockchain) ValidateChain(
 		return false
 	}
 
+	var proposerEmission uint64
+
 	for i := 1; i < len(bc.Blocks); i++ {
 		current := bc.Blocks[i]
 		previous := bc.Blocks[i-1]
@@ -1096,9 +1171,23 @@ func (bc *Blockchain) ValidateChain(
 			return false
 		}
 
-		if current.Reward != rewardPolicy.ProposerReward {
+		expectedProposerReward, err :=
+			consensus.BoundedPoolReward(
+				rewardPolicy.ProposerReward,
+				proposerEmission,
+				supplyPolicy.ProposerRewardPool,
+			)
+
+		if err != nil {
 			return false
 		}
+
+		if current.Reward != expectedProposerReward {
+			return false
+		}
+
+		proposerEmission +=
+			current.Reward
 
 		// Transactions, Useful Work, Humanity OR PoUP claims
 		// can make a normal block non-empty.
