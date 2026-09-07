@@ -13,6 +13,7 @@ type SupplyState struct {
 	LedgerSupply            uint64 `json:"ledgerSupply"`
 	GenesisSupply           uint64 `json:"genesisSupply"`
 	NetworkEmission         uint64 `json:"networkEmission"`
+	ReservedEmission        uint64 `json:"reservedEmission"`
 	NetworkRewardAllocation uint64 `json:"networkRewardAllocation"`
 	NetworkRewardRemaining  uint64 `json:"networkRewardRemaining"`
 
@@ -159,13 +160,28 @@ func (bc *Blockchain) GetSupplyState() (
 		return SupplyState{}, err
 	}
 
-	reservedUsage :=
-		consensus.ReservedUsage{
-			LegacyGenesis: genesisSupply,
-		}
+	reservedAccounting, err :=
+		bc.GetReservedAccountingState()
+
+	if err != nil {
+		return SupplyState{}, fmt.Errorf(
+			"cannot calculate reserved accounting: %w",
+			err,
+		)
+	}
+
+	reservedEmission, err :=
+		reservedAccounting.Usage.ExplicitTotal()
+
+	if err != nil {
+		return SupplyState{}, fmt.Errorf(
+			"cannot calculate reserved emission: %w",
+			err,
+		)
+	}
 
 	reservedBudget, err :=
-		reservedUsage.Remaining(
+		reservedAccounting.Budget(
 			policy,
 		)
 
@@ -190,6 +206,17 @@ func (bc *Blockchain) GetSupplyState() (
 	accountedLedger :=
 		genesisSupply +
 			networkEmission
+
+	if accountedLedger >
+		math.MaxUint64-reservedEmission {
+
+		return SupplyState{}, fmt.Errorf(
+			"supply accounting overflow",
+		)
+	}
+
+	accountedLedger +=
+		reservedEmission
 
 	if ledgerSupply != accountedLedger {
 		return SupplyState{}, fmt.Errorf(
@@ -236,6 +263,7 @@ func (bc *Blockchain) GetSupplyState() (
 		LedgerSupply:            ledgerSupply,
 		GenesisSupply:           genesisSupply,
 		NetworkEmission:         networkEmission,
+		ReservedEmission:        reservedEmission,
 		NetworkRewardAllocation: policy.NetworkRewardAllocation(),
 		NetworkRewardRemaining:  networkRewardRemaining,
 

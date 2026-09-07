@@ -57,6 +57,13 @@ func TestSupplyStateAtGenesis(
 		)
 	}
 
+	if state.ReservedEmission != 0 {
+		t.Fatalf(
+			"expected zero reserved emission, got %d",
+			state.ReservedEmission,
+		)
+	}
+
 	if state.NetworkRewardAllocation != 60_000_000 {
 		t.Fatalf(
 			"expected network allocation 60000000, got %d",
@@ -165,6 +172,13 @@ func TestSupplyStateTracksNetworkEmission(
 		t.Fatalf(
 			"expected network emission 5, got %d",
 			state.NetworkEmission,
+		)
+	}
+
+	if state.ReservedEmission != 0 {
+		t.Fatalf(
+			"expected zero reserved emission after network rewards, got %d",
+			state.ReservedEmission,
 		)
 	}
 
