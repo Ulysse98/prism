@@ -698,6 +698,10 @@ func (bc *Blockchain) GetState() (
 		map[string]struct{},
 	)
 
+	usedParticipationClaims := make(
+		map[participationClaimKey]struct{},
+	)
+
 	for blockIndex, block := range bc.Blocks {
 		if blockIndex == 0 {
 			if block.Proposer != "GENESIS" {
@@ -721,6 +725,12 @@ func (bc *Blockchain) GetState() (
 			if len(block.Humanity) != 0 {
 				return State{}, fmt.Errorf(
 					"genesis block cannot contain humanity attestations",
+				)
+			}
+
+			if len(block.ParticipationClaims) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain participation claims",
 				)
 			}
 
@@ -761,10 +771,12 @@ func (bc *Blockchain) GetState() (
 			)
 		}
 
-		// Humanity-only blocks are valid normal blocks.
+		// Transactions, Useful Work, Humanity or PoUP claims
+		// can make a normal block non-empty.
 		if len(block.Transactions) == 0 &&
 			len(block.UsefulWork) == 0 &&
-			len(block.Humanity) == 0 {
+			len(block.Humanity) == 0 &&
+			len(block.ParticipationClaims) == 0 {
 
 			return State{}, fmt.Errorf(
 				"empty normal block at height %d",
@@ -878,6 +890,42 @@ func (bc *Blockchain) GetState() (
 				struct{}{}
 
 			usedNullifierHashes[attestation.NullifierHash] =
+				struct{}{}
+		}
+
+		// Proof of Useful Participation claims.
+		//
+		// Claims are consensus-validated here but are not
+		// credited to balances yet.
+		for _, claim := range block.ParticipationClaims {
+			if err := bc.validateParticipationClaim(
+				claim,
+				block.Height,
+				rewardPolicy,
+			); err != nil {
+				return State{}, fmt.Errorf(
+					"invalid participation claim in block %d: %w",
+					blockIndex,
+					err,
+				)
+			}
+
+			key := participationClaimKey{
+				Address: claim.Address,
+				Period:  claim.Period,
+			}
+
+			if _, exists :=
+				usedParticipationClaims[key]; exists {
+
+				return State{}, fmt.Errorf(
+					"participation reward already claimed for address %s period %d",
+					claim.Address,
+					claim.Period,
+				)
+			}
+
+			usedParticipationClaims[key] =
 				struct{}{}
 		}
 
@@ -1011,6 +1059,10 @@ func (bc *Blockchain) ValidateChain(
 		return false
 	}
 
+	if len(genesis.ParticipationClaims) != 0 {
+		return false
+	}
+
 	if CalculateHash(genesis) != genesis.Hash {
 		return false
 	}
@@ -1037,11 +1089,12 @@ func (bc *Blockchain) ValidateChain(
 			return false
 		}
 
-		// Transactions, Useful Work OR Humanity
+		// Transactions, Useful Work, Humanity OR PoUP claims
 		// can make a normal block non-empty.
 		if len(current.Transactions) == 0 &&
 			len(current.UsefulWork) == 0 &&
-			len(current.Humanity) == 0 {
+			len(current.Humanity) == 0 &&
+			len(current.ParticipationClaims) == 0 {
 
 			return false
 		}
