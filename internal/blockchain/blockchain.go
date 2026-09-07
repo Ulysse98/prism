@@ -782,6 +782,12 @@ func (bc *Blockchain) GetState() (
 				)
 			}
 
+			if len(block.ReservedAuthorizations) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain reserved authorizations",
+				)
+			}
+
 			for _, tx := range block.Transactions {
 				if err := transaction.ValidateGenesis(
 					tx,
@@ -809,6 +815,12 @@ func (bc *Blockchain) GetState() (
 			return State{}, fmt.Errorf(
 				"invalid proposer in block %d",
 				blockIndex,
+			)
+		}
+
+		if len(block.ReservedAuthorizations) != 0 {
+			return State{}, fmt.Errorf(
+				"reserved authorizations are not activated in consensus",
 			)
 		}
 

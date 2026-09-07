@@ -11,6 +11,7 @@ import (
 	"prism/internal/consensus"
 	"prism/internal/identity"
 	"prism/internal/poup"
+	"prism/internal/reserved"
 	"prism/internal/transaction"
 	"prism/internal/usefulwork"
 )
@@ -21,16 +22,17 @@ const BlockReward uint64 = consensus.DefaultProposerReward
 const UsefulWorkReward uint64 = consensus.DefaultUsefulWorkReward
 
 type Block struct {
-	Height              uint64                    `json:"height"`
-	Timestamp           time.Time                 `json:"timestamp"`
-	PreviousHash        string                    `json:"previous_hash"`
-	Proposer            string                    `json:"proposer"`
-	Reward              uint64                    `json:"reward"`
-	Transactions        []transaction.Transaction `json:"transactions"`
-	UsefulWork          []usefulwork.Proof        `json:"useful_work"`
-	Humanity            []identity.Attestation    `json:"humanity,omitempty"`
-	ParticipationClaims []poup.Claim              `json:"participation_claims,omitempty"`
-	Hash                string                    `json:"hash"`
+	Height                 uint64                    `json:"height"`
+	Timestamp              time.Time                 `json:"timestamp"`
+	PreviousHash           string                    `json:"previous_hash"`
+	Proposer               string                    `json:"proposer"`
+	Reward                 uint64                    `json:"reward"`
+	Transactions           []transaction.Transaction `json:"transactions"`
+	UsefulWork             []usefulwork.Proof        `json:"useful_work"`
+	Humanity               []identity.Attestation    `json:"humanity,omitempty"`
+	ParticipationClaims    []poup.Claim              `json:"participation_claims,omitempty"`
+	ReservedAuthorizations []reserved.Authorization  `json:"reserved_authorizations,omitempty"`
+	Hash                   string                    `json:"hash"`
 }
 
 func CalculateHash(
@@ -49,6 +51,55 @@ func CalculateHash(
 	)
 	if err != nil {
 		panic(err)
+	}
+
+	// Reserved-authorization-aware hash format.
+	//
+	// Existing blocks without reserved authorizations retain
+	// their exact legacy, humanity or PoUP hash formats below.
+	if len(block.ReservedAuthorizations) > 0 {
+		humanityData, err := json.Marshal(
+			block.Humanity,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		claimData, err := json.Marshal(
+			block.ParticipationClaims,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		reservedData, err := json.Marshal(
+			block.ReservedAuthorizations,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		payload := fmt.Sprintf(
+			"reserved-block-v1|%d|%s|%s|%s|%d|%s|%s|%s|%s|%s",
+			block.Height,
+			block.Timestamp.UTC().Format(
+				time.RFC3339Nano,
+			),
+			block.PreviousHash,
+			block.Proposer,
+			block.Reward,
+			string(transactionData),
+			string(usefulWorkData),
+			string(humanityData),
+			string(claimData),
+			string(reservedData),
+		)
+
+		hash := sha256.Sum256(
+			[]byte(payload),
+		)
+
+		return hex.EncodeToString(hash[:])
 	}
 
 	// PoUP claim-aware hash format.
