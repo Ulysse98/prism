@@ -22,6 +22,42 @@ func MakeChainID(
 		)
 }
 
+func MakeChainIDFromConfigCommitment(
+	genesisHash string,
+	configCommitment string,
+) (
+	string,
+	error,
+) {
+	if genesisHash == "" {
+		return "",
+			fmt.Errorf(
+				"genesis block hash cannot be empty",
+			)
+	}
+
+	if configCommitment == "" {
+		return MakeChainID(
+			genesisHash,
+		), nil
+	}
+
+	hash :=
+		sha256.Sum256(
+			[]byte(
+				"prism-chain-v2|" +
+					genesisHash +
+					"|" +
+					configCommitment,
+			),
+		)
+
+	return "prism-" +
+		hex.EncodeToString(
+			hash[:8],
+		), nil
+}
+
 func MakeConfiguredChainID(
 	genesisHash string,
 	config ChainConfig,
@@ -37,9 +73,10 @@ func MakeConfiguredChainID(
 	}
 
 	if config.IsLegacy() {
-		return MakeChainID(
+		return MakeChainIDFromConfigCommitment(
 			genesisHash,
-		), nil
+			"",
+		)
 	}
 
 	commitment, err :=
@@ -53,20 +90,10 @@ func MakeConfiguredChainID(
 			)
 	}
 
-	hash :=
-		sha256.Sum256(
-			[]byte(
-				"prism-chain-v2|" +
-					genesisHash +
-					"|" +
-					commitment,
-			),
-		)
-
-	return "prism-" +
-		hex.EncodeToString(
-			hash[:8],
-		), nil
+	return MakeChainIDFromConfigCommitment(
+		genesisHash,
+		commitment,
+	)
 }
 
 func (bc *Blockchain) ChainID() (
