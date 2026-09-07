@@ -386,3 +386,58 @@ func TestSupplyStateRejectsGenesisAboveReservedAllocation(
 		)
 	}
 }
+
+func TestSupplyStateUsesReservedBudget(
+	t *testing.T,
+) {
+	chain, err := NewBlockchain(
+		map[string]uint64{
+			"Alice": 1250,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	state, err :=
+		chain.GetSupplyState()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if state.ReservedRemaining != 39_998_750 {
+		t.Fatalf(
+			"expected reserved remaining 39998750, got %d",
+			state.ReservedRemaining,
+		)
+	}
+
+	if state.EcosystemRemaining != 15_000_000 {
+		t.Fatalf(
+			"expected ecosystem remaining 15000000, got %d",
+			state.EcosystemRemaining,
+		)
+	}
+
+	if state.TreasuryRemaining != 10_000_000 {
+		t.Fatalf(
+			"expected treasury remaining 10000000, got %d",
+			state.TreasuryRemaining,
+		)
+	}
+
+	if state.TeamRemaining != 10_000_000 {
+		t.Fatalf(
+			"expected team remaining 10000000, got %d",
+			state.TeamRemaining,
+		)
+	}
+
+	if state.LiquidityRemaining != 5_000_000 {
+		t.Fatalf(
+			"expected liquidity remaining 5000000, got %d",
+			state.LiquidityRemaining,
+		)
+	}
+}

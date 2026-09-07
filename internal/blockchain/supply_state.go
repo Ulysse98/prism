@@ -25,6 +25,11 @@ type SupplyState struct {
 	TeamAllocation      uint64 `json:"teamAllocation"`
 	LiquidityAllocation uint64 `json:"liquidityAllocation"`
 
+	EcosystemRemaining uint64 `json:"ecosystemRemaining"`
+	TreasuryRemaining  uint64 `json:"treasuryRemaining"`
+	TeamRemaining      uint64 `json:"teamRemaining"`
+	LiquidityRemaining uint64 `json:"liquidityRemaining"`
+
 	RemainingSupply uint64 `json:"remainingSupply"`
 }
 
@@ -154,19 +159,25 @@ func (bc *Blockchain) GetSupplyState() (
 		return SupplyState{}, err
 	}
 
-	if genesisSupply >
-		policy.ReservedAllocation() {
+	reservedUsage :=
+		consensus.ReservedUsage{
+			LegacyGenesis: genesisSupply,
+		}
 
+	reservedBudget, err :=
+		reservedUsage.Remaining(
+			policy,
+		)
+
+	if err != nil {
 		return SupplyState{}, fmt.Errorf(
-			"genesis supply exceeds reserved allocation: genesis=%d reserved=%d",
-			genesisSupply,
-			policy.ReservedAllocation(),
+			"cannot calculate reserved budget: %w",
+			err,
 		)
 	}
 
 	reservedRemaining :=
-		policy.ReservedAllocation() -
-			genesisSupply
+		reservedBudget.TotalRemaining
 
 	if genesisSupply >
 		math.MaxUint64-networkEmission {
@@ -236,6 +247,11 @@ func (bc *Blockchain) GetSupplyState() (
 		TreasuryAllocation:  policy.TreasuryAllocation,
 		TeamAllocation:      policy.TeamAllocation,
 		LiquidityAllocation: policy.LiquidityAllocation,
+
+		EcosystemRemaining: reservedBudget.EcosystemRemaining,
+		TreasuryRemaining:  reservedBudget.TreasuryRemaining,
+		TeamRemaining:      reservedBudget.TeamRemaining,
+		LiquidityRemaining: reservedBudget.LiquidityRemaining,
 
 		RemainingSupply: remainingSupply,
 	}, nil
