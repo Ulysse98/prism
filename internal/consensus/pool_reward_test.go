@@ -83,3 +83,47 @@ func TestBoundedPoolRewardRejectsExceededPool(
 		)
 	}
 }
+
+func TestBoundedPoolRewardUsesFinalPoUWUnit(
+	t *testing.T,
+) {
+	reward, err :=
+		BoundedPoolReward(
+			2,
+			19_999_999,
+			20_000_000,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if reward != 1 {
+		t.Fatalf(
+			"expected final PoUW reward 1, got %d",
+			reward,
+		)
+	}
+}
+
+func TestBoundedPoolRewardStopsPoUWWhenExhausted(
+	t *testing.T,
+) {
+	reward, err :=
+		BoundedPoolReward(
+			2,
+			20_000_000,
+			20_000_000,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if reward != 0 {
+		t.Fatalf(
+			"expected exhausted PoUW reward 0, got %d",
+			reward,
+		)
+	}
+}

@@ -70,6 +70,16 @@ func (bc *Blockchain) GetEmissionState() (
 		)
 	}
 
+	supplyPolicy :=
+		consensus.DefaultSupplyPolicy()
+
+	if err := supplyPolicy.Validate(); err != nil {
+		return EmissionState{}, fmt.Errorf(
+			"invalid supply policy: %w",
+			err,
+		)
+	}
+
 	var emission EmissionState
 
 	for blockIndex, block := range bc.Blocks {
@@ -90,9 +100,22 @@ func (bc *Blockchain) GetEmissionState() (
 			block.Reward
 
 		for range block.UsefulWork {
+			workReward, err :=
+				consensus.BoundedPoolReward(
+					rewardPolicy.UsefulWorkReward,
+					emission.UsefulWorkEmission,
+					supplyPolicy.UsefulWorkRewardPool,
+				)
+
+			if err != nil {
+				return EmissionState{}, fmt.Errorf(
+					"invalid useful work emission: %w",
+					err,
+				)
+			}
+
 			if emission.UsefulWorkEmission >
-				math.MaxUint64-
-					rewardPolicy.UsefulWorkReward {
+				math.MaxUint64-workReward {
 
 				return EmissionState{}, fmt.Errorf(
 					"useful work emission overflow",
@@ -100,7 +123,7 @@ func (bc *Blockchain) GetEmissionState() (
 			}
 
 			emission.UsefulWorkEmission +=
-				rewardPolicy.UsefulWorkReward
+				workReward
 		}
 
 		for _, claim := range block.ParticipationClaims {

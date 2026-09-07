@@ -747,6 +747,7 @@ func (bc *Blockchain) GetState() (
 	)
 
 	var proposerEmission uint64
+	var usefulWorkEmission uint64
 
 	for blockIndex, block := range bc.Blocks {
 		if blockIndex == 0 {
@@ -908,8 +909,23 @@ func (bc *Blockchain) GetState() (
 
 			usedTasks[proof.Task.ID] = struct{}{}
 
+			workReward, err :=
+				consensus.BoundedPoolReward(
+					rewardPolicy.UsefulWorkReward,
+					usefulWorkEmission,
+					supplyPolicy.UsefulWorkRewardPool,
+				)
+
+			if err != nil {
+				return State{}, fmt.Errorf(
+					"invalid useful work emission in block %d: %w",
+					blockIndex,
+					err,
+				)
+			}
+
 			if state.Balances[proof.Worker] >
-				math.MaxUint64-rewardPolicy.UsefulWorkReward {
+				math.MaxUint64-workReward {
 
 				return State{}, fmt.Errorf(
 					"useful work reward overflow",
@@ -917,7 +933,10 @@ func (bc *Blockchain) GetState() (
 			}
 
 			state.Balances[proof.Worker] +=
-				rewardPolicy.UsefulWorkReward
+				workReward
+
+			usefulWorkEmission +=
+				workReward
 		}
 
 		// Humanity attestations.
