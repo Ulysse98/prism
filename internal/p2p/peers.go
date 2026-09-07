@@ -26,7 +26,14 @@ func NewPeerBook() *PeerBook {
 }
 
 func (b *PeerBook) Upsert(hello HelloMessage) {
-	if hello.NodeID == "" || hello.ListenAddr == "" {
+	b.UpsertAt(hello, hello.ListenAddr)
+}
+
+func (b *PeerBook) UpsertAt(
+	hello HelloMessage,
+	address string,
+) {
+	if hello.NodeID == "" || address == "" {
 		return
 	}
 
@@ -39,7 +46,7 @@ func (b *PeerBook) Upsert(hello HelloMessage) {
 
 	b.peers[hello.NodeID] = Peer{
 		NodeID:   hello.NodeID,
-		Address:  hello.ListenAddr,
+		Address:  address,
 		Height:   hello.Height,
 		LastHash: hello.LastHash,
 		LastSeen: time.Now().UTC(),

@@ -240,7 +240,7 @@ func (s *Server) Connect(address string) error {
 		return fmt.Errorf("refusing self connection")
 	}
 
-	s.Peers.Upsert(remote)
+	s.Peers.UpsertAt(remote, address)
 
 	fmt.Println("Handshake accepted.")
 	s.printPeer(remote)
@@ -561,7 +561,15 @@ func (s *Server) handleIncoming(
 		return
 	}
 
-	s.Peers.Upsert(hello)
+	peerAddress := reachablePeerAddress(
+		hello.ListenAddr,
+		conn.RemoteAddr(),
+	)
+
+	s.Peers.UpsertAt(
+		hello,
+		peerAddress,
+	)
 
 	fmt.Println()
 	fmt.Println(
@@ -797,6 +805,39 @@ func (s *Server) printPeer(
 
 	fmt.Println(
 		"Chain state: FORK",
+	)
+}
+
+func reachablePeerAddress(
+	listenAddr string,
+	remoteAddr net.Addr,
+) string {
+	host, port, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		return listenAddr
+	}
+
+	if host != "" &&
+		host != "0.0.0.0" &&
+		host != "::" {
+
+		return listenAddr
+	}
+
+	if remoteAddr == nil {
+		return listenAddr
+	}
+
+	remoteHost, _, err := net.SplitHostPort(
+		remoteAddr.String(),
+	)
+	if err != nil {
+		return listenAddr
+	}
+
+	return net.JoinHostPort(
+		remoteHost,
+		port,
 	)
 }
 
