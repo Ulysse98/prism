@@ -8,7 +8,6 @@ import (
 
 func (bc *Blockchain) ValidateReservedAuthorization(
 	authorization reserved.Authorization,
-	authorityPolicy reserved.AuthorityPolicy,
 ) error {
 	chainID, err :=
 		bc.ChainID()
@@ -21,7 +20,7 @@ func (bc *Blockchain) ValidateReservedAuthorization(
 	}
 
 	if err :=
-		authorityPolicy.ValidateAuthorization(
+		bc.Config.ReservedAuthorities.ValidateAuthorization(
 			authorization,
 			chainID,
 		); err != nil {

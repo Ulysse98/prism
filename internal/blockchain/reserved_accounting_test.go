@@ -68,9 +68,7 @@ func TestReservedAccountingReplayStartsFromGenesis(
 	}
 
 	state, err :=
-		bc.GetReservedAccountingState(
-			reserved.DefaultAuthorityPolicy(),
-		)
+		bc.GetReservedAccountingState()
 
 	if err != nil {
 		t.Fatal(err)
@@ -121,6 +119,15 @@ func TestReservedAccountingReplayTracksAuthorizations(
 		t.Fatal(err)
 	}
 
+	bc.Config =
+		ChainConfig{
+			ReservedAuthorities: reserved.AuthorityPolicy{
+				Treasury: []string{
+					authorizer.Address,
+				},
+			},
+		}
+
 	first :=
 		signedReservedReplayAuthorization(
 			t,
@@ -155,16 +162,8 @@ func TestReservedAccountingReplayTracksAuthorizations(
 		},
 	)
 
-	policy := reserved.AuthorityPolicy{
-		Treasury: []string{
-			authorizer.Address,
-		},
-	}
-
 	state, err :=
-		bc.GetReservedAccountingState(
-			policy,
-		)
+		bc.GetReservedAccountingState()
 
 	if err != nil {
 		t.Fatal(err)
@@ -222,6 +221,15 @@ func TestReservedAccountingReplayRejectsReusedNonce(
 		t.Fatal(err)
 	}
 
+	bc.Config =
+		ChainConfig{
+			ReservedAuthorities: reserved.AuthorityPolicy{
+				Treasury: []string{
+					authorizer.Address,
+				},
+			},
+		}
+
 	first :=
 		signedReservedReplayAuthorization(
 			t,
@@ -256,16 +264,8 @@ func TestReservedAccountingReplayRejectsReusedNonce(
 		},
 	)
 
-	policy := reserved.AuthorityPolicy{
-		Treasury: []string{
-			authorizer.Address,
-		},
-	}
-
 	if _, err :=
-		bc.GetReservedAccountingState(
-			policy,
-		); err == nil {
+		bc.GetReservedAccountingState(); err == nil {
 
 		t.Fatal(
 			"expected reused reserved nonce to fail replay",
@@ -293,6 +293,15 @@ func TestReservedAccountingReplayRejectsCumulativePoolOverflow(
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	bc.Config =
+		ChainConfig{
+			ReservedAuthorities: reserved.AuthorityPolicy{
+				Treasury: []string{
+					authorizer.Address,
+				},
+			},
+		}
 
 	first :=
 		signedReservedReplayAuthorization(
@@ -328,16 +337,8 @@ func TestReservedAccountingReplayRejectsCumulativePoolOverflow(
 		},
 	)
 
-	policy := reserved.AuthorityPolicy{
-		Treasury: []string{
-			authorizer.Address,
-		},
-	}
-
 	if _, err :=
-		bc.GetReservedAccountingState(
-			policy,
-		); err == nil {
+		bc.GetReservedAccountingState(); err == nil {
 
 		t.Fatal(
 			"expected cumulative treasury overflow to fail replay",

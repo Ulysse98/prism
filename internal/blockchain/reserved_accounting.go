@@ -7,9 +7,7 @@ import (
 	"prism/internal/reserved"
 )
 
-func (bc *Blockchain) GetReservedAccountingState(
-	authorityPolicy reserved.AuthorityPolicy,
-) (
+func (bc *Blockchain) GetReservedAccountingState() (
 	*reserved.AccountingState,
 	error,
 ) {
@@ -60,8 +58,10 @@ func (bc *Blockchain) GetReservedAccountingState(
 			genesisSupply,
 		)
 
-	for blockIndex, block := range bc.Blocks {
+	authorityPolicy :=
+		bc.Config.ReservedAuthorities
 
+	for blockIndex, block := range bc.Blocks {
 		if blockIndex == 0 {
 			if len(
 				block.ReservedAuthorizations,

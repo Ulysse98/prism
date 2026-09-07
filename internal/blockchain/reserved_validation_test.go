@@ -72,6 +72,15 @@ func TestBlockchainValidatesReservedAuthorizationForOwnChain(
 		t.Fatal(err)
 	}
 
+	bc.Config =
+		ChainConfig{
+			ReservedAuthorities: reserved.AuthorityPolicy{
+				Treasury: []string{
+					authorizer.Address,
+				},
+			},
+		}
+
 	authorization :=
 		signedReservedAuthorizationForBlockchain(
 			t,
@@ -79,16 +88,9 @@ func TestBlockchainValidatesReservedAuthorizationForOwnChain(
 			authorizer,
 		)
 
-	policy := reserved.AuthorityPolicy{
-		Treasury: []string{
-			authorizer.Address,
-		},
-	}
-
 	if err :=
 		bc.ValidateReservedAuthorization(
 			authorization,
-			policy,
 		); err != nil {
 
 		t.Fatal(err)
@@ -116,6 +118,15 @@ func TestBlockchainRejectsReservedAuthorizationForWrongChain(
 		t.Fatal(err)
 	}
 
+	bc.Config =
+		ChainConfig{
+			ReservedAuthorities: reserved.AuthorityPolicy{
+				Treasury: []string{
+					authorizer.Address,
+				},
+			},
+		}
+
 	authorization :=
 		signedReservedAuthorizationForBlockchain(
 			t,
@@ -139,16 +150,9 @@ func TestBlockchainRejectsReservedAuthorizationForWrongChain(
 		t.Fatal(err)
 	}
 
-	policy := reserved.AuthorityPolicy{
-		Treasury: []string{
-			authorizer.Address,
-		},
-	}
-
 	if err :=
 		bc.ValidateReservedAuthorization(
 			authorization,
-			policy,
 		); err == nil {
 
 		t.Fatal(
@@ -188,7 +192,6 @@ func TestBlockchainDefaultAuthorityPolicyStillDenies(
 	if err :=
 		bc.ValidateReservedAuthorization(
 			authorization,
-			reserved.DefaultAuthorityPolicy(),
 		); err == nil {
 
 		t.Fatal(
