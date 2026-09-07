@@ -16,12 +16,14 @@ import (
 	"prism/internal/wallet"
 )
 
-const ProtocolVersion = "0.17"
+const ProtocolVersion = "0.19"
 
 const (
 	MessageHello    = "hello"
 	MessageGetState = "get_state"
 	MessageState    = "state"
+	MessageGetPeers = "get_peers"
+	MessagePeers    = "peers"
 )
 
 type HelloMessage struct {
@@ -44,6 +46,12 @@ type StateResponse struct {
 	ChainID    string                 `json:"chain_id"`
 	Blockchain *blockchain.Blockchain `json:"blockchain"`
 	Validators []consensus.Validator  `json:"validators"`
+}
+
+type PeersResponse struct {
+	Type    string              `json:"type"`
+	ChainID string              `json:"chain_id"`
+	Peers   []PeerAdvertisement `json:"peers"`
 }
 
 type Server struct {
@@ -240,7 +248,10 @@ func (s *Server) Connect(address string) error {
 		return fmt.Errorf("refusing self connection")
 	}
 
-	s.Peers.UpsertAt(remote, address)
+	s.Peers.UpsertAt(
+		remote,
+		address,
+	)
 
 	fmt.Println("Handshake accepted.")
 	s.printPeer(remote)
@@ -258,24 +269,23 @@ func (s *Server) Connect(address string) error {
 		fmt.Println(
 			"Different network genesis detected.",
 		)
-
 		fmt.Println(
 			"Local node only has its bootstrap Genesis.",
 		)
-
 		fmt.Println(
 			"Requesting authoritative peer state...",
 		)
 
-		return s.requestAndAdoptState(
+		if err := s.requestAndAdoptState(
 			encoder,
 			decoder,
 			remote,
 			true,
-		)
-	}
+		); err != nil {
+			return err
+		}
 
-	if remote.Height > localBefore.Height {
+	} else if remote.Height > localBefore.Height {
 		fmt.Println()
 
 		fmt.Printf(
@@ -288,15 +298,16 @@ func (s *Server) Connect(address string) error {
 			"Requesting synchronization...",
 		)
 
-		return s.requestAndAdoptState(
+		if err := s.requestAndAdoptState(
 			encoder,
 			decoder,
 			remote,
 			false,
-		)
-	}
+		); err != nil {
+			return err
+		}
 
-	if remote.Height == localBefore.Height &&
+	} else if remote.Height == localBefore.Height &&
 		remote.LastHash != localBefore.LastHash {
 
 		return fmt.Errorf(
@@ -306,6 +317,94 @@ func (s *Server) Connect(address string) error {
 			shortHash(remote.LastHash),
 		)
 	}
+
+	return s.requestPeers(
+		encoder,
+		decoder,
+		remote,
+	)
+}
+
+func (s *Server) requestPeers(
+	encoder *json.Encoder,
+	decoder *json.Decoder,
+	remote HelloMessage,
+) error {
+	request := StateRequest{
+		Type: MessageGetPeers,
+	}
+
+	if err := encoder.Encode(request); err != nil {
+		return err
+	}
+
+	var response PeersResponse
+
+	if err := decoder.Decode(&response); err != nil {
+		return err
+	}
+
+	if response.Type != MessagePeers {
+		return fmt.Errorf(
+			"unexpected peer discovery response: %s",
+			response.Type,
+		)
+	}
+
+	local := s.hello()
+
+	if response.ChainID != remote.ChainID ||
+		response.ChainID != local.ChainID {
+
+		return fmt.Errorf(
+			"peer discovery Chain ID mismatch",
+		)
+	}
+
+	fmt.Println()
+
+	seen := make(map[string]struct{})
+	discovered := 0
+
+	for _, peer := range response.Peers {
+		if peer.NodeID == "" ||
+			peer.Address == "" ||
+			peer.NodeID == s.NodeID ||
+			peer.NodeID == remote.NodeID {
+
+			continue
+		}
+
+		if _, ok := seen[peer.NodeID]; ok {
+			continue
+		}
+
+		if _, _, err := net.SplitHostPort(
+			peer.Address,
+		); err != nil {
+
+			fmt.Println(
+				"Ignoring malformed discovered peer:",
+				peer.Address,
+			)
+			continue
+		}
+
+		seen[peer.NodeID] = struct{}{}
+		discovered++
+
+		fmt.Printf(
+			"Discovered peer: %s at %s height=%d\n",
+			peer.NodeID,
+			peer.Address,
+			peer.Height,
+		)
+	}
+
+	fmt.Printf(
+		"Peer discovery: %d usable peer(s).\n",
+		discovered,
+	)
 
 	return nil
 }
@@ -588,43 +687,94 @@ func (s *Server) handleIncoming(
 		return
 	}
 
-	var request StateRequest
+	for {
+		var request StateRequest
 
-	if err := decoder.Decode(&request); err != nil {
-		var netErr net.Error
+		if err := decoder.Decode(&request); err != nil {
+			var netErr net.Error
 
-		if errors.As(err, &netErr) &&
-			netErr.Timeout() {
+			if errors.As(err, &netErr) &&
+				netErr.Timeout() {
+
+				return
+			}
 
 			return
 		}
 
-		return
+		switch request.Type {
+
+		case MessageGetState:
+			response := s.stateResponse()
+
+			if err := encoder.Encode(
+				response,
+			); err != nil {
+				fmt.Println(
+					"Unable to send state snapshot:",
+					err,
+				)
+				return
+			}
+
+			fmt.Println(
+				"State snapshot sent to peer.",
+			)
+
+		case MessageGetPeers:
+			local := s.hello()
+
+			if hello.ChainID != local.ChainID {
+				fmt.Println(
+					"Peer discovery refused: different network.",
+				)
+				return
+			}
+
+			response := s.peersResponse(
+				hello.NodeID,
+			)
+
+			if err := encoder.Encode(
+				response,
+			); err != nil {
+				fmt.Println(
+					"Unable to send peer list:",
+					err,
+				)
+				return
+			}
+
+			fmt.Printf(
+				"Peer list sent: %d peer(s).\n",
+				len(response.Peers),
+			)
+
+		default:
+			fmt.Println(
+				"Unsupported P2P request:",
+				request.Type,
+			)
+			return
+		}
 	}
+}
 
-	if request.Type != MessageGetState {
-		fmt.Println(
-			"Unsupported P2P request:",
-			request.Type,
-		)
-		return
+func (s *Server) peersResponse(
+	requesterNodeID string,
+) PeersResponse {
+	local := s.hello()
+
+	return PeersResponse{
+		Type:    MessagePeers,
+		ChainID: local.ChainID,
+		Peers: peerAdvertisements(
+			s.Peers.List(),
+			local.ChainID,
+			s.NodeID,
+			requesterNodeID,
+		),
 	}
-
-	response := s.stateResponse()
-
-	if err := encoder.Encode(
-		response,
-	); err != nil {
-		fmt.Println(
-			"Unable to send state snapshot:",
-			err,
-		)
-		return
-	}
-
-	fmt.Println(
-		"State snapshot sent to peer.",
-	)
 }
 
 func (s *Server) stateResponse() StateResponse {

@@ -73,3 +73,58 @@ func TestPeerBookRemove(t *testing.T) {
 		t.Fatalf("expected empty peer book")
 	}
 }
+
+func TestPeerAdvertisementsFiltersNetworkAndRequester(t *testing.T) {
+	peers := []Peer{
+		{
+			NodeID:  "node-requester",
+			Address: "10.0.0.2:7002",
+			ChainID: "prism-test",
+		},
+		{
+			NodeID:   "node-b",
+			Address:  "10.0.0.3:7003",
+			ChainID:  "prism-test",
+			Height:   8,
+			LastHash: "hash-b",
+		},
+		{
+			NodeID:  "node-other-network",
+			Address: "10.0.0.4:7004",
+			ChainID: "prism-other",
+		},
+		{
+			NodeID:  "node-self",
+			Address: "10.0.0.1:7001",
+			ChainID: "prism-test",
+		},
+	}
+
+	got := peerAdvertisements(
+		peers,
+		"prism-test",
+		"node-self",
+		"node-requester",
+	)
+
+	if len(got) != 1 {
+		t.Fatalf(
+			"expected 1 advertised peer, got %d",
+			len(got),
+		)
+	}
+
+	if got[0].NodeID != "node-b" {
+		t.Fatalf(
+			"expected node-b, got %s",
+			got[0].NodeID,
+		)
+	}
+
+	if got[0].Address != "10.0.0.3:7003" {
+		t.Fatalf(
+			"unexpected address: %s",
+			got[0].Address,
+		)
+	}
+}

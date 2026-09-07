@@ -9,9 +9,17 @@ import (
 type Peer struct {
 	NodeID   string
 	Address  string
+	ChainID  string
 	Height   uint64
 	LastHash string
 	LastSeen time.Time
+}
+
+type PeerAdvertisement struct {
+	NodeID   string `json:"node_id"`
+	Address  string `json:"address"`
+	Height   uint64 `json:"height"`
+	LastHash string `json:"last_hash"`
 }
 
 type PeerBook struct {
@@ -47,6 +55,7 @@ func (b *PeerBook) UpsertAt(
 	b.peers[hello.NodeID] = Peer{
 		NodeID:   hello.NodeID,
 		Address:  address,
+		ChainID:  hello.ChainID,
 		Height:   hello.Height,
 		LastHash: hello.LastHash,
 		LastSeen: time.Now().UTC(),
@@ -82,4 +91,36 @@ func (b *PeerBook) List() []Peer {
 	})
 
 	return peers
+}
+
+func peerAdvertisements(
+	peers []Peer,
+	chainID string,
+	selfNodeID string,
+	requesterNodeID string,
+) []PeerAdvertisement {
+	result := make([]PeerAdvertisement, 0)
+
+	for _, peer := range peers {
+		if peer.NodeID == "" ||
+			peer.Address == "" ||
+			peer.ChainID != chainID ||
+			peer.NodeID == selfNodeID ||
+			peer.NodeID == requesterNodeID {
+
+			continue
+		}
+
+		result = append(
+			result,
+			PeerAdvertisement{
+				NodeID:   peer.NodeID,
+				Address:  peer.Address,
+				Height:   peer.Height,
+				LastHash: peer.LastHash,
+			},
+		)
+	}
+
+	return result
 }
