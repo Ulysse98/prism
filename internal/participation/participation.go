@@ -34,6 +34,22 @@ func Calculate(
 	pos *consensus.ProofOfStake,
 	eligibility EligibilityChecker,
 ) ([]Score, error) {
+	return calculateRange(
+		chain,
+		pos,
+		eligibility,
+		1,
+		math.MaxUint64,
+	)
+}
+
+func calculateRange(
+	chain *blockchain.Blockchain,
+	pos *consensus.ProofOfStake,
+	eligibility EligibilityChecker,
+	startHeight uint64,
+	endHeight uint64,
+) ([]Score, error) {
 
 	if chain == nil {
 		return nil, fmt.Errorf(
@@ -65,6 +81,12 @@ func Calculate(
 
 	for blockIndex, block := range chain.Blocks {
 		if blockIndex == 0 {
+			continue
+		}
+
+		if block.Height < startHeight ||
+			block.Height > endHeight {
+
 			continue
 		}
 
