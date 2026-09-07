@@ -57,6 +57,11 @@ func main() {
 		return
 	}
 
+	if command == "node-send" {
+		runNodeSendCommand(os.Args[2:])
+		return
+	}
+
 	if command == "api" {
 		runAPICommand(os.Args[2:])
 		return

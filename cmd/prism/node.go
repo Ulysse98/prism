@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
 	"prism/internal/blockchain"
 	"prism/internal/consensus"
 	"prism/internal/identity"
@@ -15,6 +14,7 @@ import (
 	"prism/internal/transaction"
 	"prism/internal/usefulwork"
 	"prism/internal/wallet"
+	"strconv"
 )
 
 func runNodeCommand(
@@ -144,6 +144,226 @@ func runNodeCommand(
 		)
 		fmt.Println(err)
 	}
+}
+
+func runNodeSendCommand(
+	args []string,
+) {
+	flags := flag.NewFlagSet(
+		"node-send",
+		flag.ContinueOnError,
+	)
+
+	flags.SetOutput(os.Stdout)
+
+	port := flags.Int(
+		"port",
+		7001,
+		"local node data port",
+	)
+
+	peer := flags.String(
+		"peer",
+		"",
+		"destination Prism peer",
+	)
+
+	nodeData := flags.String(
+		"data",
+		"",
+		"node data directory",
+	)
+
+	if err := flags.Parse(args); err != nil {
+		return
+	}
+
+	if *port < 1 || *port > 65535 {
+		fmt.Println(
+			"Invalid port:",
+			*port,
+		)
+		return
+	}
+
+	if *peer == "" {
+		fmt.Println(
+			"node-send requires --peer",
+		)
+		return
+	}
+
+	positional := flags.Args()
+
+	if len(positional) != 3 {
+		fmt.Println("Usage:")
+		fmt.Println(
+			"prism node-send --port 7001 --peer prism-node-2:7002 Alice Bob 1",
+		)
+		return
+	}
+
+	dataPath := resolveNodeDataPath(
+		*port,
+		*nodeData,
+	)
+
+	if !storage.Exists(dataPath) {
+		fmt.Println(
+			"Node state not found:",
+			dataPath,
+		)
+		return
+	}
+
+	chain, pos, wallets, err := storage.Load(
+		dataPath,
+	)
+	if err != nil {
+		fmt.Println(
+			"Unable to load node state:",
+			err,
+		)
+		return
+	}
+
+	if !chain.ValidateChain(pos) {
+		fmt.Println(
+			"Refusing transaction from invalid local chain.",
+		)
+		return
+	}
+
+	senderAddress, senderName, err := resolveAddress(
+		positional[0],
+		wallets,
+	)
+	if err != nil {
+		fmt.Println(
+			"Invalid sender:",
+			err,
+		)
+		return
+	}
+
+	recipientAddress, recipientName, err := resolveAddress(
+		positional[1],
+		wallets,
+	)
+	if err != nil {
+		fmt.Println(
+			"Invalid recipient:",
+			err,
+		)
+		return
+	}
+
+	amount, err := strconv.ParseUint(
+		positional[2],
+		10,
+		64,
+	)
+	if err != nil || amount == 0 {
+		fmt.Println(
+			"Invalid transaction amount.",
+		)
+		return
+	}
+
+	var senderWallet *wallet.Wallet
+
+	for _, currentWallet := range wallets {
+		if currentWallet != nil &&
+			currentWallet.Address == senderAddress {
+
+			senderWallet = currentWallet
+			break
+		}
+	}
+
+	if senderWallet == nil {
+		fmt.Println(
+			"Sender private key is not available locally.",
+		)
+		return
+	}
+
+	nonce, err := chain.NonceOf(
+		senderAddress,
+	)
+	if err != nil {
+		fmt.Println(
+			"Unable to determine sender nonce:",
+			err,
+		)
+		return
+	}
+
+	tx := transaction.New(
+		senderAddress,
+		recipientAddress,
+		amount,
+		nonce,
+		senderWallet.PublicKeyHex(),
+	)
+
+	if err := tx.Sign(
+		senderWallet.PrivateKey,
+	); err != nil {
+		fmt.Println(
+			"Unable to sign transaction:",
+			err,
+		)
+		return
+	}
+
+	identity := wallets["Alice"]
+
+	if identity == nil {
+		fmt.Println(
+			"Node identity wallet is missing.",
+		)
+		return
+	}
+
+	server := p2p.NewServer(
+		p2p.MakeNodeID(identity.Address),
+		fmt.Sprintf(
+			"0.0.0.0:%d",
+			*port,
+		),
+		dataPath,
+		chain,
+		pos,
+		wallets,
+	)
+
+	fmt.Printf(
+		"Sending transaction: %s -> %s: %d PRISM\n",
+		senderName,
+		recipientName,
+		amount,
+	)
+
+	fmt.Println(
+		"Transaction ID:",
+		tx.ID,
+	)
+
+	if err := server.SendTransaction(
+		*peer,
+		tx,
+	); err != nil {
+		fmt.Println(
+			"Transaction submission rejected:",
+			err,
+		)
+		return
+	}
+
+	fmt.Println(
+		"Transaction submission: ACCEPTED",
+	)
 }
 
 func runNodeProduceCommand(

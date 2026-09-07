@@ -42,3 +42,22 @@ func TestReachablePeerAddressPreservesAdvertisedHost(t *testing.T) {
 		)
 	}
 }
+
+func TestNewServerInitializesMempool(t *testing.T) {
+	server := NewServer(
+		"node-test",
+		"127.0.0.1:7001",
+		"data/test",
+		nil,
+		nil,
+		nil,
+	)
+
+	if server.Pool == nil {
+		t.Fatal("expected server mempool to be initialized")
+	}
+
+	if server.MempoolCount() != 0 {
+		t.Fatal("expected empty server mempool")
+	}
+}

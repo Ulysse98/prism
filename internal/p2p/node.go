@@ -12,18 +12,22 @@ import (
 
 	"prism/internal/blockchain"
 	"prism/internal/consensus"
+	"prism/internal/mempool"
 	"prism/internal/storage"
+	"prism/internal/transaction"
 	"prism/internal/wallet"
 )
 
 const ProtocolVersion = "0.19"
 
 const (
-	MessageHello    = "hello"
-	MessageGetState = "get_state"
-	MessageState    = "state"
-	MessageGetPeers = "get_peers"
-	MessagePeers    = "peers"
+	MessageHello          = "hello"
+	MessageGetState       = "get_state"
+	MessageState          = "state"
+	MessageGetPeers       = "get_peers"
+	MessagePeers          = "peers"
+	MessageTransaction    = "transaction"
+	MessageTransactionAck = "transaction_ack"
 )
 
 type HelloMessage struct {
@@ -54,6 +58,19 @@ type PeersResponse struct {
 	Peers   []PeerAdvertisement `json:"peers"`
 }
 
+type TransactionMessage struct {
+	Type        string                  `json:"type"`
+	ChainID     string                  `json:"chain_id"`
+	Transaction transaction.Transaction `json:"transaction"`
+}
+
+type TransactionAck struct {
+	Type          string `json:"type"`
+	TransactionID string `json:"transaction_id"`
+	Accepted      bool   `json:"accepted"`
+	Error         string `json:"error,omitempty"`
+}
+
 type Server struct {
 	NodeID     string
 	ListenAddr string
@@ -63,6 +80,9 @@ type Server struct {
 	PoS     *consensus.ProofOfStake
 	Wallets map[string]*wallet.Wallet
 	Peers   *PeerBook
+	Pool    *mempool.Mempool
+
+	poolMu sync.Mutex
 
 	dialMu  sync.Mutex
 	dialing map[string]struct{}
@@ -86,6 +106,7 @@ func NewServer(
 		PoS:        pos,
 		Wallets:    wallets,
 		Peers:      NewPeerBook(),
+		Pool:       mempool.New(),
 		dialing:    make(map[string]struct{}),
 	}
 }
@@ -361,6 +382,110 @@ func (s *Server) connect(
 		decoder,
 		remote,
 	)
+}
+
+func (s *Server) SendTransaction(
+	address string,
+	tx transaction.Transaction,
+) error {
+	if err := transaction.ValidateSigned(tx); err != nil {
+		return fmt.Errorf(
+			"invalid outgoing transaction: %w",
+			err,
+		)
+	}
+
+	conn, err := net.DialTimeout(
+		"tcp",
+		address,
+		5*time.Second,
+	)
+	if err != nil {
+		return err
+	}
+
+	defer conn.Close()
+
+	if err := conn.SetDeadline(
+		time.Now().Add(10 * time.Second),
+	); err != nil {
+		return err
+	}
+
+	encoder := json.NewEncoder(conn)
+	decoder := json.NewDecoder(conn)
+
+	local := s.hello()
+
+	if err := encoder.Encode(local); err != nil {
+		return err
+	}
+
+	var remote HelloMessage
+
+	if err := decoder.Decode(&remote); err != nil {
+		return err
+	}
+
+	if err := validateHello(remote); err != nil {
+		return err
+	}
+
+	if remote.NodeID == s.NodeID {
+		return fmt.Errorf(
+			"refusing self transaction submission",
+		)
+	}
+
+	if remote.ChainID != local.ChainID {
+		return fmt.Errorf(
+			"transaction peer network mismatch: local=%s remote=%s",
+			local.ChainID,
+			remote.ChainID,
+		)
+	}
+
+	message := TransactionMessage{
+		Type:        MessageTransaction,
+		ChainID:     local.ChainID,
+		Transaction: tx,
+	}
+
+	if err := encoder.Encode(message); err != nil {
+		return err
+	}
+
+	var ack TransactionAck
+
+	if err := decoder.Decode(&ack); err != nil {
+		return err
+	}
+
+	if ack.Type != MessageTransactionAck {
+		return fmt.Errorf(
+			"unexpected transaction response: %s",
+			ack.Type,
+		)
+	}
+
+	if ack.TransactionID != tx.ID {
+		return fmt.Errorf(
+			"transaction acknowledgement ID mismatch",
+		)
+	}
+
+	if !ack.Accepted {
+		if ack.Error == "" {
+			ack.Error = "transaction rejected"
+		}
+
+		return fmt.Errorf(
+			"%s",
+			ack.Error,
+		)
+	}
+
+	return nil
 }
 
 func (s *Server) requestPeers(
@@ -779,10 +904,7 @@ func (s *Server) handleIncoming(
 	)
 
 	fmt.Println()
-	fmt.Println(
-		"Incoming peer connected.",
-	)
-
+	fmt.Println("Incoming peer connected.")
 	s.printPeer(hello)
 
 	if err := encoder.Encode(
@@ -796,9 +918,9 @@ func (s *Server) handleIncoming(
 	}
 
 	for {
-		var request StateRequest
+		var raw json.RawMessage
 
-		if err := decoder.Decode(&request); err != nil {
+		if err := decoder.Decode(&raw); err != nil {
 			var netErr net.Error
 
 			if errors.As(err, &netErr) &&
@@ -810,14 +932,25 @@ func (s *Server) handleIncoming(
 			return
 		}
 
+		var request StateRequest
+
+		if err := json.Unmarshal(
+			raw,
+			&request,
+		); err != nil {
+			fmt.Println(
+				"Invalid P2P request:",
+				err,
+			)
+			return
+		}
+
 		switch request.Type {
 
 		case MessageGetState:
 			response := s.stateResponse()
 
-			if err := encoder.Encode(
-				response,
-			); err != nil {
+			if err := encoder.Encode(response); err != nil {
 				fmt.Println(
 					"Unable to send state snapshot:",
 					err,
@@ -843,9 +976,7 @@ func (s *Server) handleIncoming(
 				hello.NodeID,
 			)
 
-			if err := encoder.Encode(
-				response,
-			); err != nil {
+			if err := encoder.Encode(response); err != nil {
 				fmt.Println(
 					"Unable to send peer list:",
 					err,
@@ -858,6 +989,75 @@ func (s *Server) handleIncoming(
 				len(response.Peers),
 			)
 
+		case MessageTransaction:
+			var message TransactionMessage
+
+			if err := json.Unmarshal(
+				raw,
+				&message,
+			); err != nil {
+				_ = encoder.Encode(
+					TransactionAck{
+						Type:     MessageTransactionAck,
+						Accepted: false,
+						Error:    "invalid transaction message",
+					},
+				)
+				continue
+			}
+
+			local := s.hello()
+
+			ack := TransactionAck{
+				Type:          MessageTransactionAck,
+				TransactionID: message.Transaction.ID,
+			}
+
+			if hello.ChainID != local.ChainID ||
+				message.ChainID != local.ChainID {
+
+				ack.Error = "transaction network mismatch"
+
+				if err := encoder.Encode(ack); err != nil {
+					return
+				}
+
+				fmt.Println(
+					"Transaction rejected: network mismatch",
+				)
+				continue
+			}
+
+			if err := s.acceptTransaction(
+				message.Transaction,
+			); err != nil {
+
+				ack.Error = err.Error()
+
+				if err := encoder.Encode(ack); err != nil {
+					return
+				}
+
+				fmt.Printf(
+					"Transaction rejected: %s: %v\n",
+					message.Transaction.ID,
+					err,
+				)
+				continue
+			}
+
+			ack.Accepted = true
+
+			if err := encoder.Encode(ack); err != nil {
+				return
+			}
+
+			fmt.Printf(
+				"Transaction accepted: %s mempool=%d\n",
+				message.Transaction.ID,
+				s.MempoolCount(),
+			)
+
 		default:
 			fmt.Println(
 				"Unsupported P2P request:",
@@ -866,6 +1066,43 @@ func (s *Server) handleIncoming(
 			return
 		}
 	}
+}
+
+func (s *Server) acceptTransaction(
+	tx transaction.Transaction,
+) error {
+	s.mu.RLock()
+	chain := s.Chain
+	s.mu.RUnlock()
+
+	if chain == nil {
+		return fmt.Errorf(
+			"blockchain cannot be nil",
+		)
+	}
+
+	s.poolMu.Lock()
+	defer s.poolMu.Unlock()
+
+	if s.Pool == nil {
+		s.Pool = mempool.New()
+	}
+
+	return s.Pool.Add(
+		tx,
+		chain,
+	)
+}
+
+func (s *Server) MempoolCount() int {
+	s.poolMu.Lock()
+	defer s.poolMu.Unlock()
+
+	if s.Pool == nil {
+		return 0
+	}
+
+	return s.Pool.Count()
 }
 
 func (s *Server) peersResponse(
