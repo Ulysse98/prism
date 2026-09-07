@@ -345,3 +345,7 @@ Whitepaper: [`Prism Blockchain Whitepaper.pdf`](Prism%20Blockchain%20Whitepaper.
 ---
 
 **Prism v0.18 â€” ETHOnline 2026**
+
+## ETHOnline 2026 Continuity Track
+
+Prism existed before ETHOnline 2026. The pre-existing baseline and the work developed during the hackathon are documented transparently in [`docs/continuity-track.md`](docs/continuity-track.md).
