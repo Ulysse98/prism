@@ -198,6 +198,16 @@ func (bc *Blockchain) addBlock(
 	proposer string,
 	pos *consensus.ProofOfStake,
 ) (Block, error) {
+
+	rewardPolicy := consensus.DefaultRewardPolicy()
+
+	if err := rewardPolicy.Validate(); err != nil {
+		return Block{}, fmt.Errorf(
+			"invalid reward policy: %w",
+			err,
+		)
+	}
+
 	if pos == nil {
 		return Block{}, fmt.Errorf(
 			"proof of stake engine cannot be nil",
@@ -442,7 +452,7 @@ func (bc *Blockchain) addBlock(
 		Timestamp:    time.Now().UTC(),
 		PreviousHash: previousBlock.Hash,
 		Proposer:     proposer,
-		Reward:       BlockReward,
+		Reward:       rewardPolicy.ProposerReward,
 		Transactions: blockTransactions,
 		UsefulWork:   blockWork,
 		Humanity:     blockHumanity,
@@ -661,6 +671,16 @@ func (bc *Blockchain) GetState() (
 	State,
 	error,
 ) {
+
+	rewardPolicy := consensus.DefaultRewardPolicy()
+
+	if err := rewardPolicy.Validate(); err != nil {
+		return State{}, fmt.Errorf(
+			"invalid reward policy: %w",
+			err,
+		)
+	}
+
 	state := State{
 		Balances: make(map[string]uint64),
 		Nonces:   make(map[string]uint64),
@@ -734,7 +754,7 @@ func (bc *Blockchain) GetState() (
 			)
 		}
 
-		if block.Reward != BlockReward {
+		if block.Reward != rewardPolicy.ProposerReward {
 			return State{}, fmt.Errorf(
 				"invalid reward in block %d",
 				blockIndex,
@@ -814,7 +834,7 @@ func (bc *Blockchain) GetState() (
 			usedTasks[proof.Task.ID] = struct{}{}
 
 			if state.Balances[proof.Worker] >
-				math.MaxUint64-UsefulWorkReward {
+				math.MaxUint64-rewardPolicy.UsefulWorkReward {
 
 				return State{}, fmt.Errorf(
 					"useful work reward overflow",
@@ -822,7 +842,7 @@ func (bc *Blockchain) GetState() (
 			}
 
 			state.Balances[proof.Worker] +=
-				UsefulWorkReward
+				rewardPolicy.UsefulWorkReward
 		}
 
 		// Humanity attestations.
@@ -949,6 +969,12 @@ func (bc *Blockchain) TotalSupply() (
 func (bc *Blockchain) ValidateChain(
 	pos *consensus.ProofOfStake,
 ) bool {
+	rewardPolicy := consensus.DefaultRewardPolicy()
+
+	if err := rewardPolicy.Validate(); err != nil {
+		return false
+	}
+
 	if len(bc.Blocks) == 0 {
 		return false
 	}
@@ -1007,7 +1033,7 @@ func (bc *Blockchain) ValidateChain(
 			return false
 		}
 
-		if current.Reward != BlockReward {
+		if current.Reward != rewardPolicy.ProposerReward {
 			return false
 		}
 

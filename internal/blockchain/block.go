@@ -8,13 +8,16 @@ import (
 	"sort"
 	"time"
 
+	"prism/internal/consensus"
 	"prism/internal/identity"
 	"prism/internal/transaction"
 	"prism/internal/usefulwork"
 )
 
-const BlockReward uint64 = 5
-const UsefulWorkReward uint64 = 2
+// Compatibility aliases for code written before v0.20.
+// Consensus owns the canonical reward parameters.
+const BlockReward uint64 = consensus.DefaultProposerReward
+const UsefulWorkReward uint64 = consensus.DefaultUsefulWorkReward
 
 type Block struct {
 	Height       uint64                    `json:"height"`
