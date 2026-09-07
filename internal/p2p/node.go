@@ -54,6 +54,7 @@ type Server struct {
 	Chain   *blockchain.Blockchain
 	PoS     *consensus.ProofOfStake
 	Wallets map[string]*wallet.Wallet
+	Peers   *PeerBook
 
 	mu sync.RWMutex
 }
@@ -73,6 +74,7 @@ func NewServer(
 		Chain:      chain,
 		PoS:        pos,
 		Wallets:    wallets,
+		Peers:      NewPeerBook(),
 	}
 }
 
@@ -233,6 +235,12 @@ func (s *Server) Connect(address string) error {
 	if err := validateHello(remote); err != nil {
 		return err
 	}
+
+	if remote.NodeID == s.NodeID {
+		return fmt.Errorf("refusing self connection")
+	}
+
+	s.Peers.Upsert(remote)
 
 	fmt.Println("Handshake accepted.")
 	s.printPeer(remote)
@@ -545,6 +553,15 @@ func (s *Server) handleIncoming(
 		)
 		return
 	}
+
+	if hello.NodeID == s.NodeID {
+		fmt.Println(
+			"Handshake rejected: self connection",
+		)
+		return
+	}
+
+	s.Peers.Upsert(hello)
 
 	fmt.Println()
 	fmt.Println(
