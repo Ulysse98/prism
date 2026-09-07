@@ -1,6 +1,9 @@
 package consensus
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 const (
 	MaxSupply uint64 = 100_000_000
@@ -56,6 +59,24 @@ func (policy SupplyPolicy) ReservedAllocation() uint64 {
 		policy.LiquidityAllocation
 }
 
+func checkedSupplySum(
+	values ...uint64,
+) (uint64, error) {
+	var total uint64
+
+	for _, value := range values {
+		if total > math.MaxUint64-value {
+			return 0, fmt.Errorf(
+				"supply allocation overflow",
+			)
+		}
+
+		total += value
+	}
+
+	return total, nil
+}
+
 func (policy SupplyPolicy) Validate() error {
 	if policy.MaxSupply == 0 {
 		return fmt.Errorf(
@@ -72,9 +93,32 @@ func (policy SupplyPolicy) Validate() error {
 		)
 	}
 
-	total :=
-		policy.NetworkRewardAllocation() +
-			policy.ReservedAllocation()
+	network, err := checkedSupplySum(
+		policy.ProposerRewardPool,
+		policy.UsefulWorkRewardPool,
+		policy.ParticipationRewardPool,
+	)
+	if err != nil {
+		return err
+	}
+
+	reserved, err := checkedSupplySum(
+		policy.EcosystemAllocation,
+		policy.TreasuryAllocation,
+		policy.TeamAllocation,
+		policy.LiquidityAllocation,
+	)
+	if err != nil {
+		return err
+	}
+
+	total, err := checkedSupplySum(
+		network,
+		reserved,
+	)
+	if err != nil {
+		return err
+	}
 
 	if total != policy.MaxSupply {
 		return fmt.Errorf(

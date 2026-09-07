@@ -96,3 +96,26 @@ func TestSupplyPolicyRejectsMismatch(
 		)
 	}
 }
+
+func TestSupplyPolicyRejectsAllocationOverflow(
+	t *testing.T,
+) {
+	policy :=
+		DefaultSupplyPolicy()
+
+	policy.MaxSupply = ^uint64(0)
+	policy.ProposerRewardPool = ^uint64(0)
+	policy.UsefulWorkRewardPool = 1
+	policy.ParticipationRewardPool = 1
+
+	policy.EcosystemAllocation = 0
+	policy.TreasuryAllocation = 0
+	policy.TeamAllocation = 0
+	policy.LiquidityAllocation = 0
+
+	if err := policy.Validate(); err == nil {
+		t.Fatal(
+			"expected supply allocation overflow to fail",
+		)
+	}
+}
