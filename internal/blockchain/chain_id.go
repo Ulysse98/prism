@@ -124,7 +124,8 @@ func (bc *Blockchain) ChainID() (
 			)
 	}
 
-	return MakeChainID(
+	return MakeConfiguredChainID(
 		genesisHash,
-	), nil
+		bc.Config,
+	)
 }
