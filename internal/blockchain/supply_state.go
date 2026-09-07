@@ -14,7 +14,11 @@ type SupplyState struct {
 	GenesisSupply           uint64 `json:"genesisSupply"`
 	NetworkEmission         uint64 `json:"networkEmission"`
 	NetworkRewardAllocation uint64 `json:"networkRewardAllocation"`
-	ReservedAllocation      uint64 `json:"reservedAllocation"`
+	NetworkRewardRemaining  uint64 `json:"networkRewardRemaining"`
+
+	ReservedAllocation        uint64 `json:"reservedAllocation"`
+	ReservedConsumedByGenesis uint64 `json:"reservedConsumedByGenesis"`
+	ReservedRemaining         uint64 `json:"reservedRemaining"`
 
 	EcosystemAllocation uint64 `json:"ecosystemAllocation"`
 	TreasuryAllocation  uint64 `json:"treasuryAllocation"`
@@ -131,9 +135,56 @@ func (bc *Blockchain) GetSupplyState() (
 		return SupplyState{}, err
 	}
 
-	if networkEmission > ledgerSupply {
+	rewardPools, err :=
+		emission.RemainingRewardPools(
+			policy,
+		)
+
+	if err != nil {
 		return SupplyState{}, fmt.Errorf(
-			"network emission exceeds ledger supply",
+			"cannot calculate remaining reward pools: %w",
+			err,
+		)
+	}
+
+	networkRewardRemaining, err :=
+		rewardPools.NetworkRemaining()
+
+	if err != nil {
+		return SupplyState{}, err
+	}
+
+	if genesisSupply >
+		policy.ReservedAllocation() {
+
+		return SupplyState{}, fmt.Errorf(
+			"genesis supply exceeds reserved allocation: genesis=%d reserved=%d",
+			genesisSupply,
+			policy.ReservedAllocation(),
+		)
+	}
+
+	reservedRemaining :=
+		policy.ReservedAllocation() -
+			genesisSupply
+
+	if genesisSupply >
+		math.MaxUint64-networkEmission {
+
+		return SupplyState{}, fmt.Errorf(
+			"supply accounting overflow",
+		)
+	}
+
+	accountedLedger :=
+		genesisSupply +
+			networkEmission
+
+	if ledgerSupply != accountedLedger {
+		return SupplyState{}, fmt.Errorf(
+			"ledger supply is not fully accounted: ledger=%d accounted=%d",
+			ledgerSupply,
+			accountedLedger,
 		)
 	}
 
@@ -145,19 +196,47 @@ func (bc *Blockchain) GetSupplyState() (
 		)
 	}
 
+	if networkRewardRemaining >
+		math.MaxUint64-reservedRemaining {
+
+		return SupplyState{}, fmt.Errorf(
+			"remaining supply accounting overflow",
+		)
+	}
+
+	futureMintable :=
+		networkRewardRemaining +
+			reservedRemaining
+
+	remainingSupply :=
+		policy.MaxSupply -
+			ledgerSupply
+
+	if futureMintable != remainingSupply {
+		return SupplyState{}, fmt.Errorf(
+			"remaining supply accounting mismatch: remaining=%d mintable=%d",
+			remainingSupply,
+			futureMintable,
+		)
+	}
+
 	return SupplyState{
 		MaxSupply:               policy.MaxSupply,
 		LedgerSupply:            ledgerSupply,
 		GenesisSupply:           genesisSupply,
 		NetworkEmission:         networkEmission,
 		NetworkRewardAllocation: policy.NetworkRewardAllocation(),
-		ReservedAllocation:      policy.ReservedAllocation(),
+		NetworkRewardRemaining:  networkRewardRemaining,
+
+		ReservedAllocation:        policy.ReservedAllocation(),
+		ReservedConsumedByGenesis: genesisSupply,
+		ReservedRemaining:         reservedRemaining,
 
 		EcosystemAllocation: policy.EcosystemAllocation,
 		TreasuryAllocation:  policy.TreasuryAllocation,
 		TeamAllocation:      policy.TeamAllocation,
 		LiquidityAllocation: policy.LiquidityAllocation,
 
-		RemainingSupply: policy.MaxSupply - ledgerSupply,
+		RemainingSupply: remainingSupply,
 	}, nil
 }

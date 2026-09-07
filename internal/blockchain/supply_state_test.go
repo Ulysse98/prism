@@ -314,3 +314,75 @@ func TestSupplyStateReportsReservedAllocations(
 		)
 	}
 }
+
+func TestSupplyStateAccountsGenesisAgainstReservedAllocation(
+	t *testing.T,
+) {
+	chain, err := NewBlockchain(
+		map[string]uint64{
+			"Alice": 1000,
+			"Bob":   250,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	state, err :=
+		chain.GetSupplyState()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if state.ReservedConsumedByGenesis != 1250 {
+		t.Fatalf(
+			"expected genesis to consume 1250 reserved supply, got %d",
+			state.ReservedConsumedByGenesis,
+		)
+	}
+
+	if state.ReservedRemaining != 39_998_750 {
+		t.Fatalf(
+			"expected reserved remaining 39998750, got %d",
+			state.ReservedRemaining,
+		)
+	}
+
+	if state.NetworkRewardRemaining != 60_000_000 {
+		t.Fatalf(
+			"expected network reward remaining 60000000, got %d",
+			state.NetworkRewardRemaining,
+		)
+	}
+
+	if state.NetworkRewardRemaining+
+		state.ReservedRemaining !=
+		state.RemainingSupply {
+
+		t.Fatal(
+			"remaining supply does not match remaining network and reserved budgets",
+		)
+	}
+}
+
+func TestSupplyStateRejectsGenesisAboveReservedAllocation(
+	t *testing.T,
+) {
+	chain, err := NewBlockchain(
+		map[string]uint64{
+			"Alice": 40_000_001,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err :=
+		chain.GetSupplyState(); err == nil {
+
+		t.Fatal(
+			"expected genesis above reserved allocation to fail",
+		)
+	}
+}
