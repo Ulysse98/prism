@@ -64,6 +64,9 @@ type Server struct {
 	Wallets map[string]*wallet.Wallet
 	Peers   *PeerBook
 
+	dialMu  sync.Mutex
+	dialing map[string]struct{}
+
 	mu sync.RWMutex
 }
 
@@ -83,6 +86,7 @@ func NewServer(
 		PoS:        pos,
 		Wallets:    wallets,
 		Peers:      NewPeerBook(),
+		dialing:    make(map[string]struct{}),
 	}
 }
 
@@ -207,7 +211,19 @@ func (s *Server) syncPeerLoop(
 	}
 }
 
-func (s *Server) Connect(address string) error {
+func (s *Server) Connect(
+	address string,
+) error {
+	return s.connect(
+		address,
+		"",
+	)
+}
+
+func (s *Server) connect(
+	address string,
+	expectedNodeID string,
+) error {
 	conn, err := net.DialTimeout(
 		"tcp",
 		address,
@@ -245,7 +261,29 @@ func (s *Server) Connect(address string) error {
 	}
 
 	if remote.NodeID == s.NodeID {
-		return fmt.Errorf("refusing self connection")
+		return fmt.Errorf(
+			"refusing self connection",
+		)
+	}
+
+	if expectedNodeID != "" &&
+		remote.NodeID != expectedNodeID {
+
+		return fmt.Errorf(
+			"discovered peer identity mismatch: expected=%s received=%s",
+			expectedNodeID,
+			remote.NodeID,
+		)
+	}
+
+	if expectedNodeID != "" &&
+		remote.ChainID != localBefore.ChainID {
+
+		return fmt.Errorf(
+			"discovered peer network mismatch: local=%s remote=%s",
+			localBefore.ChainID,
+			remote.ChainID,
+		)
 	}
 
 	s.Peers.UpsertAt(
@@ -379,6 +417,12 @@ func (s *Server) requestPeers(
 			continue
 		}
 
+		seen[peer.NodeID] = struct{}{}
+
+		if s.Peers.Has(peer.NodeID) {
+			continue
+		}
+
 		if _, _, err := net.SplitHostPort(
 			peer.Address,
 		); err != nil {
@@ -390,7 +434,6 @@ func (s *Server) requestPeers(
 			continue
 		}
 
-		seen[peer.NodeID] = struct{}{}
 		discovered++
 
 		fmt.Printf(
@@ -399,14 +442,79 @@ func (s *Server) requestPeers(
 			peer.Address,
 			peer.Height,
 		)
+
+		go s.connectDiscoveredPeer(
+			peer,
+		)
 	}
 
 	fmt.Printf(
-		"Peer discovery: %d usable peer(s).\n",
+		"Peer discovery: %d new peer(s).\n",
 		discovered,
 	)
 
 	return nil
+}
+
+func (s *Server) connectDiscoveredPeer(
+	peer PeerAdvertisement,
+) {
+	if peer.NodeID == "" ||
+		peer.Address == "" ||
+		s.Peers.Has(peer.NodeID) {
+
+		return
+	}
+
+	s.dialMu.Lock()
+
+	if s.dialing == nil {
+		s.dialing = make(
+			map[string]struct{},
+		)
+	}
+
+	if _, exists := s.dialing[peer.NodeID]; exists {
+		s.dialMu.Unlock()
+		return
+	}
+
+	s.dialing[peer.NodeID] = struct{}{}
+	s.dialMu.Unlock()
+
+	defer func() {
+		s.dialMu.Lock()
+		delete(
+			s.dialing,
+			peer.NodeID,
+		)
+		s.dialMu.Unlock()
+	}()
+
+	fmt.Printf(
+		"Connecting to discovered peer: %s at %s\n",
+		peer.NodeID,
+		peer.Address,
+	)
+
+	if err := s.connect(
+		peer.Address,
+		peer.NodeID,
+	); err != nil {
+
+		fmt.Printf(
+			"Discovered peer connection failed: %s: %v\n",
+			peer.NodeID,
+			err,
+		)
+		return
+	}
+
+	fmt.Printf(
+		"Discovered peer connected: %s at %s\n",
+		peer.NodeID,
+		peer.Address,
+	)
 }
 
 func (s *Server) requestAndAdoptState(

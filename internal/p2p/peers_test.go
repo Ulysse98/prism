@@ -128,3 +128,21 @@ func TestPeerAdvertisementsFiltersNetworkAndRequester(t *testing.T) {
 		)
 	}
 }
+
+func TestPeerBookHas(t *testing.T) {
+	book := NewPeerBook()
+
+	book.Upsert(HelloMessage{
+		NodeID:     "node-a",
+		ListenAddr: "127.0.0.1:7001",
+		ChainID:    "prism-test",
+	})
+
+	if !book.Has("node-a") {
+		t.Fatal("expected node-a to exist")
+	}
+
+	if book.Has("node-b") {
+		t.Fatal("did not expect node-b to exist")
+	}
+}

@@ -76,6 +76,16 @@ func (b *PeerBook) Len() int {
 	return len(b.peers)
 }
 
+func (b *PeerBook) Has(
+	nodeID string,
+) bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	_, ok := b.peers[nodeID]
+	return ok
+}
+
 func (b *PeerBook) List() []Peer {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
