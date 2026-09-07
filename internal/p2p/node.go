@@ -33,14 +33,15 @@ const (
 )
 
 type HelloMessage struct {
-	Type        string `json:"type"`
-	Version     string `json:"version"`
-	NodeID      string `json:"node_id"`
-	ListenAddr  string `json:"listen_addr"`
-	ChainID     string `json:"chain_id"`
-	GenesisHash string `json:"genesis_hash"`
-	Height      uint64 `json:"height"`
-	LastHash    string `json:"last_hash"`
+	Type             string `json:"type"`
+	Version          string `json:"version"`
+	NodeID           string `json:"node_id"`
+	ListenAddr       string `json:"listen_addr"`
+	ChainID          string `json:"chain_id"`
+	ConfigCommitment string `json:"config_commitment,omitempty"`
+	GenesisHash      string `json:"genesis_hash"`
+	Height           uint64 `json:"height"`
+	LastHash         string `json:"last_hash"`
 }
 
 type StateRequest struct {
@@ -48,10 +49,11 @@ type StateRequest struct {
 }
 
 type StateResponse struct {
-	Type       string                 `json:"type"`
-	ChainID    string                 `json:"chain_id"`
-	Blockchain *blockchain.Blockchain `json:"blockchain"`
-	Validators []consensus.Validator  `json:"validators"`
+	Type             string                 `json:"type"`
+	ChainID          string                 `json:"chain_id"`
+	ConfigCommitment string                 `json:"config_commitment,omitempty"`
+	Blockchain       *blockchain.Blockchain `json:"blockchain"`
+	Validators       []consensus.Validator  `json:"validators"`
 }
 
 type PeersResponse struct {
@@ -137,6 +139,64 @@ func MakeChainID(
 	return blockchain.MakeChainID(
 		genesisHash,
 	)
+}
+
+func networkIdentity(
+	chain *blockchain.Blockchain,
+) (
+	string,
+	string,
+	error,
+) {
+	if chain == nil {
+		return "", "",
+			fmt.Errorf(
+				"blockchain cannot be nil",
+			)
+	}
+
+	if len(chain.Blocks) == 0 {
+		return "", "",
+			fmt.Errorf(
+				"blockchain has no genesis block",
+			)
+	}
+
+	configCommitment := ""
+
+	if !chain.Config.IsLegacy() {
+		commitment, err :=
+			chain.Config.Commitment()
+
+		if err != nil {
+			return "", "",
+				fmt.Errorf(
+					"invalid chain config: %w",
+					err,
+				)
+		}
+
+		configCommitment =
+			commitment
+	}
+
+	chainID, err :=
+		blockchain.MakeChainIDFromConfigCommitment(
+			chain.Blocks[0].Hash,
+			configCommitment,
+		)
+
+	if err != nil {
+		return "", "",
+			fmt.Errorf(
+				"cannot derive chain identity: %w",
+				err,
+			)
+	}
+
+	return chainID,
+		configCommitment,
+		nil
 }
 
 func (s *Server) Run(peer string) error {
@@ -801,6 +861,14 @@ func (s *Server) requestAndAdoptState(
 		)
 	}
 
+	if response.ConfigCommitment !=
+		expectedRemote.ConfigCommitment {
+
+		return fmt.Errorf(
+			"state config commitment mismatch",
+		)
+	}
+
 	if response.Blockchain == nil {
 		return fmt.Errorf(
 			"peer returned an empty blockchain",
@@ -813,11 +881,27 @@ func (s *Server) requestAndAdoptState(
 		)
 	}
 
-	genesisHash := response.Blockchain.Blocks[0].Hash
+	calculatedChainID,
+		calculatedConfigCommitment,
+		identityErr :=
+		networkIdentity(
+			response.Blockchain,
+		)
 
-	calculatedChainID := MakeChainID(
-		genesisHash,
-	)
+	if identityErr != nil {
+		return fmt.Errorf(
+			"peer state has invalid network identity: %w",
+			identityErr,
+		)
+	}
+
+	if calculatedConfigCommitment !=
+		response.ConfigCommitment {
+
+		return fmt.Errorf(
+			"peer state config does not match advertised commitment",
+		)
+	}
 
 	if calculatedChainID != response.ChainID {
 		return fmt.Errorf(
@@ -1548,13 +1632,27 @@ func (s *Server) stateResponse() StateResponse {
 		s.PoS.Validators...,
 	)
 
-	genesisHash := s.Chain.Blocks[0].Hash
+	chainID,
+		configCommitment,
+		err :=
+		networkIdentity(
+			s.Chain,
+		)
+
+	if err != nil {
+		return StateResponse{
+			Type:       MessageState,
+			Blockchain: s.Chain,
+			Validators: validators,
+		}
+	}
 
 	return StateResponse{
-		Type:       MessageState,
-		ChainID:    MakeChainID(genesisHash),
-		Blockchain: s.Chain,
-		Validators: validators,
+		Type:             MessageState,
+		ChainID:          chainID,
+		ConfigCommitment: configCommitment,
+		Blockchain:       s.Chain,
+		Validators:       validators,
 	}
 }
 
@@ -1573,19 +1671,41 @@ func (s *Server) hello() HelloMessage {
 		}
 	}
 
-	genesis := s.Chain.Blocks[0]
+	genesis :=
+		s.Chain.Blocks[0]
 
-	last := s.Chain.Blocks[len(s.Chain.Blocks)-1]
+	last :=
+		s.Chain.Blocks[len(s.Chain.Blocks)-1]
+
+	chainID,
+		configCommitment,
+		err :=
+		networkIdentity(
+			s.Chain,
+		)
+
+	if err != nil {
+		return HelloMessage{
+			Type:        MessageHello,
+			Version:     ProtocolVersion,
+			NodeID:      s.NodeID,
+			ListenAddr:  s.ListenAddr,
+			GenesisHash: genesis.Hash,
+			Height:      last.Height,
+			LastHash:    last.Hash,
+		}
+	}
 
 	return HelloMessage{
-		Type:        MessageHello,
-		Version:     ProtocolVersion,
-		NodeID:      s.NodeID,
-		ListenAddr:  s.ListenAddr,
-		ChainID:     MakeChainID(genesis.Hash),
-		GenesisHash: genesis.Hash,
-		Height:      last.Height,
-		LastHash:    last.Hash,
+		Type:             MessageHello,
+		Version:          ProtocolVersion,
+		NodeID:           s.NodeID,
+		ListenAddr:       s.ListenAddr,
+		ChainID:          chainID,
+		ConfigCommitment: configCommitment,
+		GenesisHash:      genesis.Hash,
+		Height:           last.Height,
+		LastHash:         last.Hash,
 	}
 }
 
@@ -1637,13 +1757,40 @@ func validateHello(
 		)
 	}
 
-	expectedChainID := MakeChainID(
-		message.GenesisHash,
-	)
+	if message.ConfigCommitment != "" {
+		decodedCommitment, err :=
+			hex.DecodeString(
+				message.ConfigCommitment,
+			)
 
-	if message.ChainID != expectedChainID {
+		if err != nil ||
+			len(decodedCommitment) !=
+				sha256.Size {
+
+			return fmt.Errorf(
+				"peer config commitment is invalid",
+			)
+		}
+	}
+
+	expectedChainID, err :=
+		blockchain.MakeChainIDFromConfigCommitment(
+			message.GenesisHash,
+			message.ConfigCommitment,
+		)
+
+	if err != nil {
 		return fmt.Errorf(
-			"peer Chain ID does not match its Genesis",
+			"cannot validate peer Chain ID: %w",
+			err,
+		)
+	}
+
+	if message.ChainID !=
+		expectedChainID {
+
+		return fmt.Errorf(
+			"peer Chain ID does not match its Genesis and config",
 		)
 	}
 
