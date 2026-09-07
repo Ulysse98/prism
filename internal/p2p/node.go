@@ -131,12 +131,12 @@ func MakeNodeID(seed string) string {
 	return hex.EncodeToString(hash[:8])
 }
 
-func MakeChainID(genesisHash string) string {
-	hash := sha256.Sum256(
-		[]byte("prism-chain|" + genesisHash),
+func MakeChainID(
+	genesisHash string,
+) string {
+	return blockchain.MakeChainID(
+		genesisHash,
 	)
-
-	return "prism-" + hex.EncodeToString(hash[:8])
 }
 
 func (s *Server) Run(peer string) error {
