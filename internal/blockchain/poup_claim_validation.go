@@ -143,6 +143,29 @@ func (bc *Blockchain) validateParticipationClaim(
 	claimHeight uint64,
 	policy consensus.RewardPolicy,
 ) error {
+	return bc.validateParticipationClaimWithEmission(
+		claim,
+		claimHeight,
+		policy,
+		0,
+		consensus.DefaultSupplyPolicy(),
+	)
+}
+
+func (bc *Blockchain) validateParticipationClaimWithEmission(
+	claim poup.Claim,
+	claimHeight uint64,
+	policy consensus.RewardPolicy,
+	participationEmission uint64,
+	supplyPolicy consensus.SupplyPolicy,
+) error {
+	if err := supplyPolicy.Validate(); err != nil {
+		return fmt.Errorf(
+			"invalid supply policy: %w",
+			err,
+		)
+	}
+
 	if err := poup.ValidateSigned(
 		claim,
 	); err != nil {
@@ -172,7 +195,7 @@ func (bc *Blockchain) validateParticipationClaim(
 
 	expectedPoints,
 		expectedUnits,
-		expectedAmount,
+		rawAmount,
 		err :=
 		bc.expectedParticipationReward(
 			claim.Address,
@@ -200,10 +223,36 @@ func (bc *Blockchain) validateParticipationClaim(
 		)
 	}
 
-	if claim.Amount != expectedAmount {
+	if rawAmount == 0 {
+		return fmt.Errorf(
+			"participation claim has no rewardable amount",
+		)
+	}
+
+	boundedAmount, err :=
+		consensus.BoundedPoolReward(
+			rawAmount,
+			participationEmission,
+			supplyPolicy.ParticipationRewardPool,
+		)
+
+	if err != nil {
+		return fmt.Errorf(
+			"invalid participation emission: %w",
+			err,
+		)
+	}
+
+	if boundedAmount == 0 {
+		return fmt.Errorf(
+			"participation reward pool exhausted",
+		)
+	}
+
+	if claim.Amount != boundedAmount {
 		return fmt.Errorf(
 			"invalid participation claim amount: expected %d, got %d",
-			expectedAmount,
+			boundedAmount,
 			claim.Amount,
 		)
 	}

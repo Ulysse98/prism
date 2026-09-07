@@ -748,6 +748,7 @@ func (bc *Blockchain) GetState() (
 
 	var proposerEmission uint64
 	var usefulWorkEmission uint64
+	var participationEmission uint64
 
 	for blockIndex, block := range bc.Blocks {
 		if blockIndex == 0 {
@@ -977,13 +978,15 @@ func (bc *Blockchain) GetState() (
 
 		// Proof of Useful Participation claims.
 		//
-		// Claims are consensus-validated here but are not
-		// credited to balances yet.
+		// Claims are consensus-validated and deterministically
+		// credited to balances here.
 		for _, claim := range block.ParticipationClaims {
-			if err := bc.validateParticipationClaim(
+			if err := bc.validateParticipationClaimWithEmission(
 				claim,
 				block.Height,
 				rewardPolicy,
+				participationEmission,
+				supplyPolicy,
 			); err != nil {
 				return State{}, fmt.Errorf(
 					"invalid participation claim in block %d: %w",
@@ -1017,6 +1020,17 @@ func (bc *Blockchain) GetState() (
 					err,
 				)
 			}
+
+			if participationEmission >
+				math.MaxUint64-claim.Amount {
+
+				return State{}, fmt.Errorf(
+					"participation emission overflow",
+				)
+			}
+
+			participationEmission +=
+				claim.Amount
 
 			usedParticipationClaims[key] =
 				struct{}{}
