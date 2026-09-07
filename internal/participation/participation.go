@@ -7,11 +7,13 @@ import (
 
 	"prism/internal/blockchain"
 	"prism/internal/consensus"
+	"prism/internal/poup"
 )
 
 const (
-	ProposerPoints          uint64 = 10
-	UsefulWorkPointMultiple uint64 = 2
+	ProposerPoints uint64 = poup.ProposerPoints
+
+	UsefulWorkPointMultiple uint64 = poup.UsefulWorkPointMultiple
 )
 
 // EligibilityChecker represents a source capable of determining

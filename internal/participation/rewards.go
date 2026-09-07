@@ -1,8 +1,11 @@
 package participation
 
+import "prism/internal/poup"
+
 const (
-	RewardPointsPerUnit     uint64 = 10
-	MaxRewardUnitsPerPeriod uint64 = 10
+	RewardPointsPerUnit uint64 = poup.RewardPointsPerUnit
+
+	MaxRewardUnitsPerPeriod uint64 = poup.MaxRewardUnitsPerPeriod
 )
 
 // RewardUnits converts newly earned PoUP points into
@@ -13,11 +16,7 @@ const (
 func RewardUnits(
 	newPoints uint64,
 ) uint64 {
-	units := newPoints / RewardPointsPerUnit
-
-	if units > MaxRewardUnitsPerPeriod {
-		return MaxRewardUnitsPerPeriod
-	}
-
-	return units
+	return poup.RewardUnits(
+		newPoints,
+	)
 }
