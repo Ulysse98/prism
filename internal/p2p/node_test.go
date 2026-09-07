@@ -6,7 +6,11 @@ import (
 
 	"prism/internal/blockchain"
 	"prism/internal/consensus"
+	"prism/internal/identity"
+	"prism/internal/participation"
+	"prism/internal/poup"
 	"prism/internal/transaction"
+	"prism/internal/usefulwork"
 	"prism/internal/wallet"
 )
 
@@ -246,5 +250,262 @@ func TestAcceptBlockRejectsConflictingKnownHeight(
 			"conflict mutated chain: got %d blocks",
 			len(server.Chain.Blocks),
 		)
+	}
+}
+
+func TestPoUPClaimBlockConvergesAcrossPeers(
+	t *testing.T,
+) {
+	actor, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	source, err := blockchain.NewBlockchain(
+		map[string]uint64{
+			actor.Address: 1000,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const stake uint64 = 100
+
+	if err := source.LockStake(
+		actor.Address,
+		stake,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	pos := consensus.NewProofOfStake()
+
+	if err := pos.Register(
+		actor.Address,
+		stake,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	attestation, err :=
+		identity.NewWorldIDAttestation(
+			actor.Address,
+			"p2p-poup-nullifier",
+			"prism-p2p-poup",
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Build one complete PoUP reward period.
+	for index := 1; index <= 100; index++ {
+		task, err :=
+			usefulwork.NewSumSquaresTask(
+				[]uint64{
+					uint64(index),
+				},
+			)
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		proof, err :=
+			usefulwork.Execute(
+				task,
+				actor,
+			)
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if index == 1 {
+			if _, err := source.AddHumanityBlock(
+				[]identity.Attestation{
+					attestation,
+				},
+				actor.Address,
+				pos,
+			); err != nil {
+				t.Fatal(err)
+			}
+
+			// Humanity block consumed height 1, so useful work
+			// starts at height 2 in this fixture.
+			continue
+		}
+
+		if _, err := source.AddBlock(
+			nil,
+			[]usefulwork.Proof{
+				proof,
+			},
+			actor.Address,
+			pos,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// We need period 0 to contain 100 activity blocks.
+	task, err :=
+		usefulwork.NewSumSquaresTask(
+			[]uint64{101},
+		)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	proof, err :=
+		usefulwork.Execute(
+			task,
+			actor,
+		)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := source.AddBlock(
+		nil,
+		[]usefulwork.Proof{
+			proof,
+		},
+		actor.Address,
+		pos,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// Clone A's pre-claim chain into B and C.
+	makeReceiver := func(
+		nodeID string,
+	) *Server {
+		chain := &blockchain.Blockchain{
+			Blocks: append(
+				[]blockchain.Block(nil),
+				source.Blocks...,
+			),
+			LockedStakes: map[string]uint64{
+				actor.Address: stake,
+			},
+		}
+
+		return NewServer(
+			nodeID,
+			"127.0.0.1:0",
+			t.TempDir(),
+			chain,
+			pos,
+			map[string]*wallet.Wallet{
+				"Actor": actor,
+			},
+		)
+	}
+
+	nodeB := makeReceiver("node-b")
+	nodeC := makeReceiver("node-c")
+
+	reward, err :=
+		participation.EvaluatePeriodReward(
+			source,
+			pos,
+			source,
+			actor.Address,
+			0,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if reward.Amount == 0 {
+		t.Fatal(
+			"expected rewardable PoUP period",
+		)
+	}
+
+	claim := poup.NewClaim(
+		actor.Address,
+		0,
+		reward.Points,
+		reward.Units,
+		reward.Amount,
+		actor.PublicKeyHex(),
+	)
+
+	if err := claim.Sign(
+		actor.PrivateKey,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	block, err :=
+		source.AddParticipationClaimBlock(
+			[]poup.Claim{
+				claim,
+			},
+			actor.Address,
+			pos,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, server := range []*Server{
+		nodeB,
+		nodeC,
+	} {
+		appended, err :=
+			server.acceptBlock(block)
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !appended {
+			t.Fatal(
+				"expected PoUP block to append",
+			)
+		}
+
+		tip := server.Chain.Blocks[len(server.Chain.Blocks)-1]
+
+		if tip.Hash != block.Hash {
+			t.Fatal(
+				"peer changed PoUP block hash",
+			)
+		}
+
+		if len(tip.ParticipationClaims) != 1 {
+			t.Fatal(
+				"peer lost PoUP claim",
+			)
+		}
+
+		if tip.ParticipationClaims[0].ID !=
+			claim.ID {
+
+			t.Fatal(
+				"peer changed PoUP claim ID",
+			)
+		}
+
+		if tip.ParticipationClaims[0].Signature !=
+			claim.Signature {
+
+			t.Fatal(
+				"peer changed PoUP claim signature",
+			)
+		}
+
+		if !server.Chain.ValidateChain(pos) {
+			t.Fatal(
+				"peer PoUP chain failed validation",
+			)
+		}
 	}
 }
