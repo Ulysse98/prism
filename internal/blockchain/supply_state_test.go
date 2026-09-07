@@ -204,3 +204,54 @@ func TestSupplyStateRejectsSupplyAboveMaximum(
 		)
 	}
 }
+
+func TestGenesisSupplyReadsGenesisBlock(
+	t *testing.T,
+) {
+	chain, err := NewBlockchain(
+		map[string]uint64{
+			"Alice": 123,
+			"Bob":   456,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	supply, err :=
+		chain.GenesisSupply()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if supply != 579 {
+		t.Fatalf(
+			"expected genesis supply 579, got %d",
+			supply,
+		)
+	}
+}
+
+func TestGenesisSupplyRejectsInvalidGenesisTransaction(
+	t *testing.T,
+) {
+	chain, err := NewBlockchain(
+		map[string]uint64{
+			"Alice": 100,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chain.Blocks[0].Transactions[0].Amount++
+
+	if _, err :=
+		chain.GenesisSupply(); err == nil {
+
+		t.Fatal(
+			"expected invalid genesis transaction to fail",
+		)
+	}
+}

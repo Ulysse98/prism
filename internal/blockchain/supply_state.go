@@ -2,8 +2,10 @@ package blockchain
 
 import (
 	"fmt"
+	"math"
 
 	"prism/internal/consensus"
+	"prism/internal/transaction"
 )
 
 type SupplyState struct {
@@ -14,6 +16,56 @@ type SupplyState struct {
 	NetworkRewardAllocation uint64 `json:"networkRewardAllocation"`
 	ReservedAllocation      uint64 `json:"reservedAllocation"`
 	RemainingSupply         uint64 `json:"remainingSupply"`
+}
+
+func (bc *Blockchain) GenesisSupply() (
+	uint64,
+	error,
+) {
+	if bc == nil {
+		return 0, fmt.Errorf(
+			"blockchain cannot be nil",
+		)
+	}
+
+	if len(bc.Blocks) == 0 {
+		return 0, fmt.Errorf(
+			"blockchain has no genesis block",
+		)
+	}
+
+	genesis := bc.Blocks[0]
+
+	if genesis.Height != 0 ||
+		genesis.Proposer != "GENESIS" {
+
+		return 0, fmt.Errorf(
+			"invalid genesis block",
+		)
+	}
+
+	var total uint64
+
+	for _, tx := range genesis.Transactions {
+		if err := transaction.ValidateGenesis(
+			tx,
+		); err != nil {
+			return 0, fmt.Errorf(
+				"invalid genesis transaction: %w",
+				err,
+			)
+		}
+
+		if total > math.MaxUint64-tx.Amount {
+			return 0, fmt.Errorf(
+				"genesis supply overflow",
+			)
+		}
+
+		total += tx.Amount
+	}
+
+	return total, nil
 }
 
 func (bc *Blockchain) GetSupplyState() (
@@ -42,6 +94,16 @@ func (bc *Blockchain) GetSupplyState() (
 	if err != nil {
 		return SupplyState{}, fmt.Errorf(
 			"cannot calculate ledger supply: %w",
+			err,
+		)
+	}
+
+	genesisSupply, err :=
+		bc.GenesisSupply()
+
+	if err != nil {
+		return SupplyState{}, fmt.Errorf(
+			"cannot calculate genesis supply: %w",
 			err,
 		)
 	}
@@ -80,7 +142,7 @@ func (bc *Blockchain) GetSupplyState() (
 	return SupplyState{
 		MaxSupply:               policy.MaxSupply,
 		LedgerSupply:            ledgerSupply,
-		GenesisSupply:           ledgerSupply - networkEmission,
+		GenesisSupply:           genesisSupply,
 		NetworkEmission:         networkEmission,
 		NetworkRewardAllocation: policy.NetworkRewardAllocation(),
 		ReservedAllocation:      policy.ReservedAllocation(),
