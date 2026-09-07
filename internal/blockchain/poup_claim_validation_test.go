@@ -239,11 +239,12 @@ func TestValidPoUPClaimPassesConsensusValidation(
 	expected :=
 		before +
 			consensus.DefaultRewardPolicy().
-				ProposerReward
+				ProposerReward +
+			claim.Amount
 
 	if after != expected {
 		t.Fatalf(
-			"PoUP claim credited balance too early: expected %d, got %d",
+			"expected PoUP reward mint to produce balance %d, got %d",
 			expected,
 			after,
 		)

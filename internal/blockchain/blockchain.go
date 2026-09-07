@@ -925,6 +925,17 @@ func (bc *Blockchain) GetState() (
 				)
 			}
 
+			if err := creditParticipationReward(
+				&state,
+				claim,
+			); err != nil {
+				return State{}, fmt.Errorf(
+					"participation reward credit failed in block %d: %w",
+					blockIndex,
+					err,
+				)
+			}
+
 			usedParticipationClaims[key] =
 				struct{}{}
 		}
