@@ -15,7 +15,13 @@ type SupplyState struct {
 	NetworkEmission         uint64 `json:"networkEmission"`
 	NetworkRewardAllocation uint64 `json:"networkRewardAllocation"`
 	ReservedAllocation      uint64 `json:"reservedAllocation"`
-	RemainingSupply         uint64 `json:"remainingSupply"`
+
+	EcosystemAllocation uint64 `json:"ecosystemAllocation"`
+	TreasuryAllocation  uint64 `json:"treasuryAllocation"`
+	TeamAllocation      uint64 `json:"teamAllocation"`
+	LiquidityAllocation uint64 `json:"liquidityAllocation"`
+
+	RemainingSupply uint64 `json:"remainingSupply"`
 }
 
 func (bc *Blockchain) GenesisSupply() (
@@ -146,6 +152,12 @@ func (bc *Blockchain) GetSupplyState() (
 		NetworkEmission:         networkEmission,
 		NetworkRewardAllocation: policy.NetworkRewardAllocation(),
 		ReservedAllocation:      policy.ReservedAllocation(),
-		RemainingSupply:         policy.MaxSupply - ledgerSupply,
+
+		EcosystemAllocation: policy.EcosystemAllocation,
+		TreasuryAllocation:  policy.TreasuryAllocation,
+		TeamAllocation:      policy.TeamAllocation,
+		LiquidityAllocation: policy.LiquidityAllocation,
+
+		RemainingSupply: policy.MaxSupply - ledgerSupply,
 	}, nil
 }

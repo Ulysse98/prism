@@ -255,3 +255,62 @@ func TestGenesisSupplyRejectsInvalidGenesisTransaction(
 		)
 	}
 }
+
+func TestSupplyStateReportsReservedAllocations(
+	t *testing.T,
+) {
+	chain, err := NewBlockchain(
+		map[string]uint64{
+			"Alice": 100,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	state, err :=
+		chain.GetSupplyState()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if state.EcosystemAllocation != 15_000_000 {
+		t.Fatalf(
+			"expected ecosystem allocation 15000000, got %d",
+			state.EcosystemAllocation,
+		)
+	}
+
+	if state.TreasuryAllocation != 10_000_000 {
+		t.Fatalf(
+			"expected treasury allocation 10000000, got %d",
+			state.TreasuryAllocation,
+		)
+	}
+
+	if state.TeamAllocation != 10_000_000 {
+		t.Fatalf(
+			"expected team allocation 10000000, got %d",
+			state.TeamAllocation,
+		)
+	}
+
+	if state.LiquidityAllocation != 5_000_000 {
+		t.Fatalf(
+			"expected liquidity allocation 5000000, got %d",
+			state.LiquidityAllocation,
+		)
+	}
+
+	if state.ReservedAllocation !=
+		state.EcosystemAllocation+
+			state.TreasuryAllocation+
+			state.TeamAllocation+
+			state.LiquidityAllocation {
+
+		t.Fatal(
+			"reserved allocation does not match component allocations",
+		)
+	}
+}
