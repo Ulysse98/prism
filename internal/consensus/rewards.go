@@ -6,19 +6,22 @@ import (
 )
 
 const (
-	DefaultProposerReward   uint64 = 5
-	DefaultUsefulWorkReward uint64 = 2
+	DefaultProposerReward      uint64 = 5
+	DefaultUsefulWorkReward    uint64 = 2
+	DefaultParticipationReward uint64 = 1
 )
 
 type RewardPolicy struct {
-	ProposerReward   uint64
-	UsefulWorkReward uint64
+	ProposerReward      uint64
+	UsefulWorkReward    uint64
+	ParticipationReward uint64
 }
 
 func DefaultRewardPolicy() RewardPolicy {
 	return RewardPolicy{
-		ProposerReward:   DefaultProposerReward,
-		UsefulWorkReward: DefaultUsefulWorkReward,
+		ProposerReward:      DefaultProposerReward,
+		UsefulWorkReward:    DefaultUsefulWorkReward,
+		ParticipationReward: DefaultParticipationReward,
 	}
 }
 
@@ -35,11 +38,27 @@ func (policy RewardPolicy) Validate() error {
 		)
 	}
 
+	if policy.ParticipationReward == 0 {
+		return fmt.Errorf(
+			"participation reward must be greater than zero",
+		)
+	}
+
 	return nil
 }
 
 func (policy RewardPolicy) BlockEmission(
 	usefulWorkProofs uint64,
+) (uint64, error) {
+	return policy.BlockEmissionWithParticipation(
+		usefulWorkProofs,
+		0,
+	)
+}
+
+func (policy RewardPolicy) BlockEmissionWithParticipation(
+	usefulWorkProofs uint64,
+	participationUnits uint64,
 ) (uint64, error) {
 	if err := policy.Validate(); err != nil {
 		return 0, err
@@ -57,6 +76,18 @@ func (policy RewardPolicy) BlockEmission(
 	workEmission :=
 		usefulWorkProofs * policy.UsefulWorkReward
 
+	if participationUnits > 0 &&
+		policy.ParticipationReward >
+			math.MaxUint64/participationUnits {
+
+		return 0, fmt.Errorf(
+			"participation reward overflow",
+		)
+	}
+
+	participationEmission :=
+		participationUnits * policy.ParticipationReward
+
 	if policy.ProposerReward >
 		math.MaxUint64-workEmission {
 
@@ -65,5 +96,16 @@ func (policy RewardPolicy) BlockEmission(
 		)
 	}
 
-	return policy.ProposerReward + workEmission, nil
+	total :=
+		policy.ProposerReward + workEmission
+
+	if total >
+		math.MaxUint64-participationEmission {
+
+		return 0, fmt.Errorf(
+			"participation emission overflow",
+		)
+	}
+
+	return total + participationEmission, nil
 }
