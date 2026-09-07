@@ -104,6 +104,13 @@ func (mp *Mempool) Transactions() []transaction.Transaction {
 	return result
 }
 
+func (mp *Mempool) Has(
+	id string,
+) bool {
+	_, exists := mp.ids[id]
+	return exists
+}
+
 func (mp *Mempool) Count() int {
 	return len(mp.transactions)
 }

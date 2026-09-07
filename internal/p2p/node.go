@@ -1025,12 +1025,31 @@ func (s *Server) handleIncoming(
 				fmt.Println(
 					"Transaction rejected: network mismatch",
 				)
+
 				continue
 			}
 
 			if err := s.acceptTransaction(
 				message.Transaction,
 			); err != nil {
+
+				if s.HasTransaction(
+					message.Transaction.ID,
+				) {
+					ack.Accepted = true
+
+					if err := encoder.Encode(ack); err != nil {
+						return
+					}
+
+					fmt.Printf(
+						"Transaction already known: %s mempool=%d\n",
+						message.Transaction.ID,
+						s.MempoolCount(),
+					)
+
+					continue
+				}
 
 				ack.Error = err.Error()
 
@@ -1043,6 +1062,7 @@ func (s *Server) handleIncoming(
 					message.Transaction.ID,
 					err,
 				)
+
 				continue
 			}
 
@@ -1056,6 +1076,11 @@ func (s *Server) handleIncoming(
 				"Transaction accepted: %s mempool=%d\n",
 				message.Transaction.ID,
 				s.MempoolCount(),
+			)
+
+			go s.broadcastTransaction(
+				message.Transaction,
+				hello.NodeID,
 			)
 
 		default:
@@ -1092,6 +1117,64 @@ func (s *Server) acceptTransaction(
 		tx,
 		chain,
 	)
+}
+
+func (s *Server) HasTransaction(
+	transactionID string,
+) bool {
+	s.poolMu.Lock()
+	defer s.poolMu.Unlock()
+
+	if s.Pool == nil {
+		return false
+	}
+
+	return s.Pool.Has(
+		transactionID,
+	)
+}
+
+func (s *Server) broadcastTransaction(
+	tx transaction.Transaction,
+	excludeNodeID string,
+) {
+	local := s.hello()
+
+	for _, peer := range s.Peers.List() {
+		if peer.NodeID == "" ||
+			peer.Address == "" ||
+			peer.NodeID == s.NodeID ||
+			peer.NodeID == excludeNodeID ||
+			peer.ChainID != local.ChainID {
+
+			continue
+		}
+
+		currentPeer := peer
+
+		go func() {
+			if err := s.SendTransaction(
+				currentPeer.Address,
+				tx,
+			); err != nil {
+
+				fmt.Printf(
+					"Transaction broadcast failed: %s -> %s: %v\n",
+					tx.ID,
+					currentPeer.NodeID,
+					err,
+				)
+
+				return
+			}
+
+			fmt.Printf(
+				"Transaction broadcast accepted: %s -> %s\n",
+				tx.ID,
+				currentPeer.NodeID,
+			)
+		}()
+	}
 }
 
 func (s *Server) MempoolCount() int {
