@@ -126,13 +126,24 @@ func (config ChainConfig) Canonical() (
 		return ChainConfig{}, err
 	}
 
+	policy := reserved.AuthorityPolicy{
+		Ecosystem: ecosystem,
+		Treasury:  treasury,
+		Team:      team,
+		Liquidity: liquidity,
+
+		EcosystemThreshold: config.ReservedAuthorities.EcosystemThreshold,
+		TreasuryThreshold:  config.ReservedAuthorities.TreasuryThreshold,
+		TeamThreshold:      config.ReservedAuthorities.TeamThreshold,
+		LiquidityThreshold: config.ReservedAuthorities.LiquidityThreshold,
+	}
+
+	if err := policy.Validate(); err != nil {
+		return ChainConfig{}, err
+	}
+
 	return ChainConfig{
-		ReservedAuthorities: reserved.AuthorityPolicy{
-			Ecosystem: ecosystem,
-			Treasury:  treasury,
-			Team:      team,
-			Liquidity: liquidity,
-		},
+		ReservedAuthorities: policy,
 	}, nil
 }
 
