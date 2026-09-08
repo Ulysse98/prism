@@ -40,3 +40,37 @@ func creditReservedAuthorization(
 
 	return nil
 }
+
+func creditReservedGrant(
+	state *State,
+	grant reserved.Grant,
+) error {
+	if state == nil {
+		return fmt.Errorf(
+			"state cannot be nil",
+		)
+	}
+
+	if state.Balances == nil {
+		return fmt.Errorf(
+			"state balances cannot be nil",
+		)
+	}
+
+	current :=
+		state.Balances[grant.Recipient]
+
+	if current >
+		math.MaxUint64-grant.Amount {
+
+		return fmt.Errorf(
+			"reserved grant balance overflow for %s",
+			grant.Recipient,
+		)
+	}
+
+	state.Balances[grant.Recipient] =
+		current + grant.Amount
+
+	return nil
+}

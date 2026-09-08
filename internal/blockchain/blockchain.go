@@ -728,20 +728,22 @@ func (bc *Blockchain) GetState() (
 		)
 	}
 
-	hasReservedAuthorizations := false
+	hasReservedEmissions := false
 
 	for blockIndex, block := range bc.Blocks {
 		if blockIndex == 0 {
 			continue
 		}
 
-		if len(block.ReservedAuthorizations) != 0 {
-			hasReservedAuthorizations = true
+		if len(block.ReservedAuthorizations) != 0 ||
+			len(block.ReservedGrants) != 0 {
+
+			hasReservedEmissions = true
 			break
 		}
 	}
 
-	if hasReservedAuthorizations {
+	if hasReservedEmissions {
 		if _, err :=
 			bc.GetReservedAccountingState(); err != nil {
 
@@ -815,6 +817,12 @@ func (bc *Blockchain) GetState() (
 				)
 			}
 
+			if len(block.ReservedGrants) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain reserved grants",
+				)
+			}
+
 			for _, tx := range block.Transactions {
 				if err := transaction.ValidateGenesis(
 					tx,
@@ -875,7 +883,8 @@ func (bc *Blockchain) GetState() (
 			len(block.UsefulWork) == 0 &&
 			len(block.Humanity) == 0 &&
 			len(block.ParticipationClaims) == 0 &&
-			len(block.ReservedAuthorizations) == 0 {
+			len(block.ReservedAuthorizations) == 0 &&
+			len(block.ReservedGrants) == 0 {
 
 			return State{}, fmt.Errorf(
 				"empty normal block at height %d",
@@ -1090,6 +1099,21 @@ func (bc *Blockchain) GetState() (
 			}
 		}
 
+		for grantIndex, grant := range block.ReservedGrants {
+			if err := creditReservedGrant(
+				&state,
+				grant,
+			); err != nil {
+
+				return State{}, fmt.Errorf(
+					"reserved grant credit failed in block %d at index %d: %w",
+					blockIndex,
+					grantIndex,
+					err,
+				)
+			}
+		}
+
 		// PoS proposer reward.
 		if state.Balances[block.Proposer] >
 			math.MaxUint64-block.Reward {
@@ -1288,7 +1312,8 @@ func (bc *Blockchain) ValidateChain(
 			len(current.UsefulWork) == 0 &&
 			len(current.Humanity) == 0 &&
 			len(current.ParticipationClaims) == 0 &&
-			len(current.ReservedAuthorizations) == 0 {
+			len(current.ReservedAuthorizations) == 0 &&
+			len(current.ReservedGrants) == 0 {
 
 			return false
 		}

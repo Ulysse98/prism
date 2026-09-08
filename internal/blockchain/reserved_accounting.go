@@ -73,6 +73,16 @@ func (bc *Blockchain) GetReservedAccountingState() (
 					)
 			}
 
+			if len(
+				block.ReservedGrants,
+			) != 0 {
+
+				return nil,
+					fmt.Errorf(
+						"genesis block cannot contain reserved grants",
+					)
+			}
+
 			continue
 		}
 
@@ -91,6 +101,26 @@ func (bc *Blockchain) GetReservedAccountingState() (
 						"invalid reserved authorization in block %d at index %d: %w",
 						block.Height,
 						authorizationIndex,
+						err,
+					)
+			}
+		}
+
+		for grantIndex, grant := range block.ReservedGrants {
+
+			if err :=
+				state.AcceptGrant(
+					grant,
+					authorityPolicy,
+					chainID,
+					supplyPolicy,
+				); err != nil {
+
+				return nil,
+					fmt.Errorf(
+						"invalid reserved grant in block %d at index %d: %w",
+						block.Height,
+						grantIndex,
 						err,
 					)
 			}
