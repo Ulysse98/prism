@@ -27,7 +27,11 @@ func (config ChainConfig) IsLegacy() bool {
 	return len(policy.Ecosystem) == 0 &&
 		len(policy.Treasury) == 0 &&
 		len(policy.Team) == 0 &&
-		len(policy.Liquidity) == 0
+		len(policy.Liquidity) == 0 &&
+		policy.EcosystemThreshold == 0 &&
+		policy.TreasuryThreshold == 0 &&
+		policy.TeamThreshold == 0 &&
+		policy.LiquidityThreshold == 0
 }
 
 func canonicalAuthorityList(

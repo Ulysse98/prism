@@ -8,6 +8,31 @@ import (
 	"prism/internal/reserved"
 )
 
+func cloneReservedGrants(
+	grants []reserved.Grant,
+) []reserved.Grant {
+	if len(grants) == 0 {
+		return nil
+	}
+
+	cloned := make(
+		[]reserved.Grant,
+		len(grants),
+	)
+
+	for index, grant := range grants {
+		cloned[index] = grant
+
+		cloned[index].Approvals =
+			append(
+				[]reserved.Approval(nil),
+				grant.Approvals...,
+			)
+	}
+
+	return cloned
+}
+
 // AddReservedGrantBlock creates a Prism block containing
 // threshold-authorized reserved grants.
 //
@@ -129,11 +154,7 @@ func (bc *Blockchain) AddReservedGrantBlock(
 		)
 	}
 
-	blockGrants :=
-		append(
-			[]reserved.Grant(nil),
-			grants...,
-		)
+	blockGrants := cloneReservedGrants(grants)
 
 	block := Block{
 		Height:         nextHeight,
@@ -167,10 +188,17 @@ func (bc *Blockchain) AddReservedGrantBlock(
 		)
 	}
 
+	storedBlock := block
+
+	storedBlock.ReservedGrants =
+		cloneReservedGrants(
+			block.ReservedGrants,
+		)
+
 	bc.Blocks =
 		append(
 			bc.Blocks,
-			block,
+			storedBlock,
 		)
 
 	return block, nil

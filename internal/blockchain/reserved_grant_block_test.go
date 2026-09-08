@@ -169,3 +169,68 @@ func TestAddReservedGrantBlockRejectsBelowThreshold(
 		)
 	}
 }
+
+func TestAddReservedGrantBlockCopiesGrantApprovals(
+	t *testing.T,
+) {
+	bc, pos, validator, authorities :=
+		thresholdGrantBlockchain(t)
+
+	grant :=
+		signedThresholdGrantForBlockchain(
+			t,
+			bc,
+			authorities,
+			2,
+		)
+
+	originalSignature :=
+		grant.Approvals[0].Signature
+
+	block, err :=
+		bc.AddReservedGrantBlock(
+			[]reserved.Grant{
+				grant,
+			},
+			validator.Address,
+			pos,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	grant.Approvals[0].Signature =
+		"tampered-input"
+
+	stored :=
+		&bc.Blocks[len(bc.Blocks)-1]
+
+	if stored.ReservedGrants[0].
+		Approvals[0].
+		Signature != originalSignature {
+
+		t.Fatal(
+			"input grant mutation changed stored block",
+		)
+	}
+
+	block.ReservedGrants[0].
+		Approvals[0].
+		Signature = "tampered-return"
+
+	if stored.ReservedGrants[0].
+		Approvals[0].
+		Signature != originalSignature {
+
+		t.Fatal(
+			"returned block mutation changed stored block",
+		)
+	}
+
+	if !bc.ValidateChain(pos) {
+		t.Fatal(
+			"stored chain became invalid after external grant mutation",
+		)
+	}
+}

@@ -92,3 +92,28 @@ func TestBlockchainConfiguredChainIDRejectsInvalidConfig(
 		)
 	}
 }
+
+func TestBlockchainConfiguredChainIDRejectsThresholdWithoutAuthorities(
+	t *testing.T,
+) {
+	bc := &Blockchain{
+		Blocks: []Block{
+			{
+				Hash: "genesis-hash",
+			},
+		},
+		Config: ChainConfig{
+			ReservedAuthorities: reserved.AuthorityPolicy{
+				TreasuryThreshold: 2,
+			},
+		},
+	}
+
+	if _, err :=
+		bc.ChainID(); err == nil {
+
+		t.Fatal(
+			"threshold without authorities must prevent Chain ID derivation",
+		)
+	}
+}
