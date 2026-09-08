@@ -1,6 +1,8 @@
 package blockchain
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"prism/internal/consensus"
@@ -156,6 +158,87 @@ func TestReservedAuthorizationHashPathSurvivesGrantUpgrade(
 	if before != after {
 		t.Fatal(
 			"empty grant slice changed v0.21 reserved authorization hash",
+		)
+	}
+}
+
+func TestReservedGrantLifecycleHeightsAreHashed(
+	t *testing.T,
+) {
+	grant :=
+		reservedGrantHashTestGrant()
+
+	grant.NotBeforeHeight = 5
+	grant.ExpiresAtHeight = 10
+
+	block :=
+		reservedHashTestBlock()
+
+	block.ReservedGrants =
+		[]reserved.Grant{
+			grant,
+		}
+
+	originalHash :=
+		CalculateHash(block)
+
+	block.ReservedGrants[0].
+		NotBeforeHeight = 6
+
+	if CalculateHash(block) ==
+		originalHash {
+
+		t.Fatal(
+			"reserved grant activation height must affect block hash",
+		)
+	}
+
+	block.ReservedGrants[0] =
+		grant
+
+	block.ReservedGrants[0].
+		ExpiresAtHeight = 11
+
+	if CalculateHash(block) ==
+		originalHash {
+
+		t.Fatal(
+			"reserved grant expiration height must affect block hash",
+		)
+	}
+}
+
+func TestLegacyReservedGrantJSONOmitsLifecycleFields(
+	t *testing.T,
+) {
+	grant :=
+		reservedGrantHashTestGrant()
+
+	data, err :=
+		json.Marshal(grant)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	encoded :=
+		string(data)
+
+	if strings.Contains(
+		encoded,
+		"not_before_height",
+	) {
+		t.Fatal(
+			"zero activation height changed v0.22 grant JSON",
+		)
+	}
+
+	if strings.Contains(
+		encoded,
+		"expires_at_height",
+	) {
+		t.Fatal(
+			"zero expiration height changed v0.22 grant JSON",
 		)
 	}
 }

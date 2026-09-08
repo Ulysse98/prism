@@ -172,3 +172,52 @@ func TestAccountingStateRejectsExpiredGrant(
 		)
 	}
 }
+
+func TestAccountingStateRequiresExplicitHeightForLifecycleGrant(
+	t *testing.T,
+) {
+	grant, policy, _ :=
+		accountingLifecycleGrant(
+			t,
+			1,
+			0,
+			10,
+		)
+
+	state :=
+		NewAccountingState(0)
+
+	if err :=
+		state.AcceptGrant(
+			grant,
+			policy,
+			testChainID,
+			consensus.DefaultSupplyPolicy(),
+		); err == nil {
+
+		t.Fatal(
+			"expected lifecycle grant without explicit height to fail",
+		)
+	}
+
+	if state.Usage.Treasury != 0 {
+		t.Fatal(
+			"heightless lifecycle grant changed reserved usage",
+		)
+	}
+
+	if err :=
+		state.AcceptGrantAtHeight(
+			grant,
+			1,
+			policy,
+			testChainID,
+			consensus.DefaultSupplyPolicy(),
+		); err != nil {
+
+		t.Fatal(
+			"heightless attempt consumed lifecycle grant:",
+			err,
+		)
+	}
+}

@@ -12,6 +12,14 @@ func (state *AccountingState) AcceptGrant(
 	expectedChainID string,
 	supplyPolicy consensus.SupplyPolicy,
 ) error {
+	if grant.NotBeforeHeight != 0 ||
+		grant.ExpiresAtHeight != 0 {
+
+		return fmt.Errorf(
+			"lifecycle reserved grant requires explicit block height",
+		)
+	}
+
 	return state.AcceptGrantAtHeight(
 		grant,
 		0,
