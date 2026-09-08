@@ -111,6 +111,22 @@ func (bc *Blockchain) AddReservedGrantBlock(
 	nextHeight :=
 		previous.Height + 1
 
+	for grantIndex, grant := range grants {
+		if err :=
+			reserved.ValidateGrantAtHeight(
+				grant,
+				nextHeight,
+			); err != nil {
+
+			return Block{}, fmt.Errorf(
+				"reserved grant at index %d is not valid at height %d: %w",
+				grantIndex,
+				nextHeight,
+				err,
+			)
+		}
+	}
+
 	expectedProposer, err :=
 		pos.SelectProposer(
 			previous.Hash,
