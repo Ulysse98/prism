@@ -716,3 +716,284 @@ func TestReservedAuthorizationBlockConvergesAcrossPeers(
 		}
 	}
 }
+
+func TestThresholdReservedGrantBlockConvergesAcrossPeers(
+	t *testing.T,
+) {
+	validator, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recipient, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authorities := make(
+		[]*wallet.Wallet,
+		3,
+	)
+
+	addresses := make(
+		[]string,
+		3,
+	)
+
+	for i := range authorities {
+		authorities[i], err =
+			wallet.New()
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		addresses[i] =
+			authorities[i].Address
+	}
+
+	source, err := blockchain.NewBlockchain(
+		map[string]uint64{
+			validator.Address: 1000,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const stake uint64 = 10
+
+	if err := source.LockStake(
+		validator.Address,
+		stake,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	pos := consensus.NewProofOfStake()
+
+	if err := pos.Register(
+		validator.Address,
+		stake,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	source.Config = blockchain.ChainConfig{
+		ReservedAuthorities: reserved.AuthorityPolicy{
+			Treasury:          addresses,
+			TreasuryThreshold: 2,
+		},
+	}
+
+	makeReceiver := func(
+		nodeID string,
+	) *Server {
+		chain := &blockchain.Blockchain{
+			Blocks: append(
+				[]blockchain.Block(nil),
+				source.Blocks...,
+			),
+			LockedStakes: map[string]uint64{
+				validator.Address: stake,
+			},
+			Config: source.Config,
+		}
+
+		return NewServer(
+			nodeID,
+			"127.0.0.1:0",
+			t.TempDir(),
+			chain,
+			pos,
+			map[string]*wallet.Wallet{
+				"Validator":  validator,
+				"Recipient":  recipient,
+				"AuthorityA": authorities[0],
+				"AuthorityB": authorities[1],
+				"AuthorityC": authorities[2],
+			},
+		)
+	}
+
+	nodeB :=
+		makeReceiver(
+			"threshold-reserved-node-b",
+		)
+
+	nodeC :=
+		makeReceiver(
+			"threshold-reserved-node-c",
+		)
+
+	chainID, err :=
+		source.ChainID()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	grant :=
+		reserved.NewGrant(
+			chainID,
+			1,
+			consensus.ReservedPoolTreasury,
+			recipient.Address,
+			100,
+		)
+
+	for _, authority := range []*wallet.Wallet{
+		authorities[0],
+		authorities[1],
+	} {
+		if err :=
+			grant.AddApproval(
+				authority.Address,
+				authority.PublicKeyHex(),
+				authority.PrivateKey,
+			); err != nil {
+
+			t.Fatal(err)
+		}
+	}
+
+	block, err :=
+		source.AddReservedGrantBlock(
+			[]reserved.Grant{
+				grant,
+			},
+			validator.Address,
+			pos,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(block.ReservedGrants) != 1 {
+		t.Fatalf(
+			"expected source block to contain one reserved grant, got %d",
+			len(block.ReservedGrants),
+		)
+	}
+
+	if len(block.ReservedGrants[0].Approvals) != 2 {
+		t.Fatalf(
+			"expected source grant to contain two approvals, got %d",
+			len(block.ReservedGrants[0].Approvals),
+		)
+	}
+
+	for _, server := range []*Server{
+		nodeB,
+		nodeC,
+	} {
+		appended, err :=
+			server.acceptBlock(
+				block,
+			)
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !appended {
+			t.Fatal(
+				"expected threshold reserved grant block to append",
+			)
+		}
+
+		tip := server.Chain.Blocks[len(server.Chain.Blocks)-1]
+
+		if tip.Hash != block.Hash {
+			t.Fatal(
+				"peer changed threshold reserved grant block hash",
+			)
+		}
+
+		if len(tip.ReservedGrants) != 1 {
+			t.Fatalf(
+				"expected peer to preserve one reserved grant, got %d",
+				len(tip.ReservedGrants),
+			)
+		}
+
+		received :=
+			tip.ReservedGrants[0]
+
+		if received.ID != grant.ID {
+			t.Fatal(
+				"peer changed reserved grant ID",
+			)
+		}
+
+		if len(received.Approvals) !=
+			len(grant.Approvals) {
+
+			t.Fatalf(
+				"expected %d grant approvals, got %d",
+				len(grant.Approvals),
+				len(received.Approvals),
+			)
+		}
+
+		for i := range grant.Approvals {
+
+			if received.Approvals[i].Authorizer !=
+				grant.Approvals[i].Authorizer {
+
+				t.Fatalf(
+					"peer changed grant approver at index %d",
+					i,
+				)
+			}
+
+			if received.Approvals[i].Signature !=
+				grant.Approvals[i].Signature {
+
+				t.Fatalf(
+					"peer changed grant signature at index %d",
+					i,
+				)
+			}
+		}
+
+		balance, err :=
+			server.Chain.BalanceOf(
+				recipient.Address,
+			)
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if balance != grant.Amount {
+			t.Fatalf(
+				"expected threshold reserved balance %d, got %d",
+				grant.Amount,
+				balance,
+			)
+		}
+
+		emission, err :=
+			server.Chain.ReservedEmission()
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if emission != grant.Amount {
+			t.Fatalf(
+				"expected threshold reserved emission %d, got %d",
+				grant.Amount,
+				emission,
+			)
+		}
+
+		if !server.Chain.ValidateChain(pos) {
+			t.Fatal(
+				"peer threshold reserved grant chain failed validation",
+			)
+		}
+	}
+}
