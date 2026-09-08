@@ -14,12 +14,17 @@ type replayKey struct {
 type ReplayState struct {
 	usedIDs   map[string]struct{}
 	lastNonce map[replayKey]uint64
+
+	usedGrantIDs   map[string]struct{}
+	lastGrantNonce map[grantReplayKey]uint64
 }
 
 func NewReplayState() *ReplayState {
 	return &ReplayState{
-		usedIDs:   make(map[string]struct{}),
-		lastNonce: make(map[replayKey]uint64),
+		usedIDs:        make(map[string]struct{}),
+		lastNonce:      make(map[replayKey]uint64),
+		usedGrantIDs:   make(map[string]struct{}),
+		lastGrantNonce: make(map[grantReplayKey]uint64),
 	}
 }
 
