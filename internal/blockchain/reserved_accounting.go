@@ -109,8 +109,9 @@ func (bc *Blockchain) GetReservedAccountingState() (
 		for grantIndex, grant := range block.ReservedGrants {
 
 			if err :=
-				state.AcceptGrant(
+				state.AcceptGrantAtHeight(
 					grant,
+					block.Height,
 					authorityPolicy,
 					chainID,
 					supplyPolicy,

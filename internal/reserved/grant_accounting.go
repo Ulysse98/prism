@@ -12,6 +12,22 @@ func (state *AccountingState) AcceptGrant(
 	expectedChainID string,
 	supplyPolicy consensus.SupplyPolicy,
 ) error {
+	return state.AcceptGrantAtHeight(
+		grant,
+		0,
+		authorityPolicy,
+		expectedChainID,
+		supplyPolicy,
+	)
+}
+
+func (state *AccountingState) AcceptGrantAtHeight(
+	grant Grant,
+	blockHeight uint64,
+	authorityPolicy AuthorityPolicy,
+	expectedChainID string,
+	supplyPolicy consensus.SupplyPolicy,
+) error {
 	if state == nil {
 		return fmt.Errorf(
 			"reserved accounting state cannot be nil",
@@ -35,6 +51,15 @@ func (state *AccountingState) AcceptGrant(
 		authorityPolicy.ValidateGrant(
 			grant,
 			expectedChainID,
+		); err != nil {
+
+		return err
+	}
+
+	if err :=
+		ValidateGrantAtHeight(
+			grant,
+			blockHeight,
 		); err != nil {
 
 		return err
