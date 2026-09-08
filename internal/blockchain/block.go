@@ -32,6 +32,7 @@ type Block struct {
 	Humanity               []identity.Attestation    `json:"humanity,omitempty"`
 	ParticipationClaims    []poup.Claim              `json:"participation_claims,omitempty"`
 	ReservedAuthorizations []reserved.Authorization  `json:"reserved_authorizations,omitempty"`
+	ReservedGrants         []reserved.Grant          `json:"reserved_grants,omitempty"`
 	Hash                   string                    `json:"hash"`
 }
 
@@ -51,6 +52,64 @@ func CalculateHash(
 	)
 	if err != nil {
 		panic(err)
+	}
+
+	// Threshold-reserved-grant-aware hash format.
+	//
+	// Blocks containing threshold grants use the v0.22 hash
+	// domain. Existing v0.21 reserved authorization blocks
+	// continue through the reserved-block-v1 path below.
+	if len(block.ReservedGrants) > 0 {
+		humanityData, err := json.Marshal(
+			block.Humanity,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		claimData, err := json.Marshal(
+			block.ParticipationClaims,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		authorizationData, err := json.Marshal(
+			block.ReservedAuthorizations,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		grantData, err := json.Marshal(
+			block.ReservedGrants,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		payload := fmt.Sprintf(
+			"reserved-grant-block-v1|%d|%s|%s|%s|%d|%s|%s|%s|%s|%s|%s",
+			block.Height,
+			block.Timestamp.UTC().Format(
+				time.RFC3339Nano,
+			),
+			block.PreviousHash,
+			block.Proposer,
+			block.Reward,
+			string(transactionData),
+			string(usefulWorkData),
+			string(humanityData),
+			string(claimData),
+			string(authorizationData),
+			string(grantData),
+		)
+
+		hash := sha256.Sum256(
+			[]byte(payload),
+		)
+
+		return hex.EncodeToString(hash[:])
 	}
 
 	// Reserved-authorization-aware hash format.
