@@ -51,6 +51,12 @@ func runNodeCommand(
 		"node data directory",
 	)
 
+	chainConfig := flags.String(
+		"chain-config",
+		"",
+		"JSON chain config used to create or verify node state",
+	)
+
 	if err := flags.Parse(args); err != nil {
 		return
 	}
@@ -69,7 +75,10 @@ func runNodeCommand(
 	)
 
 	chain, pos, wallets, created, err :=
-		loadOrCreateP2PState(dataPath)
+		loadOrCreateP2PState(
+			dataPath,
+			*chainConfig,
+		)
 
 	if err != nil {
 		fmt.Println(
@@ -388,6 +397,12 @@ func runNodeProduceCommand(
 		"node data directory",
 	)
 
+	chainConfig := flags.String(
+		"chain-config",
+		"",
+		"JSON chain config used to create or verify node state",
+	)
+
 	peer := flags.String(
 		"peer",
 		"",
@@ -412,7 +427,10 @@ func runNodeProduceCommand(
 	)
 
 	chain, pos, wallets, created, err :=
-		loadOrCreateP2PState(dataPath)
+		loadOrCreateP2PState(
+			dataPath,
+			*chainConfig,
+		)
 
 	if err != nil {
 		fmt.Println(
@@ -665,6 +683,7 @@ func resolveNodeDataPath(
 
 func loadOrCreateP2PState(
 	dataPath string,
+	chainConfigPath string,
 ) (
 	*blockchain.Blockchain,
 	*consensus.ProofOfStake,
@@ -672,12 +691,28 @@ func loadOrCreateP2PState(
 	bool,
 	error,
 ) {
+	requestedConfig, err :=
+		loadNodeChainConfig(
+			chainConfigPath,
+		)
+
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
+
 	if storage.Exists(dataPath) {
 		chain, pos, wallets, err := storage.Load(
 			dataPath,
 		)
 
 		if err != nil {
+			return nil, nil, nil, false, err
+		}
+
+		if err := ensureNodeChainConfig(
+			chain,
+			requestedConfig,
+		); err != nil {
 			return nil, nil, nil, false, err
 		}
 
@@ -692,6 +727,17 @@ func loadOrCreateP2PState(
 
 	if err != nil {
 		return nil, nil, nil, false, err
+	}
+
+	if requestedConfig != nil {
+		chain.Config = *requestedConfig
+	}
+
+	if !chain.ValidateChain(pos) {
+		return nil, nil, nil, false,
+			fmt.Errorf(
+				"configured blockchain failed validation",
+			)
 	}
 
 	if err := storage.Save(
