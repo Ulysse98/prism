@@ -9,6 +9,7 @@ import (
 	"prism/internal/identity"
 	"prism/internal/participation"
 	"prism/internal/poup"
+	"prism/internal/reserved"
 	"prism/internal/transaction"
 	"prism/internal/usefulwork"
 	"prism/internal/wallet"
@@ -505,6 +506,212 @@ func TestPoUPClaimBlockConvergesAcrossPeers(
 		if !server.Chain.ValidateChain(pos) {
 			t.Fatal(
 				"peer PoUP chain failed validation",
+			)
+		}
+	}
+}
+
+func TestReservedAuthorizationBlockConvergesAcrossPeers(
+	t *testing.T,
+) {
+	validator, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authorizer, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recipient, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	source, err := blockchain.NewBlockchain(
+		map[string]uint64{
+			validator.Address: 1000,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const stake uint64 = 10
+
+	if err := source.LockStake(
+		validator.Address,
+		stake,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	pos := consensus.NewProofOfStake()
+
+	if err := pos.Register(
+		validator.Address,
+		stake,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	source.Config = blockchain.ChainConfig{
+		ReservedAuthorities: reserved.AuthorityPolicy{
+			Treasury: []string{
+				authorizer.Address,
+			},
+		},
+	}
+
+	makeReceiver := func(
+		nodeID string,
+	) *Server {
+		chain := &blockchain.Blockchain{
+			Blocks: append(
+				[]blockchain.Block(nil),
+				source.Blocks...,
+			),
+			LockedStakes: map[string]uint64{
+				validator.Address: stake,
+			},
+			Config: source.Config,
+		}
+
+		return NewServer(
+			nodeID,
+			"127.0.0.1:0",
+			t.TempDir(),
+			chain,
+			pos,
+			map[string]*wallet.Wallet{
+				"Validator":  validator,
+				"Authorizer": authorizer,
+				"Recipient":  recipient,
+			},
+		)
+	}
+
+	nodeB := makeReceiver("reserved-node-b")
+	nodeC := makeReceiver("reserved-node-c")
+
+	chainID, err := source.ChainID()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authorization :=
+		reserved.NewAuthorization(
+			chainID,
+			1,
+			consensus.ReservedPoolTreasury,
+			recipient.Address,
+			100,
+			authorizer.Address,
+			authorizer.PublicKeyHex(),
+		)
+
+	if err := authorization.Sign(
+		authorizer.PrivateKey,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	block, err :=
+		source.AddReservedAuthorizationBlock(
+			[]reserved.Authorization{
+				authorization,
+			},
+			validator.Address,
+			pos,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, server := range []*Server{
+		nodeB,
+		nodeC,
+	} {
+		appended, err :=
+			server.acceptBlock(block)
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !appended {
+			t.Fatal(
+				"expected reserved block to append",
+			)
+		}
+
+		tip :=
+			server.Chain.Blocks[len(server.Chain.Blocks)-1]
+
+		if tip.Hash != block.Hash {
+			t.Fatal(
+				"peer changed reserved block hash",
+			)
+		}
+
+		if len(tip.ReservedAuthorizations) != 1 {
+			t.Fatal(
+				"peer lost reserved authorization",
+			)
+		}
+
+		received :=
+			tip.ReservedAuthorizations[0]
+
+		if received.ID != authorization.ID {
+			t.Fatal(
+				"peer changed reserved authorization ID",
+			)
+		}
+
+		if received.Signature != authorization.Signature {
+			t.Fatal(
+				"peer changed reserved authorization signature",
+			)
+		}
+
+		balance, err :=
+			server.Chain.BalanceOf(
+				recipient.Address,
+			)
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if balance != authorization.Amount {
+			t.Fatalf(
+				"expected reserved balance %d, got %d",
+				authorization.Amount,
+				balance,
+			)
+		}
+
+		emission, err :=
+			server.Chain.ReservedEmission()
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if emission != authorization.Amount {
+			t.Fatalf(
+				"expected reserved emission %d, got %d",
+				authorization.Amount,
+				emission,
+			)
+		}
+
+		if !server.Chain.ValidateChain(pos) {
+			t.Fatal(
+				"peer reserved chain failed validation",
 			)
 		}
 	}
