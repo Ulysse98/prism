@@ -27,6 +27,9 @@ type Grant struct {
 	Recipient string                 `json:"recipient"`
 	Amount    uint64                 `json:"amount"`
 
+	NotBeforeHeight uint64 `json:"not_before_height,omitempty"`
+	ExpiresAtHeight uint64 `json:"expires_at_height,omitempty"`
+
 	Approvals []Approval `json:"approvals,omitempty"`
 }
 
@@ -51,16 +54,57 @@ func NewGrant(
 	return grant
 }
 
+func NewGrantWithWindow(
+	chainID string,
+	nonce uint64,
+	pool consensus.ReservedPool,
+	recipient string,
+	amount uint64,
+	notBeforeHeight uint64,
+	expiresAtHeight uint64,
+) Grant {
+	grant := Grant{
+		ChainID:         chainID,
+		Nonce:           nonce,
+		Pool:            pool,
+		Recipient:       recipient,
+		Amount:          amount,
+		NotBeforeHeight: notBeforeHeight,
+		ExpiresAtHeight: expiresAtHeight,
+		Approvals:       []Approval{},
+	}
+
+	grant.ID = CalculateGrantID(grant)
+
+	return grant
+}
+
 func grantPayload(
 	grant Grant,
 ) string {
+	if grant.NotBeforeHeight == 0 &&
+		grant.ExpiresAtHeight == 0 {
+
+		// Preserve the exact v0.22 Grant ID domain.
+		return fmt.Sprintf(
+			"reserved-grant-v1|%s|%d|%s|%s|%d",
+			grant.ChainID,
+			grant.Nonce,
+			grant.Pool,
+			grant.Recipient,
+			grant.Amount,
+		)
+	}
+
 	return fmt.Sprintf(
-		"reserved-grant-v1|%s|%d|%s|%s|%d",
+		"reserved-grant-v2|%s|%d|%s|%s|%d|%d|%d",
 		grant.ChainID,
 		grant.Nonce,
 		grant.Pool,
 		grant.Recipient,
 		grant.Amount,
+		grant.NotBeforeHeight,
+		grant.ExpiresAtHeight,
 	)
 }
 
@@ -128,6 +172,15 @@ func ValidateGrant(
 		)
 	}
 
+	if grant.NotBeforeHeight != 0 &&
+		grant.ExpiresAtHeight != 0 &&
+		grant.NotBeforeHeight > grant.ExpiresAtHeight {
+
+		return fmt.Errorf(
+			"reserved grant lifecycle window is invalid",
+		)
+	}
+
 	if grant.ID == "" {
 		return fmt.Errorf(
 			"reserved grant ID cannot be empty",
@@ -137,6 +190,37 @@ func ValidateGrant(
 	if grant.ID != CalculateGrantID(grant) {
 		return fmt.Errorf(
 			"invalid reserved grant ID",
+		)
+	}
+
+	return nil
+}
+
+func ValidateGrantAtHeight(
+	grant Grant,
+	height uint64,
+) error {
+	if err := ValidateGrant(grant); err != nil {
+		return err
+	}
+
+	if grant.NotBeforeHeight != 0 &&
+		height < grant.NotBeforeHeight {
+
+		return fmt.Errorf(
+			"reserved grant is not active yet: height=%d not_before=%d",
+			height,
+			grant.NotBeforeHeight,
+		)
+	}
+
+	if grant.ExpiresAtHeight != 0 &&
+		height > grant.ExpiresAtHeight {
+
+		return fmt.Errorf(
+			"reserved grant has expired: height=%d expires_at=%d",
+			height,
+			grant.ExpiresAtHeight,
 		)
 	}
 
