@@ -157,3 +157,69 @@ func TestAuthorityPolicyStillRejectsInvalidSignature(
 		)
 	}
 }
+
+func TestAuthorityPolicyRejectsLegacyAuthorizationWhenThresholdRequired(
+	t *testing.T,
+) {
+	authorization, authorizer :=
+		signedAuthorizationForAuthorityTest(
+			t,
+			consensus.ReservedPoolTreasury,
+		)
+
+	second, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	policy := AuthorityPolicy{
+		Treasury: []string{
+			authorizer.Address,
+			second.Address,
+		},
+		TreasuryThreshold: 2,
+	}
+
+	if err :=
+		policy.ValidateAuthorization(
+			authorization,
+			testChainID,
+		); err == nil {
+
+		t.Fatal(
+			"expected legacy authorization to fail when threshold grant is required",
+		)
+	}
+}
+
+func TestAuthorityPolicyAllowsLegacyAuthorizationAtExplicitThresholdOne(
+	t *testing.T,
+) {
+	authorization, authorizer :=
+		signedAuthorizationForAuthorityTest(
+			t,
+			consensus.ReservedPoolTreasury,
+		)
+
+	second, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	policy := AuthorityPolicy{
+		Treasury: []string{
+			authorizer.Address,
+			second.Address,
+		},
+		TreasuryThreshold: 1,
+	}
+
+	if err :=
+		policy.ValidateAuthorization(
+			authorization,
+			testChainID,
+		); err != nil {
+
+		t.Fatal(err)
+	}
+}

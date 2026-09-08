@@ -200,6 +200,21 @@ func (policy AuthorityPolicy) ValidateAuthorization(
 		return err
 	}
 
+	threshold, err :=
+		policy.EffectiveThreshold(
+			authorization.Pool,
+		)
+
+	if err != nil {
+		return err
+	}
+
+	if threshold > 1 {
+		return fmt.Errorf(
+			"reserved pool requires threshold grant authorization",
+		)
+	}
+
 	authorized, err :=
 		policy.IsAuthorized(
 			authorization.Pool,
