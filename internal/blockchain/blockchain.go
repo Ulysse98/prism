@@ -728,6 +728,30 @@ func (bc *Blockchain) GetState() (
 		)
 	}
 
+	hasReservedAuthorizations := false
+
+	for blockIndex, block := range bc.Blocks {
+		if blockIndex == 0 {
+			continue
+		}
+
+		if len(block.ReservedAuthorizations) != 0 {
+			hasReservedAuthorizations = true
+			break
+		}
+	}
+
+	if hasReservedAuthorizations {
+		if _, err :=
+			bc.GetReservedAccountingState(); err != nil {
+
+			return State{}, fmt.Errorf(
+				"invalid reserved accounting: %w",
+				err,
+			)
+		}
+	}
+
 	state := State{
 		Balances: make(map[string]uint64),
 		Nonces:   make(map[string]uint64),
@@ -821,12 +845,6 @@ func (bc *Blockchain) GetState() (
 			)
 		}
 
-		if len(block.ReservedAuthorizations) != 0 {
-			return State{}, fmt.Errorf(
-				"reserved authorizations are not activated in consensus",
-			)
-		}
-
 		expectedProposerReward, err :=
 			consensus.BoundedPoolReward(
 				rewardPolicy.ProposerReward,
@@ -856,7 +874,8 @@ func (bc *Blockchain) GetState() (
 		if len(block.Transactions) == 0 &&
 			len(block.UsefulWork) == 0 &&
 			len(block.Humanity) == 0 &&
-			len(block.ParticipationClaims) == 0 {
+			len(block.ParticipationClaims) == 0 &&
+			len(block.ReservedAuthorizations) == 0 {
 
 			return State{}, fmt.Errorf(
 				"empty normal block at height %d",
@@ -1049,6 +1068,26 @@ func (bc *Blockchain) GetState() (
 
 			usedParticipationClaims[key] =
 				struct{}{}
+		}
+
+		// Reserved emissions.
+		//
+		// The complete reserved replay was validated before
+		// balance reconstruction, so credits are deterministic.
+		for authorizationIndex, authorization := range block.ReservedAuthorizations {
+
+			if err := creditReservedAuthorization(
+				&state,
+				authorization,
+			); err != nil {
+
+				return State{}, fmt.Errorf(
+					"reserved authorization credit failed in block %d at index %d: %w",
+					blockIndex,
+					authorizationIndex,
+					err,
+				)
+			}
 		}
 
 		// PoS proposer reward.
@@ -1248,7 +1287,8 @@ func (bc *Blockchain) ValidateChain(
 		if len(current.Transactions) == 0 &&
 			len(current.UsefulWork) == 0 &&
 			len(current.Humanity) == 0 &&
-			len(current.ParticipationClaims) == 0 {
+			len(current.ParticipationClaims) == 0 &&
+			len(current.ReservedAuthorizations) == 0 {
 
 			return false
 		}

@@ -1,12 +1,12 @@
 package blockchain
 
 import (
-	"strings"
 	"testing"
 	"time"
 
 	"prism/internal/consensus"
 	"prism/internal/reserved"
+	"prism/internal/wallet"
 )
 
 func reservedHashTestBlock() Block {
@@ -136,27 +136,72 @@ func TestGenesisRejectsReservedAuthorizations(
 	}
 }
 
-func TestNormalBlockRejectsReservedAuthorizationsBeforeActivation(
+func TestNormalBlockAcceptsReservedAuthorization(
 	t *testing.T,
 ) {
-	bc, err :=
-		NewBlockchain(
-			map[string]uint64{
-				"alice": 1000,
-			},
-		)
-
+	validator, err := wallet.New()
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	authorizer, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bc, err := NewBlockchain(
+		map[string]uint64{
+			validator.Address: 1000,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const stake uint64 = 10
+
+	if err := bc.LockStake(
+		validator.Address,
+		stake,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	pos := consensus.NewProofOfStake()
+
+	if err := pos.Register(
+		validator.Address,
+		stake,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	bc.Config = ChainConfig{
+		ReservedAuthorities: reserved.AuthorityPolicy{
+			Treasury: []string{
+				authorizer.Address,
+			},
+		},
+	}
+
+	authorization :=
+		signedReservedAuthorizationForBlockchain(
+			t,
+			bc,
+			authorizer,
+		)
+
+	rewardPolicy :=
+		consensus.DefaultRewardPolicy()
 
 	block := Block{
 		Height:       1,
 		Timestamp:    time.Unix(2, 0).UTC(),
 		PreviousHash: bc.Blocks[0].Hash,
-		Proposer:     "validator",
+		Proposer:     validator.Address,
+		Reward:       rewardPolicy.ProposerReward,
 		ReservedAuthorizations: []reserved.Authorization{
-			reservedHashTestAuthorization(),
+			authorization,
 		},
 	}
 
@@ -168,22 +213,51 @@ func TestNormalBlockRejectsReservedAuthorizationsBeforeActivation(
 		block,
 	)
 
-	_, err =
-		bc.GetState()
+	state, err := bc.GetState()
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	if err == nil {
-		t.Fatal(
-			"expected reserved authorizations to remain disabled",
+	recipientBalance :=
+		state.Balances[authorization.Recipient]
+
+	if recipientBalance != authorization.Amount {
+		t.Fatalf(
+			"expected reserved recipient balance %d, got %d",
+			authorization.Amount,
+			recipientBalance,
 		)
 	}
 
-	if !strings.Contains(
-		err.Error(),
-		"reserved authorizations are not activated in consensus",
-	) {
+	if !bc.ValidateChain(pos) {
+		t.Fatal(
+			"expected chain with valid reserved authorization to validate",
+		)
+	}
+
+	supply, err := bc.GetSupplyState()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if supply.ReservedEmission != authorization.Amount {
 		t.Fatalf(
-			"unexpected error: %v",
-			err,
+			"expected reserved emission %d, got %d",
+			authorization.Amount,
+			supply.ReservedEmission,
+		)
+	}
+
+	expectedLedger :=
+		uint64(1000) +
+			rewardPolicy.ProposerReward +
+			authorization.Amount
+
+	if supply.LedgerSupply != expectedLedger {
+		t.Fatalf(
+			"expected ledger supply %d, got %d",
+			expectedLedger,
+			supply.LedgerSupply,
 		)
 	}
 }
