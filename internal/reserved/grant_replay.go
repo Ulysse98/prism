@@ -31,6 +31,19 @@ func (state *ReplayState) ValidateGrantNext(
 		)
 	}
 
+	revoked, err :=
+		state.IsGrantRevoked(grant)
+
+	if err != nil {
+		return err
+	}
+
+	if revoked {
+		return fmt.Errorf(
+			"reserved grant has been revoked",
+		)
+	}
+
 	if state.usedGrantIDs != nil {
 		if _, exists := state.usedGrantIDs[grant.ID]; exists {
 			return fmt.Errorf(
