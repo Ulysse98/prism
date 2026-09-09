@@ -33,6 +33,7 @@ type Block struct {
 	ParticipationClaims    []poup.Claim              `json:"participation_claims,omitempty"`
 	ReservedAuthorizations []reserved.Authorization  `json:"reserved_authorizations,omitempty"`
 	ReservedGrants         []reserved.Grant          `json:"reserved_grants,omitempty"`
+	ReservedRevocations    []reserved.Revocation     `json:"reserved_revocations,omitempty"`
 	Hash                   string                    `json:"hash"`
 }
 
@@ -52,6 +53,74 @@ func CalculateHash(
 	)
 	if err != nil {
 		panic(err)
+	}
+
+	// Reserved-grant-revocation-aware hash format.
+	//
+	// Blocks containing revocations use the v0.24 hash
+	// domain. Older Prism blocks retain their exact
+	// historical hash formats.
+	if len(block.ReservedRevocations) > 0 {
+		humanityData, err := json.Marshal(
+			block.Humanity,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		claimData, err := json.Marshal(
+			block.ParticipationClaims,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		authorizationData, err := json.Marshal(
+			block.ReservedAuthorizations,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		grantData, err := json.Marshal(
+			block.ReservedGrants,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		revocationData, err := json.Marshal(
+			block.ReservedRevocations,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		payload := fmt.Sprintf(
+			"reserved-revocation-block-v1|%d|%s|%s|%s|%d|%s|%s|%s|%s|%s|%s|%s",
+			block.Height,
+			block.Timestamp.UTC().Format(
+				time.RFC3339Nano,
+			),
+			block.PreviousHash,
+			block.Proposer,
+			block.Reward,
+			string(transactionData),
+			string(usefulWorkData),
+			string(humanityData),
+			string(claimData),
+			string(authorizationData),
+			string(grantData),
+			string(revocationData),
+		)
+
+		hash := sha256.Sum256(
+			[]byte(payload),
+		)
+
+		return hex.EncodeToString(
+			hash[:],
+		)
 	}
 
 	// Threshold-reserved-grant-aware hash format.
