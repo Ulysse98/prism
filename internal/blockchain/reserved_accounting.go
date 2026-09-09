@@ -83,6 +83,16 @@ func (bc *Blockchain) GetReservedAccountingState() (
 					)
 			}
 
+			if len(
+				block.ReservedRevocations,
+			) != 0 {
+
+				return nil,
+					fmt.Errorf(
+						"genesis block cannot contain reserved revocations",
+					)
+			}
+
 			continue
 		}
 
@@ -101,6 +111,25 @@ func (bc *Blockchain) GetReservedAccountingState() (
 						"invalid reserved authorization in block %d at index %d: %w",
 						block.Height,
 						authorizationIndex,
+						err,
+					)
+			}
+		}
+
+		for revocationIndex, revocation := range block.ReservedRevocations {
+
+			if err :=
+				state.AcceptRevocation(
+					revocation,
+					authorityPolicy,
+					chainID,
+				); err != nil {
+
+				return nil,
+					fmt.Errorf(
+						"invalid reserved revocation in block %d at index %d: %w",
+						block.Height,
+						revocationIndex,
 						err,
 					)
 			}

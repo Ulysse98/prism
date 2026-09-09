@@ -736,7 +736,8 @@ func (bc *Blockchain) GetState() (
 		}
 
 		if len(block.ReservedAuthorizations) != 0 ||
-			len(block.ReservedGrants) != 0 {
+			len(block.ReservedGrants) != 0 ||
+			len(block.ReservedRevocations) != 0 {
 
 			hasReservedEmissions = true
 			break
@@ -823,6 +824,12 @@ func (bc *Blockchain) GetState() (
 				)
 			}
 
+			if len(block.ReservedRevocations) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain reserved revocations",
+				)
+			}
+
 			for _, tx := range block.Transactions {
 				if err := transaction.ValidateGenesis(
 					tx,
@@ -884,7 +891,8 @@ func (bc *Blockchain) GetState() (
 			len(block.Humanity) == 0 &&
 			len(block.ParticipationClaims) == 0 &&
 			len(block.ReservedAuthorizations) == 0 &&
-			len(block.ReservedGrants) == 0 {
+			len(block.ReservedGrants) == 0 &&
+			len(block.ReservedRevocations) == 0 {
 
 			return State{}, fmt.Errorf(
 				"empty normal block at height %d",
@@ -1313,7 +1321,8 @@ func (bc *Blockchain) ValidateChain(
 			len(current.Humanity) == 0 &&
 			len(current.ParticipationClaims) == 0 &&
 			len(current.ReservedAuthorizations) == 0 &&
-			len(current.ReservedGrants) == 0 {
+			len(current.ReservedGrants) == 0 &&
+			len(current.ReservedRevocations) == 0 {
 
 			return false
 		}
