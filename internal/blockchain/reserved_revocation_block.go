@@ -205,6 +205,13 @@ func (bc *Blockchain) AddReservedRevocationBlock(
 			block,
 		)
 
+	if _, err := candidate.GetReservedAccountingState(); err != nil {
+		return Block{}, fmt.Errorf(
+			"invalid reserved revocation block: %w",
+			err,
+		)
+	}
+
 	if !candidate.ValidateChain(pos) {
 		return Block{}, fmt.Errorf(
 			"invalid reserved revocation block",

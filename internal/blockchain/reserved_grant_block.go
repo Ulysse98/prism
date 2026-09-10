@@ -198,6 +198,13 @@ func (bc *Blockchain) AddReservedGrantBlock(
 			block,
 		)
 
+	if _, err := candidate.GetReservedAccountingState(); err != nil {
+		return Block{}, fmt.Errorf(
+			"invalid reserved grant block: %w",
+			err,
+		)
+	}
+
 	if !candidate.ValidateChain(pos) {
 		return Block{}, fmt.Errorf(
 			"invalid reserved grant block",
