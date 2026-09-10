@@ -728,6 +728,16 @@ func (bc *Blockchain) GetState() (
 		)
 	}
 
+	// Governance is consensus state in v0.27.
+	// Replaying it here makes invalid authority changes invalidate
+	// deterministic state reconstruction and therefore ValidateChain.
+	if _, err := bc.GetGovernanceState(); err != nil {
+		return State{}, fmt.Errorf(
+			"invalid reserved governance: %w",
+			err,
+		)
+	}
+
 	hasReservedEmissions := false
 
 	for blockIndex, block := range bc.Blocks {
@@ -830,6 +840,12 @@ func (bc *Blockchain) GetState() (
 				)
 			}
 
+			if len(block.AuthorityChanges) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain reserved authority changes",
+				)
+			}
+
 			for _, tx := range block.Transactions {
 				if err := transaction.ValidateGenesis(
 					tx,
@@ -884,15 +900,17 @@ func (bc *Blockchain) GetState() (
 			)
 		}
 
-		// Transactions, Useful Work, Humanity or PoUP claims
-		// can make a normal block non-empty.
+		// Transactions, Useful Work, Humanity, PoUP,
+		// reserved emissions or governance can make a
+		// normal block non-empty.
 		if len(block.Transactions) == 0 &&
 			len(block.UsefulWork) == 0 &&
 			len(block.Humanity) == 0 &&
 			len(block.ParticipationClaims) == 0 &&
 			len(block.ReservedAuthorizations) == 0 &&
 			len(block.ReservedGrants) == 0 &&
-			len(block.ReservedRevocations) == 0 {
+			len(block.ReservedRevocations) == 0 &&
+			len(block.AuthorityChanges) == 0 {
 
 			return State{}, fmt.Errorf(
 				"empty normal block at height %d",
@@ -1272,6 +1290,10 @@ func (bc *Blockchain) ValidateChain(
 		return false
 	}
 
+	if len(genesis.AuthorityChanges) != 0 {
+		return false
+	}
+
 	if CalculateHash(genesis) != genesis.Hash {
 		return false
 	}
@@ -1314,15 +1336,17 @@ func (bc *Blockchain) ValidateChain(
 		proposerEmission +=
 			current.Reward
 
-		// Transactions, Useful Work, Humanity OR PoUP claims
-		// can make a normal block non-empty.
+		// Transactions, Useful Work, Humanity, PoUP,
+		// reserved emissions or governance can make a
+		// normal block non-empty.
 		if len(current.Transactions) == 0 &&
 			len(current.UsefulWork) == 0 &&
 			len(current.Humanity) == 0 &&
 			len(current.ParticipationClaims) == 0 &&
 			len(current.ReservedAuthorizations) == 0 &&
 			len(current.ReservedGrants) == 0 &&
-			len(current.ReservedRevocations) == 0 {
+			len(current.ReservedRevocations) == 0 &&
+			len(current.AuthorityChanges) == 0 {
 
 			return false
 		}
@@ -1348,8 +1372,8 @@ func (bc *Blockchain) ValidateChain(
 		}
 	}
 
-	// GetState also validates transactions,
-	// Useful Work and Humanity attestations.
+	// GetState also validates transactions, Useful Work,
+	// Humanity attestations and on-chain governance.
 	if _, err := bc.GetState(); err != nil {
 		return false
 	}
