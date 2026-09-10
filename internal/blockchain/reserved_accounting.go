@@ -58,8 +58,19 @@ func (bc *Blockchain) GetReservedAccountingState() (
 			genesisSupply,
 		)
 
-	authorityPolicy :=
-		bc.Config.ReservedAuthorities
+	governance, err :=
+		reserved.NewGovernanceStateForChain(
+			chainID,
+			bc.Config.ReservedAuthorities,
+		)
+
+	if err != nil {
+		return nil,
+			fmt.Errorf(
+				"cannot initialize reserved governance state: %w",
+				err,
+			)
+	}
 
 	for blockIndex, block := range bc.Blocks {
 		if blockIndex == 0 {
@@ -93,8 +104,29 @@ func (bc *Blockchain) GetReservedAccountingState() (
 					)
 			}
 
+			if len(
+				block.AuthorityChanges,
+			) != 0 {
+
+				return nil,
+					fmt.Errorf(
+						"genesis block cannot contain reserved authority changes",
+					)
+			}
+
 			continue
 		}
+
+		// Reserved operations in a block are validated against
+		// the authority policy active at the beginning of that
+		// block.
+		//
+		// Authority changes contained in the same block become
+		// active only after those operations have been replayed.
+		// This prevents a newly-added authority from authorizing
+		// an operation in the block that grants it authority.
+		authorityPolicy :=
+			governance.CurrentPolicy
 
 		for authorizationIndex, authorization := range block.ReservedAuthorizations {
 
@@ -151,6 +183,27 @@ func (bc *Blockchain) GetReservedAccountingState() (
 						"invalid reserved grant in block %d at index %d: %w",
 						block.Height,
 						grantIndex,
+						err,
+					)
+			}
+		}
+
+		// Governance changes are applied after all reserved
+		// operations in the current block. The resulting policy
+		// becomes active for the following block.
+		for changeIndex, change := range block.AuthorityChanges {
+
+			if err :=
+				governance.ApplyAuthorityChange(
+					change,
+					chainID,
+				); err != nil {
+
+				return nil,
+					fmt.Errorf(
+						"invalid reserved authority change in block %d at index %d: %w",
+						block.Height,
+						changeIndex,
 						err,
 					)
 			}
