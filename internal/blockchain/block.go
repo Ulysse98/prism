@@ -22,19 +22,20 @@ const BlockReward uint64 = consensus.DefaultProposerReward
 const UsefulWorkReward uint64 = consensus.DefaultUsefulWorkReward
 
 type Block struct {
-	Height                 uint64                    `json:"height"`
-	Timestamp              time.Time                 `json:"timestamp"`
-	PreviousHash           string                    `json:"previous_hash"`
-	Proposer               string                    `json:"proposer"`
-	Reward                 uint64                    `json:"reward"`
-	Transactions           []transaction.Transaction `json:"transactions"`
-	UsefulWork             []usefulwork.Proof        `json:"useful_work"`
-	Humanity               []identity.Attestation    `json:"humanity,omitempty"`
-	ParticipationClaims    []poup.Claim              `json:"participation_claims,omitempty"`
-	ReservedAuthorizations []reserved.Authorization  `json:"reserved_authorizations,omitempty"`
-	ReservedGrants         []reserved.Grant          `json:"reserved_grants,omitempty"`
-	ReservedRevocations    []reserved.Revocation     `json:"reserved_revocations,omitempty"`
-	Hash                   string                    `json:"hash"`
+	Height                 uint64                     `json:"height"`
+	Timestamp              time.Time                  `json:"timestamp"`
+	PreviousHash           string                     `json:"previous_hash"`
+	Proposer               string                     `json:"proposer"`
+	Reward                 uint64                     `json:"reward"`
+	Transactions           []transaction.Transaction  `json:"transactions"`
+	UsefulWork             []usefulwork.Proof         `json:"useful_work"`
+	Humanity               []identity.Attestation     `json:"humanity,omitempty"`
+	ParticipationClaims    []poup.Claim               `json:"participation_claims,omitempty"`
+	ReservedAuthorizations []reserved.Authorization   `json:"reserved_authorizations,omitempty"`
+	ReservedGrants         []reserved.Grant           `json:"reserved_grants,omitempty"`
+	ReservedRevocations    []reserved.Revocation      `json:"reserved_revocations,omitempty"`
+	AuthorityChanges       []reserved.AuthorityChange `json:"authority_changes,omitempty"`
+	Hash                   string                     `json:"hash"`
 }
 
 func CalculateHash(
@@ -53,6 +54,82 @@ func CalculateHash(
 	)
 	if err != nil {
 		panic(err)
+	}
+
+	// Reserved-authority-change-aware hash format.
+	//
+	// Blocks containing on-chain authority changes use the
+	// v0.27 hash domain. Existing Prism blocks retain their
+	// exact historical hash formats.
+	if len(block.AuthorityChanges) > 0 {
+		humanityData, err := json.Marshal(
+			block.Humanity,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		claimData, err := json.Marshal(
+			block.ParticipationClaims,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		authorizationData, err := json.Marshal(
+			block.ReservedAuthorizations,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		grantData, err := json.Marshal(
+			block.ReservedGrants,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		revocationData, err := json.Marshal(
+			block.ReservedRevocations,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		authorityChangeData, err := json.Marshal(
+			block.AuthorityChanges,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		payload := fmt.Sprintf(
+			"reserved-authority-change-block-v1|%d|%s|%s|%s|%d|%s|%s|%s|%s|%s|%s|%s|%s",
+			block.Height,
+			block.Timestamp.UTC().Format(
+				time.RFC3339Nano,
+			),
+			block.PreviousHash,
+			block.Proposer,
+			block.Reward,
+			string(transactionData),
+			string(usefulWorkData),
+			string(humanityData),
+			string(claimData),
+			string(authorizationData),
+			string(grantData),
+			string(revocationData),
+			string(authorityChangeData),
+		)
+
+		hash := sha256.Sum256(
+			[]byte(payload),
+		)
+
+		return hex.EncodeToString(
+			hash[:],
+		)
 	}
 
 	// Reserved-grant-revocation-aware hash format.
@@ -178,7 +255,9 @@ func CalculateHash(
 			[]byte(payload),
 		)
 
-		return hex.EncodeToString(hash[:])
+		return hex.EncodeToString(
+			hash[:],
+		)
 	}
 
 	// Reserved-authorization-aware hash format.
@@ -227,7 +306,9 @@ func CalculateHash(
 			[]byte(payload),
 		)
 
-		return hex.EncodeToString(hash[:])
+		return hex.EncodeToString(
+			hash[:],
+		)
 	}
 
 	// PoUP claim-aware hash format.
@@ -268,7 +349,9 @@ func CalculateHash(
 			[]byte(payload),
 		)
 
-		return hex.EncodeToString(hash[:])
+		return hex.EncodeToString(
+			hash[:],
+		)
 	}
 
 	// Legacy hash format.
@@ -294,7 +377,9 @@ func CalculateHash(
 			[]byte(payload),
 		)
 
-		return hex.EncodeToString(hash[:])
+		return hex.EncodeToString(
+			hash[:],
+		)
 	}
 
 	humanityData, err := json.Marshal(
@@ -323,8 +408,11 @@ func CalculateHash(
 		[]byte(payload),
 	)
 
-	return hex.EncodeToString(hash[:])
+	return hex.EncodeToString(
+		hash[:],
+	)
 }
+
 func CreateGenesisBlock(
 	initialBalances map[string]uint64,
 ) (Block, error) {
