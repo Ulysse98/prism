@@ -3,6 +3,7 @@ package reserved
 import "fmt"
 
 type GovernanceSnapshot struct {
+	ChainID       string          `json:"chain_id,omitempty"`
 	CurrentPolicy AuthorityPolicy `json:"current_policy"`
 	Replay        ReplaySnapshot  `json:"replay"`
 }
@@ -41,6 +42,7 @@ func (state *GovernanceState) Snapshot() (
 	}
 
 	return GovernanceSnapshot{
+		ChainID:       state.ChainID,
 		CurrentPolicy: state.CurrentPolicy,
 		Replay:        replaySnapshot,
 	}, nil
@@ -74,6 +76,7 @@ func GovernanceStateFromSnapshot(
 	}
 
 	return &GovernanceState{
+		ChainID:       snapshot.ChainID,
 		CurrentPolicy: snapshot.CurrentPolicy,
 		Replay:        replay,
 	}, nil
