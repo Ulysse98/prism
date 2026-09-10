@@ -104,6 +104,9 @@ func main() {
 			wallets,
 		)
 
+	case "reserved":
+		runReservedCommand(os.Args[2:], chain, pos, wallets)
+
 	case "participation":
 		runParticipation(
 			chain,
@@ -1057,6 +1060,13 @@ func loadOrCreateNode() (
 		return nil, nil, nil, false, err
 	}
 
+	if err := configureDevReservedAuthorities(
+		chain,
+		wallets,
+	); err != nil {
+		return nil, nil, nil, false, err
+	}
+
 	if err := storage.Save(
 		dataDir,
 		chain,
@@ -1334,6 +1344,10 @@ func printUsage() {
 
 	fmt.Println(
 		`  .\prism.exe participation`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe reserved pools`,
 	)
 
 	fmt.Println(

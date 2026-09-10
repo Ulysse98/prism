@@ -1,6 +1,7 @@
 package blockchain
 
 import (
+	"strings"
 	"testing"
 
 	"prism/internal/reserved"
@@ -141,17 +142,28 @@ func TestRevokedGrantCannotExecute(
 	before :=
 		len(bc.Blocks)
 
-	if _, err :=
+	_, err :=
 		bc.AddReservedGrantBlock(
 			[]reserved.Grant{
 				grant,
 			},
 			validator.Address,
 			pos,
-		); err == nil {
+		)
 
+	if err == nil {
 		t.Fatal(
 			"expected revoked grant execution to fail",
+		)
+	}
+
+	if !strings.Contains(
+		err.Error(),
+		"reserved grant has been revoked",
+	) {
+		t.Fatalf(
+			"expected revoked-grant error, got: %v",
+			err,
 		)
 	}
 
@@ -200,17 +212,28 @@ func TestExecutedGrantCannotBeRevoked(
 	before :=
 		len(bc.Blocks)
 
-	if _, err :=
+	_, err :=
 		bc.AddReservedRevocationBlock(
 			[]reserved.Revocation{
 				revocation,
 			},
 			validator.Address,
 			pos,
-		); err == nil {
+		)
 
+	if err == nil {
 		t.Fatal(
 			"expected executed grant revocation to fail",
+		)
+	}
+
+	if !strings.Contains(
+		err.Error(),
+		"cannot revoke executed reserved grant",
+	) {
+		t.Fatalf(
+			"expected executed-grant revocation error, got: %v",
+			err,
 		)
 	}
 
