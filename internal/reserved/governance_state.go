@@ -6,6 +6,8 @@ type GovernanceState struct {
 	ChainID       string
 	CurrentPolicy AuthorityPolicy
 	Replay        *ReplayState
+
+	PendingProposals map[string]PendingAuthorityProposal
 }
 
 func NewGovernanceState(
@@ -25,6 +27,9 @@ func NewGovernanceState(
 	return &GovernanceState{
 		CurrentPolicy: initialPolicy,
 		Replay:        NewReplayState(),
+		PendingProposals: make(
+			map[string]PendingAuthorityProposal,
+		),
 	}, nil
 }
 
