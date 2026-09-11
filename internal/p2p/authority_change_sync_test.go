@@ -344,3 +344,272 @@ type unexpectedStateRequestError struct {
 func (err *unexpectedStateRequestError) Error() string {
 	return "unexpected state request type: " + err.got
 }
+
+func TestTimelockedAuthorityChangeStateSyncRejectedBeforeActivation(
+	t *testing.T,
+) {
+	validator, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authorityA, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authorityB, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	source, err := blockchain.NewBlockchain(
+		map[string]uint64{
+			validator.Address: 1000,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const stake uint64 = 10
+
+	if err := source.LockStake(
+		validator.Address,
+		stake,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	pos := consensus.NewProofOfStake()
+
+	if err := pos.Register(
+		validator.Address,
+		stake,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	source.Config = blockchain.ChainConfig{
+		ReservedAuthorities: reserved.AuthorityPolicy{
+			Treasury: []string{
+				authorityA.Address,
+			},
+		},
+	}
+
+	chainID, err := source.ChainID()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	change :=
+		reserved.NewTimelockedAuthorityChange(
+			chainID,
+			1,
+			consensus.ReservedPoolTreasury,
+			reserved.AuthorityChangeAdd,
+			authorityB.Address,
+			2,
+		)
+
+	if err := change.AddApproval(
+		authorityA.Address,
+		authorityA.PublicKeyHex(),
+		authorityA.PrivateKey,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	previous :=
+		source.Blocks[len(source.Blocks)-1]
+
+	nextHeight :=
+		previous.Height + 1
+
+	proposer, err := pos.SelectProposer(
+		previous.Hash,
+		nextHeight,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rewardPolicy :=
+		consensus.DefaultRewardPolicy()
+
+	block := blockchain.Block{
+		Height:       nextHeight,
+		Timestamp:    time.Unix(2, 0).UTC(),
+		PreviousHash: previous.Hash,
+		Proposer:     proposer.Address,
+		Reward:       rewardPolicy.ProposerReward,
+		AuthorityChanges: []reserved.AuthorityChange{
+			change,
+		},
+	}
+
+	block.Hash =
+		blockchain.CalculateHash(block)
+
+	source.Blocks = append(
+		source.Blocks,
+		block,
+	)
+
+	// The source deliberately contains an invalid governance transition:
+	// height 1 attempts to activate a change scheduled for height 2.
+	if source.ValidateChain(pos) {
+		t.Fatal(
+			"expected premature timelocked source chain to be invalid",
+		)
+	}
+
+	sourceServer := NewServer(
+		"timelock-source-node",
+		"127.0.0.1:7001",
+		t.TempDir(),
+		source,
+		pos,
+		map[string]*wallet.Wallet{
+			"Validator":  validator,
+			"AuthorityA": authorityA,
+			"AuthorityB": authorityB,
+		},
+	)
+
+	receiverChain := &blockchain.Blockchain{
+		Blocks: []blockchain.Block{
+			source.Blocks[0],
+		},
+		LockedStakes: map[string]uint64{
+			validator.Address: stake,
+		},
+		Config: source.Config,
+	}
+
+	receiver := NewServer(
+		"timelock-receiver-node",
+		"127.0.0.1:7002",
+		t.TempDir(),
+		receiverChain,
+		pos,
+		map[string]*wallet.Wallet{
+			"Validator":  validator,
+			"AuthorityA": authorityA,
+			"AuthorityB": authorityB,
+		},
+	)
+
+	beforeLength :=
+		len(receiver.Chain.Blocks)
+
+	localConn, remoteConn :=
+		net.Pipe()
+
+	defer localConn.Close()
+	defer remoteConn.Close()
+
+	encoder :=
+		json.NewEncoder(localConn)
+
+	decoder :=
+		json.NewDecoder(localConn)
+
+	remoteErr :=
+		make(chan error, 1)
+
+	go func() {
+		remoteDecoder :=
+			json.NewDecoder(remoteConn)
+
+		remoteEncoder :=
+			json.NewEncoder(remoteConn)
+
+		var request StateRequest
+
+		if err := remoteDecoder.Decode(
+			&request,
+		); err != nil {
+			remoteErr <- err
+			return
+		}
+
+		if request.Type != MessageGetState {
+			remoteErr <- &unexpectedStateRequestError{
+				got: request.Type,
+			}
+			return
+		}
+
+		response :=
+			sourceServer.stateResponse()
+
+		if err := remoteEncoder.Encode(
+			response,
+		); err != nil {
+			remoteErr <- err
+			return
+		}
+
+		remoteErr <- nil
+	}()
+
+	expectedRemote :=
+		sourceServer.hello()
+
+	err =
+		receiver.requestAndAdoptState(
+			encoder,
+			decoder,
+			expectedRemote,
+			false,
+		)
+
+	if err == nil {
+		t.Fatal(
+			"expected state sync with premature timelocked authority change to fail",
+		)
+	}
+
+	if err := <-remoteErr; err != nil {
+		t.Fatal(err)
+	}
+
+	if len(receiver.Chain.Blocks) != beforeLength {
+		t.Fatalf(
+			"rejected state sync changed receiver chain length: before=%d after=%d",
+			beforeLength,
+			len(receiver.Chain.Blocks),
+		)
+	}
+
+	if !receiver.Chain.ValidateChain(pos) {
+		t.Fatal(
+			"rejected state sync invalidated receiver chain",
+		)
+	}
+
+	governance, err :=
+		receiver.Chain.GetGovernanceState()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authorized, err :=
+		governance.CurrentPolicy.IsAuthorized(
+			consensus.ReservedPoolTreasury,
+			authorityB.Address,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if authorized {
+		t.Fatal(
+			"rejected state sync activated premature authority change",
+		)
+	}
+}

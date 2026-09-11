@@ -121,8 +121,11 @@ func TestAuthorityChangeBlockConvergesAcrossPeers(
 		t.Fatal(err)
 	}
 
-	previous := source.Blocks[len(source.Blocks)-1]
-	nextHeight := previous.Height + 1
+	previous :=
+		source.Blocks[len(source.Blocks)-1]
+
+	nextHeight :=
+		previous.Height + 1
 
 	proposer, err := pos.SelectProposer(
 		previous.Hash,
@@ -132,7 +135,8 @@ func TestAuthorityChangeBlockConvergesAcrossPeers(
 		t.Fatal(err)
 	}
 
-	rewardPolicy := consensus.DefaultRewardPolicy()
+	rewardPolicy :=
+		consensus.DefaultRewardPolicy()
 
 	block := blockchain.Block{
 		Height:       nextHeight,
@@ -145,9 +149,10 @@ func TestAuthorityChangeBlockConvergesAcrossPeers(
 		},
 	}
 
-	block.Hash = blockchain.CalculateHash(
-		block,
-	)
+	block.Hash =
+		blockchain.CalculateHash(
+			block,
+		)
 
 	source.Blocks = append(
 		source.Blocks,
@@ -166,9 +171,11 @@ func TestAuthorityChangeBlockConvergesAcrossPeers(
 		Block:   block,
 	}
 
-	wire, err := json.Marshal(
-		message,
-	)
+	wire, err :=
+		json.Marshal(
+			message,
+		)
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +196,8 @@ func TestAuthorityChangeBlockConvergesAcrossPeers(
 		)
 	}
 
-	wireChange := decoded.Block.AuthorityChanges[0]
+	wireChange :=
+		decoded.Block.AuthorityChanges[0]
 
 	if wireChange.ID != change.ID {
 		t.Fatal(
@@ -230,9 +238,11 @@ func TestAuthorityChangeBlockConvergesAcrossPeers(
 		nodeB,
 		nodeC,
 	} {
-		appended, err := server.acceptBlock(
-			decoded.Block,
-		)
+		appended, err :=
+			server.acceptBlock(
+				decoded.Block,
+			)
+
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -258,7 +268,8 @@ func TestAuthorityChangeBlockConvergesAcrossPeers(
 			)
 		}
 
-		received := tip.AuthorityChanges[0]
+		received :=
+			tip.AuthorityChanges[0]
 
 		if received.ID != change.ID {
 			t.Fatal(
@@ -347,5 +358,190 @@ func TestAuthorityChangeBlockConvergesAcrossPeers(
 				"peer authority-change chain failed validation",
 			)
 		}
+	}
+}
+
+func TestTimelockedAuthorityChangeBlockRejectedBeforeActivation(
+	t *testing.T,
+) {
+	validator, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authorityA, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authorityB, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chain, err := blockchain.NewBlockchain(
+		map[string]uint64{
+			validator.Address: 1000,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const stake uint64 = 10
+
+	if err := chain.LockStake(
+		validator.Address,
+		stake,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	pos :=
+		consensus.NewProofOfStake()
+
+	if err := pos.Register(
+		validator.Address,
+		stake,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	chain.Config = blockchain.ChainConfig{
+		ReservedAuthorities: reserved.AuthorityPolicy{
+			Treasury: []string{
+				authorityA.Address,
+			},
+		},
+	}
+
+	server := NewServer(
+		"timelock-receiver",
+		"127.0.0.1:0",
+		t.TempDir(),
+		chain,
+		pos,
+		map[string]*wallet.Wallet{
+			"Validator":  validator,
+			"AuthorityA": authorityA,
+			"AuthorityB": authorityB,
+		},
+	)
+
+	chainID, err :=
+		chain.ChainID()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	change :=
+		reserved.NewTimelockedAuthorityChange(
+			chainID,
+			1,
+			consensus.ReservedPoolTreasury,
+			reserved.AuthorityChangeAdd,
+			authorityB.Address,
+			2,
+		)
+
+	if err := change.AddApproval(
+		authorityA.Address,
+		authorityA.PublicKeyHex(),
+		authorityA.PrivateKey,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	previous :=
+		chain.Blocks[len(chain.Blocks)-1]
+
+	nextHeight :=
+		previous.Height + 1
+
+	proposer, err :=
+		pos.SelectProposer(
+			previous.Hash,
+			nextHeight,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rewardPolicy :=
+		consensus.DefaultRewardPolicy()
+
+	block := blockchain.Block{
+		Height:       nextHeight,
+		Timestamp:    time.Unix(2, 0).UTC(),
+		PreviousHash: previous.Hash,
+		Proposer:     proposer.Address,
+		Reward:       rewardPolicy.ProposerReward,
+		AuthorityChanges: []reserved.AuthorityChange{
+			change,
+		},
+	}
+
+	block.Hash =
+		blockchain.CalculateHash(
+			block,
+		)
+
+	beforeLength :=
+		len(server.Chain.Blocks)
+
+	appended, err :=
+		server.acceptBlock(
+			block,
+		)
+
+	if err == nil {
+		t.Fatal(
+			"expected premature timelocked authority change block to be rejected",
+		)
+	}
+
+	if appended {
+		t.Fatal(
+			"premature timelocked block must not be appended",
+		)
+	}
+
+	if len(server.Chain.Blocks) != beforeLength {
+		t.Fatalf(
+			"rejected block changed chain length: before=%d after=%d",
+			beforeLength,
+			len(server.Chain.Blocks),
+		)
+	}
+
+	if !server.Chain.ValidateChain(pos) {
+		t.Fatal(
+			"rejecting premature timelocked block invalidated local chain",
+		)
+	}
+
+	governance, err :=
+		server.Chain.GetGovernanceState()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authorized, err :=
+		governance.CurrentPolicy.IsAuthorized(
+			consensus.ReservedPoolTreasury,
+			authorityB.Address,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if authorized {
+		t.Fatal(
+			"premature timelocked authority change mutated governance state",
+		)
 	}
 }
