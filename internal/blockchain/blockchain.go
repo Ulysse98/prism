@@ -728,9 +728,10 @@ func (bc *Blockchain) GetState() (
 		)
 	}
 
-	// Governance is consensus state in v0.27.
-	// Replaying it here makes invalid authority changes invalidate
-	// deterministic state reconstruction and therefore ValidateChain.
+	// Governance is consensus state.
+	// Replaying it here makes invalid authority changes,
+	// proposals or executions invalidate deterministic
+	// state reconstruction and therefore ValidateChain.
 	if _, err := bc.GetGovernanceState(); err != nil {
 		return State{}, fmt.Errorf(
 			"invalid reserved governance: %w",
@@ -846,6 +847,18 @@ func (bc *Blockchain) GetState() (
 				)
 			}
 
+			if len(block.AuthorityProposals) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain authority proposals",
+				)
+			}
+
+			if len(block.AuthorityExecutions) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain authority executions",
+				)
+			}
+
 			for _, tx := range block.Transactions {
 				if err := transaction.ValidateGenesis(
 					tx,
@@ -910,7 +923,9 @@ func (bc *Blockchain) GetState() (
 			len(block.ReservedAuthorizations) == 0 &&
 			len(block.ReservedGrants) == 0 &&
 			len(block.ReservedRevocations) == 0 &&
-			len(block.AuthorityChanges) == 0 {
+			len(block.AuthorityChanges) == 0 &&
+			len(block.AuthorityProposals) == 0 &&
+			len(block.AuthorityExecutions) == 0 {
 
 			return State{}, fmt.Errorf(
 				"empty normal block at height %d",
@@ -1294,6 +1309,14 @@ func (bc *Blockchain) ValidateChain(
 		return false
 	}
 
+	if len(genesis.AuthorityProposals) != 0 {
+		return false
+	}
+
+	if len(genesis.AuthorityExecutions) != 0 {
+		return false
+	}
+
 	if CalculateHash(genesis) != genesis.Hash {
 		return false
 	}
@@ -1346,7 +1369,9 @@ func (bc *Blockchain) ValidateChain(
 			len(current.ReservedAuthorizations) == 0 &&
 			len(current.ReservedGrants) == 0 &&
 			len(current.ReservedRevocations) == 0 &&
-			len(current.AuthorityChanges) == 0 {
+			len(current.AuthorityChanges) == 0 &&
+			len(current.AuthorityProposals) == 0 &&
+			len(current.AuthorityExecutions) == 0 {
 
 			return false
 		}
