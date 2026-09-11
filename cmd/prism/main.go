@@ -52,6 +52,20 @@ func main() {
 		return
 	}
 
+	if command == "node-governance-propose" {
+		runNodeGovernanceProposeCommand(
+			os.Args[2:],
+		)
+		return
+	}
+
+	if command == "node-governance-execute" {
+		runNodeGovernanceExecuteCommand(
+			os.Args[2:],
+		)
+		return
+	}
+
 	if command == "node-human" {
 		runNodeHumanCommand(os.Args[2:])
 		return
@@ -130,6 +144,7 @@ func main() {
 			fmt.Println("Participation rejected:")
 			fmt.Println(err)
 		}
+
 	case "human":
 		if len(os.Args) != 5 {
 			fmt.Println("Usage:")
@@ -455,6 +470,7 @@ func runParticipation(
 		)
 	}
 }
+
 func runHuman(
 	participantIdentifier string,
 	proofText string,
@@ -596,6 +612,7 @@ func runHuman(
 
 	return nil
 }
+
 func runSend(
 	fromIdentifier string,
 	toIdentifier string,
@@ -1384,6 +1401,14 @@ func printUsage() {
 
 	fmt.Println(
 		`  .\prism.exe node-produce --port 7001`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe node-governance-propose --port 7001 treasury add <authority> 1`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe node-governance-execute --port 7001 <proposal-id>`,
 	)
 
 	fmt.Println(

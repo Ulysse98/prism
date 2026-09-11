@@ -216,10 +216,22 @@ func runReservedAuthorities(
 		return
 	}
 
+	governanceState, err :=
+		chain.GetGovernanceState()
+
+	if err != nil {
+		fmt.Println(
+			"Governance state error:",
+			err,
+		)
+		return
+	}
+
 	fmt.Println("Chain ID:", chainID)
 	fmt.Println()
 
-	policy := chain.Config.ReservedAuthorities
+	policy :=
+		governanceState.CurrentPolicy
 
 	type poolAuthorities struct {
 		pool        consensus.ReservedPool
