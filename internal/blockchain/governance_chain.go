@@ -12,6 +12,10 @@ import (
 // The configured authority policy is the genesis governance policy.
 // Every AuthorityChange recorded after genesis is replayed in block
 // order and change order.
+//
+// Timelocked authority changes are only applied once the block carrying
+// them has reached their committed ActivationHeight. Legacy authority
+// changes with ActivationHeight == 0 retain the pre-v0.28 behavior.
 func (bc *Blockchain) GetGovernanceState() (
 	*reserved.GovernanceState,
 	error,
@@ -59,9 +63,10 @@ func (bc *Blockchain) GetGovernanceState() (
 		}
 
 		for changeIndex, change := range block.AuthorityChanges {
-			if err := state.ApplyAuthorityChange(
+			if err := state.ApplyAuthorityChangeAtHeight(
 				change,
 				chainID,
+				block.Height,
 			); err != nil {
 				return nil, fmt.Errorf(
 					"invalid reserved authority change in block %d at index %d: %w",

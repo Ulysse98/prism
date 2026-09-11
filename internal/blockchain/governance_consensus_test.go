@@ -279,3 +279,136 @@ func TestBelowThresholdAuthorityChangeFailsConsensus(
 		)
 	}
 }
+
+func TestTimelockedAuthorityChangeFailsConsensusBeforeActivation(
+	t *testing.T,
+) {
+	bc, pos, authorities :=
+		governanceConsensusFixture(t)
+
+	target, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chainID, err := bc.ChainID()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The helper appends this change at height 1.
+	// Activation at height 2 must therefore fail consensus.
+	change :=
+		reserved.NewTimelockedAuthorityChange(
+			chainID,
+			1,
+			consensus.ReservedPoolTreasury,
+			reserved.AuthorityChangeAdd,
+			target.Address,
+			2,
+		)
+
+	for _, authority := range authorities {
+		if err := change.AddApproval(
+			authority.Address,
+			authority.PublicKeyHex(),
+			authority.PrivateKey,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	appendGovernanceConsensusBlock(
+		t,
+		bc,
+		pos,
+		change,
+	)
+
+	if bc.ValidateChain(pos) {
+		t.Fatal(
+			"expected authority change before activation height to fail consensus",
+		)
+	}
+
+	if _, err := bc.GetGovernanceState(); err == nil {
+		t.Fatal(
+			"expected governance reconstruction to reject authority change before activation",
+		)
+	}
+}
+
+func TestTimelockedAuthorityChangePassesConsensusAtActivation(
+	t *testing.T,
+) {
+	bc, pos, authorities :=
+		governanceConsensusFixture(t)
+
+	target, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chainID, err := bc.ChainID()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The helper appends this change at height 1.
+	// ActivationHeight 1 is therefore the exact activation boundary.
+	change :=
+		reserved.NewTimelockedAuthorityChange(
+			chainID,
+			1,
+			consensus.ReservedPoolTreasury,
+			reserved.AuthorityChangeAdd,
+			target.Address,
+			1,
+		)
+
+	for _, authority := range authorities {
+		if err := change.AddApproval(
+			authority.Address,
+			authority.PublicKeyHex(),
+			authority.PrivateKey,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	appendGovernanceConsensusBlock(
+		t,
+		bc,
+		pos,
+		change,
+	)
+
+	if !bc.ValidateChain(pos) {
+		t.Fatal(
+			"expected authority change at activation height to pass consensus",
+		)
+	}
+
+	state, err :=
+		bc.GetGovernanceState()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authorized, err :=
+		state.CurrentPolicy.IsAuthorized(
+			consensus.ReservedPoolTreasury,
+			target.Address,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !authorized {
+		t.Fatal(
+			"authority was not activated at consensus timelock boundary",
+		)
+	}
+}

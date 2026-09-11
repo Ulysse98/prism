@@ -265,3 +265,258 @@ func TestGovernanceStateFailureDoesNotMutatePolicy(
 		)
 	}
 }
+
+func timelockedGovernanceFixture(
+	t *testing.T,
+	activationHeight uint64,
+) (
+	*GovernanceState,
+	AuthorityChange,
+	*wallet.Wallet,
+	string,
+) {
+	t.Helper()
+
+	authorityA, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authorityB, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	target, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	policy := AuthorityPolicy{
+		Treasury: []string{
+			authorityA.Address,
+			authorityB.Address,
+		},
+		TreasuryThreshold: 2,
+	}
+
+	const chainID = "prism-governance-timelock-test"
+
+	state, err :=
+		NewGovernanceStateForChain(
+			chainID,
+			policy,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	change :=
+		NewTimelockedAuthorityChange(
+			chainID,
+			1,
+			consensus.ReservedPoolTreasury,
+			AuthorityChangeAdd,
+			target.Address,
+			activationHeight,
+		)
+
+	for _, signer := range []*wallet.Wallet{
+		authorityA,
+		authorityB,
+	} {
+		if err := change.AddApproval(
+			signer.Address,
+			signer.PublicKeyHex(),
+			signer.PrivateKey,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	return state,
+		change,
+		target,
+		chainID
+}
+
+func TestGovernanceStateRejectsTimelockedChangeBeforeActivation(
+	t *testing.T,
+) {
+	state, change, target, chainID :=
+		timelockedGovernanceFixture(
+			t,
+			10,
+		)
+
+	err :=
+		state.ApplyAuthorityChangeAtHeight(
+			change,
+			chainID,
+			9,
+		)
+
+	if err == nil {
+		t.Fatal(
+			"expected timelocked authority change to fail before activation",
+		)
+	}
+
+	if !strings.Contains(
+		err.Error(),
+		"timelock not reached",
+	) {
+		t.Fatalf(
+			"unexpected timelock error: %v",
+			err,
+		)
+	}
+
+	authorized, err :=
+		state.CurrentPolicy.IsAuthorized(
+			consensus.ReservedPoolTreasury,
+			target.Address,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if authorized {
+		t.Fatal(
+			"authority became active before timelock",
+		)
+	}
+}
+
+func TestGovernanceStateAcceptsTimelockedChangeAtActivation(
+	t *testing.T,
+) {
+	state, change, target, chainID :=
+		timelockedGovernanceFixture(
+			t,
+			10,
+		)
+
+	if err :=
+		state.ApplyAuthorityChangeAtHeight(
+			change,
+			chainID,
+			10,
+		); err != nil {
+
+		t.Fatal(err)
+	}
+
+	authorized, err :=
+		state.CurrentPolicy.IsAuthorized(
+			consensus.ReservedPoolTreasury,
+			target.Address,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !authorized {
+		t.Fatal(
+			"authority was not activated at timelock boundary",
+		)
+	}
+}
+
+func TestGovernanceStateAcceptsTimelockedChangeAfterActivation(
+	t *testing.T,
+) {
+	state, change, target, chainID :=
+		timelockedGovernanceFixture(
+			t,
+			10,
+		)
+
+	if err :=
+		state.ApplyAuthorityChangeAtHeight(
+			change,
+			chainID,
+			11,
+		); err != nil {
+
+		t.Fatal(err)
+	}
+
+	authorized, err :=
+		state.CurrentPolicy.IsAuthorized(
+			consensus.ReservedPoolTreasury,
+			target.Address,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !authorized {
+		t.Fatal(
+			"authority was not activated after timelock boundary",
+		)
+	}
+}
+
+func TestGovernanceStateTimelockFailureDoesNotConsumeReplayState(
+	t *testing.T,
+) {
+	state, change, _, chainID :=
+		timelockedGovernanceFixture(
+			t,
+			10,
+		)
+
+	err :=
+		state.ApplyAuthorityChangeAtHeight(
+			change,
+			chainID,
+			9,
+		)
+
+	if err == nil {
+		t.Fatal(
+			"expected authority change before activation to fail",
+		)
+	}
+
+	key :=
+		authorityChangeReplayKey{
+			Pool: consensus.ReservedPoolTreasury,
+		}
+
+	if _, exists :=
+		state.Replay.lastAuthorityChangeNonce[key]; exists {
+
+		t.Fatal(
+			"timelock failure consumed authority change nonce",
+		)
+	}
+
+	if _, exists :=
+		state.Replay.usedAuthorityChangeIDs[change.ID]; exists {
+
+		t.Fatal(
+			"timelock failure recorded authority change ID",
+		)
+	}
+
+	// The exact same signed change must still be usable once
+	// its activation height is reached.
+	if err :=
+		state.ApplyAuthorityChangeAtHeight(
+			change,
+			chainID,
+			10,
+		); err != nil {
+
+		t.Fatalf(
+			"authority change was not reusable at activation height: %v",
+			err,
+		)
+	}
+}

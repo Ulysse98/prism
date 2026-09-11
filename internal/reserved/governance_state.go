@@ -93,3 +93,30 @@ func (state *GovernanceState) ApplyAuthorityChange(
 
 	return nil
 }
+
+func (state *GovernanceState) ApplyAuthorityChangeAtHeight(
+	change AuthorityChange,
+	expectedChainID string,
+	currentHeight uint64,
+) error {
+	if state == nil {
+		return fmt.Errorf(
+			"reserved governance state cannot be nil",
+		)
+	}
+
+	if change.ActivationHeight != 0 &&
+		currentHeight < change.ActivationHeight {
+
+		return fmt.Errorf(
+			"reserved authority change timelock not reached: current=%d activation=%d",
+			currentHeight,
+			change.ActivationHeight,
+		)
+	}
+
+	return state.ApplyAuthorityChange(
+		change,
+		expectedChainID,
+	)
+}
