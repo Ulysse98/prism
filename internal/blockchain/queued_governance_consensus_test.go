@@ -92,6 +92,30 @@ func newQueuedGovernanceConsensusFixture(
 	}
 }
 
+func advanceToQueuedGovernanceActivation(
+	t *testing.T,
+	fixture queuedGovernanceConsensusFixture,
+) {
+	t.Helper()
+
+	targetHeight :=
+		QueuedGovernanceActivationHeight - 1
+
+	for {
+		last :=
+			fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+		if last.Height >= targetHeight {
+			return
+		}
+
+		appendQueuedGovernanceFillerBlock(
+			t,
+			fixture,
+		)
+	}
+}
+
 func signedQueuedGovernanceProposal(
 	t *testing.T,
 	fixture queuedGovernanceConsensusFixture,
@@ -296,6 +320,11 @@ func TestQueuedGovernanceProposalParticipatesInConsensus(
 	fixture :=
 		newQueuedGovernanceConsensusFixture(t)
 
+	advanceToQueuedGovernanceActivation(
+		t,
+		fixture,
+	)
+
 	target, err := wallet.New()
 	if err != nil {
 		t.Fatal(err)
@@ -341,17 +370,30 @@ func TestQueuedGovernanceProposalParticipatesInConsensus(
 		)
 	}
 
-	if pending.ProposalHeight != 1 {
+	expectedProposalHeight :=
+		QueuedGovernanceActivationHeight
+
+	if pending.ProposalHeight !=
+		expectedProposalHeight {
+
 		t.Fatalf(
-			"unexpected proposal height: got=%d expected=1",
+			"unexpected proposal height: got=%d expected=%d",
 			pending.ProposalHeight,
+			expectedProposalHeight,
 		)
 	}
 
-	if pending.ExecuteAfterHeight != 6 {
+	expectedExecuteAfter :=
+		QueuedGovernanceActivationHeight +
+			reserved.DefaultGovernanceDelayBlocks
+
+	if pending.ExecuteAfterHeight !=
+		expectedExecuteAfter {
+
 		t.Fatalf(
-			"unexpected execution boundary: got=%d expected=6",
+			"unexpected execution boundary: got=%d expected=%d",
 			pending.ExecuteAfterHeight,
+			expectedExecuteAfter,
 		)
 	}
 
@@ -378,6 +420,11 @@ func TestQueuedGovernanceExecutionFailsConsensusBeforeDelay(
 	fixture :=
 		newQueuedGovernanceConsensusFixture(t)
 
+	advanceToQueuedGovernanceActivation(
+		t,
+		fixture,
+	)
+
 	target, err := wallet.New()
 	if err != nil {
 		t.Fatal(err)
@@ -391,23 +438,31 @@ func TestQueuedGovernanceExecutionFailsConsensusBeforeDelay(
 			target.Address,
 		)
 
-	// Proposal included at height 1.
+	// Proposal included at height 3.
 	appendAuthorityProposalConsensusBlock(
 		t,
 		fixture,
 		proposal,
 	)
 
-	// Advance to height 4.
-	for len(fixture.bc.Blocks)-1 < 4 {
+	// ProposalHeight 3 + delay 5 means execution is allowed
+	// starting at height 8.
+	//
+	// Advance only through height 6 so execution lands at height 7.
+	for {
+		last :=
+			fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+		if last.Height >= 6 {
+			break
+		}
+
 		appendQueuedGovernanceFillerBlock(
 			t,
 			fixture,
 		)
 	}
 
-	// Execution is included at height 5.
-	// ProposalHeight 1 + delay 5 => executable at height 6.
 	appendAuthorityExecutionConsensusBlock(
 		t,
 		fixture,
@@ -415,6 +470,16 @@ func TestQueuedGovernanceExecutionFailsConsensusBeforeDelay(
 			proposal.ID,
 		),
 	)
+
+	last :=
+		fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+	if last.Height != 7 {
+		t.Fatalf(
+			"expected early execution at height 7, got %d",
+			last.Height,
+		)
+	}
 
 	if fixture.bc.ValidateChain(
 		fixture.pos,
@@ -439,6 +504,11 @@ func TestQueuedGovernanceExecutionPassesConsensusAtBoundary(
 	fixture :=
 		newQueuedGovernanceConsensusFixture(t)
 
+	advanceToQueuedGovernanceActivation(
+		t,
+		fixture,
+	)
+
 	target, err := wallet.New()
 	if err != nil {
 		t.Fatal(err)
@@ -452,22 +522,30 @@ func TestQueuedGovernanceExecutionPassesConsensusAtBoundary(
 			target.Address,
 		)
 
-	// Proposal at height 1.
+	// Proposal at height 3.
 	appendAuthorityProposalConsensusBlock(
 		t,
 		fixture,
 		proposal,
 	)
 
-	// Advance through height 5.
-	for len(fixture.bc.Blocks)-1 < 5 {
+	// Advance through height 7.
+	for {
+		last :=
+			fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+		if last.Height >= 7 {
+			break
+		}
+
 		appendQueuedGovernanceFillerBlock(
 			t,
 			fixture,
 		)
 	}
 
-	// Exact boundary: 1 + 5 = height 6.
+	// Exact boundary:
+	// 3 + DefaultGovernanceDelayBlocks(5) = height 8.
 	appendAuthorityExecutionConsensusBlock(
 		t,
 		fixture,
@@ -475,6 +553,16 @@ func TestQueuedGovernanceExecutionPassesConsensusAtBoundary(
 			proposal.ID,
 		),
 	)
+
+	last :=
+		fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+	if last.Height != 8 {
+		t.Fatalf(
+			"expected boundary execution at height 8, got %d",
+			last.Height,
+		)
+	}
 
 	if !fixture.bc.ValidateChain(
 		fixture.pos,
@@ -524,6 +612,12 @@ func TestQueuedGovernanceUnknownExecutionFailsConsensus(
 	fixture :=
 		newQueuedGovernanceConsensusFixture(t)
 
+	advanceToQueuedGovernanceActivation(
+		t,
+		fixture,
+	)
+
+	// Next block is exactly the v0.29 activation boundary.
 	appendAuthorityExecutionConsensusBlock(
 		t,
 		fixture,
@@ -531,6 +625,19 @@ func TestQueuedGovernanceUnknownExecutionFailsConsensus(
 			"unknown-proposal",
 		),
 	)
+
+	last :=
+		fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+	if last.Height !=
+		QueuedGovernanceActivationHeight {
+
+		t.Fatalf(
+			"expected unknown execution at activation height %d, got %d",
+			QueuedGovernanceActivationHeight,
+			last.Height,
+		)
+	}
 
 	if fixture.bc.ValidateChain(
 		fixture.pos,
@@ -546,6 +653,11 @@ func TestQueuedGovernanceBelowThresholdProposalFailsConsensus(
 ) {
 	fixture :=
 		newQueuedGovernanceConsensusFixture(t)
+
+	advanceToQueuedGovernanceActivation(
+		t,
+		fixture,
+	)
 
 	target, err := wallet.New()
 	if err != nil {
@@ -585,6 +697,19 @@ func TestQueuedGovernanceBelowThresholdProposalFailsConsensus(
 		fixture,
 		proposal,
 	)
+
+	last :=
+		fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+	if last.Height !=
+		QueuedGovernanceActivationHeight {
+
+		t.Fatalf(
+			"expected below-threshold proposal at activation height %d, got %d",
+			QueuedGovernanceActivationHeight,
+			last.Height,
+		)
+	}
 
 	if fixture.bc.ValidateChain(
 		fixture.pos,

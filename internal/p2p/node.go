@@ -18,7 +18,7 @@ import (
 	"prism/internal/wallet"
 )
 
-const ProtocolVersion = "0.28"
+const ProtocolVersion = "0.29"
 
 const (
 	MessageHello          = "hello"

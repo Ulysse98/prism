@@ -29,7 +29,7 @@ func main() {
 
 	if !jsonWorkLog {
 		fmt.Println("====================================")
-		fmt.Println("         PRISM NODE v0.24")
+		fmt.Println("         PRISM NODE v0.29")
 		fmt.Println("====================================")
 		fmt.Println()
 	}

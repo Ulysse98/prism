@@ -9,21 +9,32 @@ import (
 // GetGovernanceState deterministically reconstructs the current
 // reserved-authority governance state from the canonical blockchain.
 //
-// Governance processing order inside each block is:
+// Prism governance has two consensus eras:
 //
-//  1. direct AuthorityChanges;
-//  2. queued AuthorityExecutions;
-//  3. new AuthorityProposals.
+// Before QueuedGovernanceActivationHeight:
+//   - legacy / v0.28 AuthorityChanges are allowed;
+//   - AuthorityProposals are forbidden;
+//   - AuthorityExecutions are forbidden.
+//
+// At and after QueuedGovernanceActivationHeight:
+//   - direct AuthorityChanges are forbidden;
+//   - AuthorityProposals are allowed;
+//   - AuthorityExecutions are allowed.
+//
+// This preserves historical v0.27/v0.28 blocks while preventing direct
+// authority changes from bypassing the v0.29 queued-governance lifecycle.
+//
+// Within a v0.29 block, queued governance is processed in this order:
+//
+//  1. AuthorityExecutions;
+//  2. AuthorityProposals.
 //
 // Executions therefore mutate the active policy before new proposals in the
-// same block are authorized. A proposal included in a block can never be
+// same block are authorized. A proposal included in a block cannot be
 // executed by an AuthorityExecution in that same block.
 //
-// Legacy AuthorityChanges remain supported. Timelocked v0.28 changes are
-// applied only once the block carrying them has reached ActivationHeight.
-//
-// v0.29 AuthorityProposals derive their ProposalHeight from block.Height and
-// use DefaultGovernanceDelayBlocks as their consensus delay.
+// ProposalHeight is consensus-derived from block.Height. ExecuteAfterHeight
+// is derived from ProposalHeight + DefaultGovernanceDelayBlocks.
 func (bc *Blockchain) GetGovernanceState() (
 	*reserved.GovernanceState,
 	error,
@@ -82,20 +93,53 @@ func (bc *Blockchain) GetGovernanceState() (
 			continue
 		}
 
-		// Legacy / v0.28 direct governance is applied first.
-		for changeIndex, change := range block.AuthorityChanges {
-			if err := state.ApplyAuthorityChangeAtHeight(
-				change,
-				chainID,
-				block.Height,
-			); err != nil {
+		if block.Height < QueuedGovernanceActivationHeight {
+			if len(block.AuthorityProposals) != 0 {
 				return nil, fmt.Errorf(
-					"invalid reserved authority change in block %d at index %d: %w",
+					"authority proposals are not allowed before queued governance activation height %d: block height %d",
+					QueuedGovernanceActivationHeight,
 					block.Height,
-					changeIndex,
-					err,
 				)
 			}
+
+			if len(block.AuthorityExecutions) != 0 {
+				return nil, fmt.Errorf(
+					"authority executions are not allowed before queued governance activation height %d: block height %d",
+					QueuedGovernanceActivationHeight,
+					block.Height,
+				)
+			}
+
+			// Historical v0.27/v0.28 direct governance.
+			for changeIndex, change := range block.AuthorityChanges {
+				if err := state.ApplyAuthorityChangeAtHeight(
+					change,
+					chainID,
+					block.Height,
+				); err != nil {
+					return nil, fmt.Errorf(
+						"invalid reserved authority change in block %d at index %d: %w",
+						block.Height,
+						changeIndex,
+						err,
+					)
+				}
+			}
+
+			continue
+		}
+
+		// v0.29 queued-governance era.
+		//
+		// Direct AuthorityChanges are forbidden from the activation
+		// boundary onward. This prevents bypassing the proposal queue,
+		// governance delay and explicit execution step.
+		if len(block.AuthorityChanges) != 0 {
+			return nil, fmt.Errorf(
+				"direct authority changes are not allowed at or after queued governance activation height %d: block height %d",
+				QueuedGovernanceActivationHeight,
+				block.Height,
+			)
 		}
 
 		// Execute proposals that were queued in earlier blocks.
@@ -128,8 +172,8 @@ func (bc *Blockchain) GetGovernanceState() (
 			}
 		}
 
-		// New proposals enter the queue only after all governance mutations
-		// scheduled for this block have completed.
+		// New proposals enter the queue only after all executions in this
+		// block have completed.
 		for proposalIndex, proposal := range block.AuthorityProposals {
 
 			if err := state.QueueAuthorityProposal(

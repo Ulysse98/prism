@@ -32,6 +32,14 @@ func TestAppendValidatedBlockAcceptsQueuedGovernanceProposal(
 	fixture :=
 		newQueuedGovernanceConsensusFixture(t)
 
+	// Bring the source chain to height 2 so the next block
+	// is exactly the v0.29 activation height.
+	advanceToQueuedGovernanceActivation(
+		t,
+		fixture,
+	)
+
+	// Receiver begins from the exact same historical chain.
 	receiver :=
 		queuedGovernanceReceiver(
 			fixture,
@@ -59,6 +67,16 @@ func TestAppendValidatedBlockAcceptsQueuedGovernanceProposal(
 	remoteBlock :=
 		fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
 
+	if remoteBlock.Height !=
+		QueuedGovernanceActivationHeight {
+
+		t.Fatalf(
+			"expected proposal block at activation height %d, got %d",
+			QueuedGovernanceActivationHeight,
+			remoteBlock.Height,
+		)
+	}
+
 	if err := receiver.AppendValidatedBlock(
 		remoteBlock,
 		fixture.pos,
@@ -66,14 +84,20 @@ func TestAppendValidatedBlockAcceptsQueuedGovernanceProposal(
 		t.Fatal(err)
 	}
 
-	if len(receiver.Blocks) != 2 {
+	receiverTip :=
+		receiver.Blocks[len(receiver.Blocks)-1]
+
+	if receiverTip.Height !=
+		QueuedGovernanceActivationHeight {
+
 		t.Fatalf(
-			"expected receiver to contain 2 blocks, got %d",
-			len(receiver.Blocks),
+			"expected receiver height %d, got %d",
+			QueuedGovernanceActivationHeight,
+			receiverTip.Height,
 		)
 	}
 
-	if receiver.Blocks[1].Hash != remoteBlock.Hash {
+	if receiverTip.Hash != remoteBlock.Hash {
 		t.Fatal(
 			"receiver did not preserve exact queued governance block hash",
 		)
@@ -97,17 +121,27 @@ func TestAppendValidatedBlockAcceptsQueuedGovernanceProposal(
 		)
 	}
 
-	if pending.ProposalHeight != 1 {
+	if pending.ProposalHeight !=
+		QueuedGovernanceActivationHeight {
+
 		t.Fatalf(
-			"unexpected received proposal height: got=%d expected=1",
+			"unexpected received proposal height: got=%d expected=%d",
 			pending.ProposalHeight,
+			QueuedGovernanceActivationHeight,
 		)
 	}
 
-	if pending.ExecuteAfterHeight != 6 {
+	expectedExecuteAfter :=
+		QueuedGovernanceActivationHeight +
+			reserved.DefaultGovernanceDelayBlocks
+
+	if pending.ExecuteAfterHeight !=
+		expectedExecuteAfter {
+
 		t.Fatalf(
-			"unexpected received execution boundary: got=%d expected=6",
+			"unexpected received execution boundary: got=%d expected=%d",
 			pending.ExecuteAfterHeight,
+			expectedExecuteAfter,
 		)
 	}
 }
@@ -117,6 +151,11 @@ func TestAppendValidatedBlockRejectsEarlyQueuedGovernanceExecution(
 ) {
 	fixture :=
 		newQueuedGovernanceConsensusFixture(t)
+
+	advanceToQueuedGovernanceActivation(
+		t,
+		fixture,
+	)
 
 	receiver :=
 		queuedGovernanceReceiver(
@@ -136,7 +175,7 @@ func TestAppendValidatedBlockRejectsEarlyQueuedGovernanceExecution(
 			target.Address,
 		)
 
-	// Proposal at height 1.
+	// Proposal at activation height 3.
 	appendAuthorityProposalConsensusBlock(
 		t,
 		fixture,
@@ -146,6 +185,16 @@ func TestAppendValidatedBlockRejectsEarlyQueuedGovernanceExecution(
 	proposalBlock :=
 		fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
 
+	if proposalBlock.Height !=
+		QueuedGovernanceActivationHeight {
+
+		t.Fatalf(
+			"expected proposal at activation height %d, got %d",
+			QueuedGovernanceActivationHeight,
+			proposalBlock.Height,
+		)
+	}
+
 	if err := receiver.AppendValidatedBlock(
 		proposalBlock,
 		fixture.pos,
@@ -153,8 +202,19 @@ func TestAppendValidatedBlockRejectsEarlyQueuedGovernanceExecution(
 		t.Fatal(err)
 	}
 
-	// Copy valid filler blocks through height 4.
-	for len(fixture.bc.Blocks)-1 < 4 {
+	// Execution boundary is:
+	// 3 + 5 = 8.
+	//
+	// Propagate valid filler blocks through height 6 so the
+	// attempted execution lands at height 7.
+	for {
+		sourceTip :=
+			fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+		if sourceTip.Height >= 6 {
+			break
+		}
+
 		appendQueuedGovernanceFillerBlock(
 			t,
 			fixture,
@@ -171,18 +231,16 @@ func TestAppendValidatedBlockRejectsEarlyQueuedGovernanceExecution(
 		}
 	}
 
-	receiverHeight :=
-		receiver.Blocks[len(receiver.Blocks)-1].Height
+	receiverTip :=
+		receiver.Blocks[len(receiver.Blocks)-1]
 
-	if receiverHeight != 4 {
+	if receiverTip.Height != 6 {
 		t.Fatalf(
-			"expected receiver at height 4 before early execution, got %d",
-			receiverHeight,
+			"expected receiver at height 6 before early execution, got %d",
+			receiverTip.Height,
 		)
 	}
 
-	// Source constructs an execution at height 5.
-	// It is hash-valid but consensus-invalid because the boundary is 6.
 	appendAuthorityExecutionConsensusBlock(
 		t,
 		fixture,
@@ -194,9 +252,9 @@ func TestAppendValidatedBlockRejectsEarlyQueuedGovernanceExecution(
 	earlyExecutionBlock :=
 		fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
 
-	if earlyExecutionBlock.Height != 5 {
+	if earlyExecutionBlock.Height != 7 {
 		t.Fatalf(
-			"expected early execution block at height 5, got %d",
+			"expected early execution block at height 7, got %d",
 			earlyExecutionBlock.Height,
 		)
 	}
@@ -210,14 +268,14 @@ func TestAppendValidatedBlockRejectsEarlyQueuedGovernanceExecution(
 		)
 	}
 
-	// Failed remote validation must not mutate the receiver.
-	receiverHeight =
-		receiver.Blocks[len(receiver.Blocks)-1].Height
+	// Failed validation must not mutate the receiver.
+	receiverTip =
+		receiver.Blocks[len(receiver.Blocks)-1]
 
-	if receiverHeight != 4 {
+	if receiverTip.Height != 6 {
 		t.Fatalf(
 			"receiver mutated after rejecting early governance execution: height=%d",
-			receiverHeight,
+			receiverTip.Height,
 		)
 	}
 
@@ -245,6 +303,11 @@ func TestAppendValidatedBlockAcceptsQueuedGovernanceExecutionAtBoundary(
 	fixture :=
 		newQueuedGovernanceConsensusFixture(t)
 
+	advanceToQueuedGovernanceActivation(
+		t,
+		fixture,
+	)
+
 	receiver :=
 		queuedGovernanceReceiver(
 			fixture,
@@ -263,22 +326,42 @@ func TestAppendValidatedBlockAcceptsQueuedGovernanceExecutionAtBoundary(
 			target.Address,
 		)
 
-	// Proposal at height 1.
+	// Proposal at activation height 3.
 	appendAuthorityProposalConsensusBlock(
 		t,
 		fixture,
 		proposal,
 	)
 
+	proposalBlock :=
+		fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+	if proposalBlock.Height !=
+		QueuedGovernanceActivationHeight {
+
+		t.Fatalf(
+			"expected proposal at activation height %d, got %d",
+			QueuedGovernanceActivationHeight,
+			proposalBlock.Height,
+		)
+	}
+
 	if err := receiver.AppendValidatedBlock(
-		fixture.bc.Blocks[1],
+		proposalBlock,
 		fixture.pos,
 	); err != nil {
 		t.Fatal(err)
 	}
 
-	// Propagate filler blocks through height 5.
-	for len(fixture.bc.Blocks)-1 < 5 {
+	// Propagate filler blocks through height 7.
+	for {
+		sourceTip :=
+			fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+		if sourceTip.Height >= 7 {
+			break
+		}
+
 		appendQueuedGovernanceFillerBlock(
 			t,
 			fixture,
@@ -295,7 +378,18 @@ func TestAppendValidatedBlockAcceptsQueuedGovernanceExecutionAtBoundary(
 		}
 	}
 
-	// Execution at exact boundary height 6.
+	receiverTip :=
+		receiver.Blocks[len(receiver.Blocks)-1]
+
+	if receiverTip.Height != 7 {
+		t.Fatalf(
+			"expected receiver at height 7 before boundary execution, got %d",
+			receiverTip.Height,
+		)
+	}
+
+	// Exact execution boundary:
+	// activation height 3 + governance delay 5 = height 8.
 	appendAuthorityExecutionConsensusBlock(
 		t,
 		fixture,
@@ -307,9 +401,16 @@ func TestAppendValidatedBlockAcceptsQueuedGovernanceExecutionAtBoundary(
 	executionBlock :=
 		fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
 
-	if executionBlock.Height != 6 {
+	expectedExecutionHeight :=
+		QueuedGovernanceActivationHeight +
+			reserved.DefaultGovernanceDelayBlocks
+
+	if executionBlock.Height !=
+		expectedExecutionHeight {
+
 		t.Fatalf(
-			"expected execution block at height 6, got %d",
+			"expected execution block at height %d, got %d",
+			expectedExecutionHeight,
 			executionBlock.Height,
 		)
 	}
