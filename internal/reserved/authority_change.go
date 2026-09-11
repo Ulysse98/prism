@@ -28,9 +28,15 @@ type AuthorityChange struct {
 	Action    AuthorityChangeAction  `json:"action"`
 	Authority string                 `json:"authority"`
 
+	ActivationHeight uint64 `json:"activation_height,omitempty"`
+
 	Approvals []Approval `json:"approvals,omitempty"`
 }
 
+// NewAuthorityChange creates a legacy v1 authority change.
+//
+// ActivationHeight remains zero so authority changes produced by Prism
+// versions prior to v0.28 keep exactly the same signed payload and ID.
 func NewAuthorityChange(
 	chainID string,
 	nonce uint64,
@@ -39,12 +45,40 @@ func NewAuthorityChange(
 	authority string,
 ) AuthorityChange {
 	change := AuthorityChange{
-		ChainID:   chainID,
-		Nonce:     nonce,
-		Pool:      pool,
-		Action:    action,
-		Authority: authority,
-		Approvals: []Approval{},
+		ChainID:          chainID,
+		Nonce:            nonce,
+		Pool:             pool,
+		Action:           action,
+		Authority:        authority,
+		ActivationHeight: 0,
+		Approvals:        []Approval{},
+	}
+
+	change.ID =
+		CalculateAuthorityChangeID(change)
+
+	return change
+}
+
+// NewTimelockedAuthorityChange creates a v2 authority change whose
+// activation height is committed into its ID and therefore into every
+// approval signature.
+func NewTimelockedAuthorityChange(
+	chainID string,
+	nonce uint64,
+	pool consensus.ReservedPool,
+	action AuthorityChangeAction,
+	authority string,
+	activationHeight uint64,
+) AuthorityChange {
+	change := AuthorityChange{
+		ChainID:          chainID,
+		Nonce:            nonce,
+		Pool:             pool,
+		Action:           action,
+		Authority:        authority,
+		ActivationHeight: activationHeight,
+		Approvals:        []Approval{},
 	}
 
 	change.ID =
@@ -56,13 +90,27 @@ func NewAuthorityChange(
 func authorityChangePayload(
 	change AuthorityChange,
 ) string {
+	// Preserve the exact v1 payload for authority changes created before
+	// timelocked governance was introduced.
+	if change.ActivationHeight == 0 {
+		return fmt.Sprintf(
+			"reserved-authority-change-v1|%s|%d|%s|%s|%s",
+			change.ChainID,
+			change.Nonce,
+			change.Pool,
+			change.Action,
+			change.Authority,
+		)
+	}
+
 	return fmt.Sprintf(
-		"reserved-authority-change-v1|%s|%d|%s|%s|%s",
+		"reserved-authority-change-v2|%s|%d|%s|%s|%s|%d",
 		change.ChainID,
 		change.Nonce,
 		change.Pool,
 		change.Action,
 		change.Authority,
+		change.ActivationHeight,
 	)
 }
 
@@ -215,7 +263,6 @@ func (change *AuthorityChange) AddApproval(
 	}
 
 	for _, approval := range change.Approvals {
-
 		if approval.Authorizer ==
 			authorizer {
 
