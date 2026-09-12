@@ -472,3 +472,117 @@ func TestReservedTransferUnknownExecutionFailsConsensus(
 		)
 	}
 }
+
+func TestReservedTransferStaleNonceRejectedAfterExecution(
+	t *testing.T,
+) {
+	fixture :=
+		newQueuedGovernanceConsensusFixture(t)
+
+	advanceToQueuedGovernanceActivation(
+		t,
+		fixture,
+	)
+
+	proposal :=
+		signedReservedTransferConsensusProposal(
+			t,
+			fixture,
+			1,
+		)
+
+	appendReservedTransferProposalConsensusBlock(
+		t,
+		fixture,
+		proposal,
+	)
+
+	for {
+		last :=
+			fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+		if last.Height >= 7 {
+			break
+		}
+
+		appendQueuedGovernanceFillerBlock(
+			t,
+			fixture,
+		)
+	}
+
+	appendReservedTransferExecutionConsensusBlock(
+		t,
+		fixture,
+		reserved.NewReservedTransferExecution(
+			proposal.ID,
+		),
+	)
+
+	if !fixture.bc.ValidateChain(
+		fixture.pos,
+	) {
+		t.Fatal(
+			"expected first reserved transfer execution to pass consensus",
+		)
+	}
+
+	chainID, err :=
+		fixture.bc.ChainID()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Same pool and nonce as the already-executed transfer,
+	// but a different amount gives a distinct proposal ID.
+	stale :=
+		reserved.NewReservedTransferProposal(
+			chainID,
+			1,
+			consensus.ReservedPoolTreasury,
+			fixture.sink.Address,
+			101,
+		)
+
+	for _, authority := range fixture.authorities {
+
+		if err :=
+			stale.AddApproval(
+				authority.Address,
+				authority.PublicKeyHex(),
+				authority.PrivateKey,
+			); err != nil {
+
+			t.Fatal(err)
+		}
+	}
+
+	if stale.ID == proposal.ID {
+		t.Fatal(
+			"stale nonce test requires a distinct proposal ID",
+		)
+	}
+
+	appendReservedTransferProposalConsensusBlock(
+		t,
+		fixture,
+		stale,
+	)
+
+	if fixture.bc.ValidateChain(
+		fixture.pos,
+	) {
+		t.Fatal(
+			"expected stale reserved transfer nonce to fail consensus",
+		)
+	}
+
+	if _, err :=
+		fixture.bc.GetGovernanceState(); err == nil {
+
+		t.Fatal(
+			"expected governance replay to reject stale reserved transfer nonce",
+		)
+	}
+}

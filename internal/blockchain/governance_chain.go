@@ -24,7 +24,7 @@ func (bc *Blockchain) GetGovernanceState() (
 			"blockchain has no genesis block",
 		)
 	}
-	if bc.hasReservedTransferExecutions() {
+	if bc.hasReservedTransferGovernance() {
 		governance, _, err :=
 			bc.replayReservedTransferConsensusState()
 

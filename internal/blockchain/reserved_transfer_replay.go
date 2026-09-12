@@ -7,18 +7,20 @@ import (
 	"prism/internal/reserved"
 )
 
-// hasReservedTransferExecutions reports whether the canonical chain contains
+// hasReservedTransferGovernance reports whether the canonical chain contains
 // at least one governed reserved-transfer execution.
 //
 // Chains without transfer executions retain the exact historical v0.29
 // governance/accounting replay paths.
-func (bc *Blockchain) hasReservedTransferExecutions() bool {
+func (bc *Blockchain) hasReservedTransferGovernance() bool {
 	if bc == nil {
 		return false
 	}
 
 	for _, block := range bc.Blocks {
-		if len(block.ReservedTransferExecutions) != 0 {
+		if len(block.ReservedTransferProposals) != 0 ||
+			len(block.ReservedTransferExecutions) != 0 {
+
 			return true
 		}
 	}
@@ -399,6 +401,19 @@ func (bc *Blockchain) replayReservedTransferConsensusState() (
 		}
 
 		for proposalIndex, proposal := range block.ReservedTransferProposals {
+			if err :=
+				accounting.ValidateReservedTransferQueueReplay(
+					proposal,
+				); err != nil {
+
+				return nil, nil,
+					fmt.Errorf(
+						"reserved transfer proposal replay rejected in block %d at index %d: %w",
+						block.Height,
+						proposalIndex,
+						err,
+					)
+			}
 
 			if err :=
 				governance.QueueReservedTransferProposal(
