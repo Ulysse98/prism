@@ -125,7 +125,7 @@ func runAPICommand(args []string) {
 		return
 	}
 
-	if !storage.Exists(*nodeData) {
+	if !storage.Exists(*nodeData) && !storage.ExistsPublic(*nodeData) {
 		fmt.Println(
 			"Prism API state not found:",
 			*nodeData,
@@ -168,6 +168,11 @@ func runAPICommand(args []string) {
 		"/api/v1/humanity",
 		api.handleHumanity,
 	)
+
+	mux.HandleFunc(
+		"/api/v1/reserved",
+		api.handleReserved,
+	)
 	listenAddress := fmt.Sprintf(
 		"%s:%d",
 		*host,
@@ -181,7 +186,7 @@ func runAPICommand(args []string) {
 	}
 
 	fmt.Println("=== PRISM HTTP API ===")
-	fmt.Println("Version: 0.18")
+	fmt.Println("Version: 0.30")
 	fmt.Println("P2P protocol:", p2p.ProtocolVersion)
 	fmt.Println("Node data:", *nodeData)
 	fmt.Println("Listening:", listenAddress)
@@ -194,6 +199,7 @@ func runAPICommand(args []string) {
 	fmt.Println("  GET /api/v1/participation")
 	fmt.Println("  GET /api/v1/work")
 	fmt.Println("  GET /api/v1/humanity")
+	fmt.Println("  GET /api/v1/reserved")
 	fmt.Println()
 
 	fmt.Println(
@@ -217,9 +223,7 @@ func (api *apiServer) handleHealth(
 		return
 	}
 
-	chain, pos, _, err := storage.Load(
-		api.dataPath,
-	)
+	chain, pos, _, err := api.loadState()
 	if err != nil {
 		apiWriteError(
 			writer,
@@ -244,7 +248,7 @@ func (api *apiServer) handleHealth(
 	response := apiHealthResponse{
 		Status:     "ok",
 		Network:    "Prism",
-		Version:    "0.18",
+		Version:    "0.30",
 		Protocol:   p2p.ProtocolVersion,
 		ChainID:    p2p.MakeChainID(genesis.Hash),
 		Height:     last.Height,
@@ -266,9 +270,7 @@ func (api *apiServer) handleStatus(
 		return
 	}
 
-	chain, pos, _, err := storage.Load(
-		api.dataPath,
-	)
+	chain, pos, _, err := api.loadState()
 	if err != nil {
 		apiWriteError(
 			writer,
@@ -302,7 +304,7 @@ func (api *apiServer) handleStatus(
 
 	response := apiStatusResponse{
 		Network:     "Prism",
-		Version:     "0.18",
+		Version:     "0.30",
 		Protocol:    p2p.ProtocolVersion,
 		ChainID:     p2p.MakeChainID(genesis.Hash),
 		Height:      last.Height,
@@ -330,9 +332,7 @@ func (api *apiServer) handleValidators(
 		return
 	}
 
-	chain, pos, wallets, err := storage.Load(
-		api.dataPath,
-	)
+	chain, pos, wallets, err := api.loadState()
 	if err != nil {
 		apiWriteError(
 			writer,
@@ -407,9 +407,7 @@ func (api *apiServer) handleParticipation(
 		return
 	}
 
-	chain, pos, wallets, err := storage.Load(
-		api.dataPath,
-	)
+	chain, pos, wallets, err := api.loadState()
 	if err != nil {
 		apiWriteError(
 			writer,
@@ -478,9 +476,7 @@ func (api *apiServer) handleWork(
 		return
 	}
 
-	chain, _, wallets, err := storage.Load(
-		api.dataPath,
-	)
+	chain, _, wallets, err := api.loadState()
 	if err != nil {
 		apiWriteError(
 			writer,
@@ -546,9 +542,7 @@ func (api *apiServer) handleHumanity(
 		return
 	}
 
-	chain, _, wallets, err := storage.Load(
-		api.dataPath,
-	)
+	chain, _, wallets, err := api.loadState()
 	if err != nil {
 		apiWriteError(
 			writer,

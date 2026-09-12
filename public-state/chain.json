@@ -1,0 +1,357 @@
+{
+  "blockchain": {
+    "Blocks": [
+      {
+        "height": 0,
+        "timestamp": "2026-09-10T03:50:17.036814Z",
+        "previous_hash": "0",
+        "proposer": "GENESIS",
+        "reward": 0,
+        "transactions": [
+          {
+            "id": "7c882acf0bbf1f84e4d6a1a53c71282ef4fc19c4097fdd0433bd49b640f2f628",
+            "from": "GENESIS",
+            "to": "prism_41c0d339d77023eda507fc7ca0a03ce537872ec7",
+            "amount": 500,
+            "nonce": 0
+          },
+          {
+            "id": "ca8d483670020b1756062d4be0677e782bfda9ef53b982e9c888e3edafc1e3fb",
+            "from": "GENESIS",
+            "to": "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+            "amount": 1200,
+            "nonce": 0
+          },
+          {
+            "id": "0904a925a8b9452c6bb4b1a7a121de1e4562faf1432b8f95bf6ffe2a4376929f",
+            "from": "GENESIS",
+            "to": "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c",
+            "amount": 800,
+            "nonce": 0
+          }
+        ],
+        "useful_work": [],
+        "hash": "a52a92841e1f90efe84e7b4a6ffab1415286624f30706d87663bb4d3199a1a22"
+      },
+      {
+        "height": 1,
+        "timestamp": "2026-09-10T03:53:31.2253649Z",
+        "previous_hash": "a52a92841e1f90efe84e7b4a6ffab1415286624f30706d87663bb4d3199a1a22",
+        "proposer": "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+        "reward": 5,
+        "transactions": null,
+        "useful_work": null,
+        "reserved_grants": [
+          {
+            "id": "6b06045b10f086f77cf93e9ac3cb6a9739d6d78578d0a3c3ac77a6044bcd2494",
+            "chain_id": "prism-fdfc3898baa4a98d",
+            "nonce": 1,
+            "pool": "treasury",
+            "recipient": "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c",
+            "amount": 100,
+            "approvals": [
+              {
+                "authorizer": "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+                "public_key": "df1f76fb76662fddd2128fb5fe7b94b8b6ff6ca3456029a3d68a704c2a74b286",
+                "signature": "11c810dfc70078b3b25887139a8c767658c60b5582ffe7541bf093666c7ea5dff7c8012ee7ff2fe9ec33a6828a569b21747108726391f8865c11c0f59ed8c00c"
+              },
+              {
+                "authorizer": "prism_41c0d339d77023eda507fc7ca0a03ce537872ec7",
+                "public_key": "a18193dfe6561f14623102d921550d1d9fef2b27f2cc71e995131f71f6a01149",
+                "signature": "bbeeda2d93571aa93cbdfe16b492f1354c3d87afe415b57ba5fdf5c7aad092d4b37f9e6aa11fd67190be6b5b73b7737cf605788f6ead397daafd2fb27559be01"
+              }
+            ]
+          }
+        ],
+        "hash": "a5406d703f0c481c477fd3996770745cc506cb54e117d9aa435579c5b6379ced"
+      },
+      {
+        "height": 2,
+        "timestamp": "2026-09-10T03:59:06.2630679Z",
+        "previous_hash": "a5406d703f0c481c477fd3996770745cc506cb54e117d9aa435579c5b6379ced",
+        "proposer": "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c",
+        "reward": 5,
+        "transactions": null,
+        "useful_work": null,
+        "reserved_revocations": [
+          {
+            "id": "c4a5606f658356817dda5442b6255c94fbe525fafce6a5ddd2ba3155d911ac27",
+            "chain_id": "prism-fdfc3898baa4a98d",
+            "pool": "treasury",
+            "grant_id": "a2a4345159702ff4a3d36d8c71f00b65a51c35597d1187ea132d4ca51854e590",
+            "approvals": [
+              {
+                "authorizer": "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+                "public_key": "df1f76fb76662fddd2128fb5fe7b94b8b6ff6ca3456029a3d68a704c2a74b286",
+                "signature": "03b6052e05af1a8334f7335c7a48497eaca72a40e52355953250b4c792a1372f628256eeabf8702c73ff7d4e4dfabe50a88dd9b040c26f4bb39e3468dffeb10f"
+              },
+              {
+                "authorizer": "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c",
+                "public_key": "084902c297f248df8d2a9f848e95e3bfb8d3e5feca518ae38ba009b263b8447f",
+                "signature": "39cb24720c2c49ac42b055b7488776a9766655204771a3a380a8c1db23c1789c8db4f7b8fdcde4d4fe7d3b55f9575b39a273b5be832a9348179d068f890a6805"
+              }
+            ]
+          }
+        ],
+        "hash": "fc67d1f5c41e8be7e3b2ea25e9c22c5e9e5d5715c44f604afef748a053751cef"
+      },
+      {
+        "height": 3,
+        "timestamp": "2026-09-11T12:46:14.1839507Z",
+        "previous_hash": "fc67d1f5c41e8be7e3b2ea25e9c22c5e9e5d5715c44f604afef748a053751cef",
+        "proposer": "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+        "reward": 5,
+        "transactions": null,
+        "useful_work": null,
+        "authority_proposals": [
+          {
+            "id": "66ab674efda84b532c822ae9e0a451dde0d11676c2a9eb71e9d011661a95593f",
+            "change": {
+              "id": "03082bbf5a4a06eae664e9004fb2b534381ebd4d60367e7e6f2f76794ac7d805",
+              "chain_id": "prism-fdfc3898baa4a98d",
+              "nonce": 1,
+              "pool": "treasury",
+              "action": "add",
+              "authority": "prism_0000000000000000000000000000000000000029",
+              "approvals": [
+                {
+                  "authorizer": "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+                  "public_key": "df1f76fb76662fddd2128fb5fe7b94b8b6ff6ca3456029a3d68a704c2a74b286",
+                  "signature": "909aaabb91cca4b160d2b3c9b982e4518d4eedd04ede01924937d7aae3dee0b41a1474c6ad9c92e41dfc9945eafce6600a6adea6fb8c79d6f10e15df8ed6d003"
+                },
+                {
+                  "authorizer": "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c",
+                  "public_key": "084902c297f248df8d2a9f848e95e3bfb8d3e5feca518ae38ba009b263b8447f",
+                  "signature": "a94832c140585b777cd8ff266ac005ac018aac61e5f62514aa06c192ba88e57cea90d3e2ac42d7a5bcff8cf53de6a94b0be6e79d4f0b7ccdcdbc3f06e5e40d0a"
+                }
+              ]
+            }
+          }
+        ],
+        "hash": "5a9f41045d6bf1247d6aca7c1f03146fd8141ccbcad59f91b1bf36a117b12bbe"
+      },
+      {
+        "height": 4,
+        "timestamp": "2026-09-11T12:48:30.215625Z",
+        "previous_hash": "5a9f41045d6bf1247d6aca7c1f03146fd8141ccbcad59f91b1bf36a117b12bbe",
+        "proposer": "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+        "reward": 5,
+        "transactions": [
+          {
+            "id": "c5351b23d904a3f3ece21b4dc84ca1d685042734015308a591ee3f0ca53e805b",
+            "from": "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+            "to": "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c",
+            "amount": 1,
+            "nonce": 0,
+            "public_key": "df1f76fb76662fddd2128fb5fe7b94b8b6ff6ca3456029a3d68a704c2a74b286",
+            "signature": "0af4cc1b5cdd80e83c446e29f0ebaed1ac8a6cb260ea2a8cebd121ad2c90ecc8e758528544ea7baf59b2360a1f5d1511d2ff619ff8c09b820b18e66d38de5f0a"
+          }
+        ],
+        "useful_work": [
+          {
+            "id": "449dcb8cbda2501e2971974f9fa4f3de4e88daa39ded1d8c983e40c81ca68287",
+            "task": {
+              "id": "580ea3e3686e6bd0ff4111956c17615214d45a0db20c4f644e0b0fc220a91fd3",
+              "type": "sum_squares",
+              "values": [
+                5,
+                6,
+                7
+              ],
+              "input_hash": "419f49e7575753b9756af1bf43941cae34f9a35fed91a9a0303483b242ae61f1"
+            },
+            "worker": "prism_41c0d339d77023eda507fc7ca0a03ce537872ec7",
+            "public_key": "a18193dfe6561f14623102d921550d1d9fef2b27f2cc71e995131f71f6a01149",
+            "result": 110,
+            "output_hash": "9bdb2af6799204a299c603994b8e400e4b1fd625efdb74066cc869fee42c9df3",
+            "score": 3,
+            "signature": "a8cce1650587be84a68768ea697f437f4389b93dd4f400e79930ea9d7d21b8789424f1681c62b208886903b0a1a3bcf0a6a9f0fa5232406180bd3f3166f0820b"
+          }
+        ],
+        "hash": "7f8fcff2a43bb8d6ab750c3ab68bd6c77d552c94db7f0bd3838b6852232866d5"
+      },
+      {
+        "height": 5,
+        "timestamp": "2026-09-11T12:48:30.5409016Z",
+        "previous_hash": "7f8fcff2a43bb8d6ab750c3ab68bd6c77d552c94db7f0bd3838b6852232866d5",
+        "proposer": "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c",
+        "reward": 5,
+        "transactions": [
+          {
+            "id": "64bce340d723fe03fe5c9c7708026d5d43ffcde9cb7164597bd96075649e548b",
+            "from": "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+            "to": "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c",
+            "amount": 1,
+            "nonce": 1,
+            "public_key": "df1f76fb76662fddd2128fb5fe7b94b8b6ff6ca3456029a3d68a704c2a74b286",
+            "signature": "f190d5ac6d7cb57a7c496857756e7dbeae1565c4b5ad200e6a5fb47b925a36b0bb40db7f76930a7a610db181652d5ab9c6879ca1aea04be8a0149e5ae46aa60a"
+          }
+        ],
+        "useful_work": [
+          {
+            "id": "cbc411c8934feaab0a5e3d233f8c4b8d6a22a385ebc2d02c5d1f5718df291b7c",
+            "task": {
+              "id": "9c0c225d653b3ee4b7c590686d2680abf53b5afa2c43d8fca625651048fd3193",
+              "type": "sum_squares",
+              "values": [
+                6,
+                7,
+                8
+              ],
+              "input_hash": "1a98b65e0a633c88274d1d3cb9c90fbc634fa223bb74c7e08d9e2c28132965ca"
+            },
+            "worker": "prism_41c0d339d77023eda507fc7ca0a03ce537872ec7",
+            "public_key": "a18193dfe6561f14623102d921550d1d9fef2b27f2cc71e995131f71f6a01149",
+            "result": 149,
+            "output_hash": "05ada863a4cf9660fd8c68e2295f1d35b2264815f5b605003d6625bd9e0492cf",
+            "score": 3,
+            "signature": "082fd3b528a736cd1f94dee597313f894c6f7dcf50188c1a027d15b7238b9bbe2e7a02b272e6adfd85ab65a425ef2f40f5c756854963ce8b8fbcb5023667620b"
+          }
+        ],
+        "hash": "a476f3664ec714efc1b697da427a275d0caa914430c60165b29a4b780dc61da2"
+      },
+      {
+        "height": 6,
+        "timestamp": "2026-09-11T12:48:30.8687949Z",
+        "previous_hash": "a476f3664ec714efc1b697da427a275d0caa914430c60165b29a4b780dc61da2",
+        "proposer": "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+        "reward": 5,
+        "transactions": [
+          {
+            "id": "7b33715b1d417f0cc3471e12bc48ba1a31cf1681f59fb33a3ec690572891e0a9",
+            "from": "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+            "to": "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c",
+            "amount": 1,
+            "nonce": 2,
+            "public_key": "df1f76fb76662fddd2128fb5fe7b94b8b6ff6ca3456029a3d68a704c2a74b286",
+            "signature": "0ff717bb5686e1b384f0aa3ee42bf6ef089ebab238e4763314b4fb61463eda3c7fe320834e50f27f48e394d9cd682c217e56b3900eaddd7a6ba480ec33838d0c"
+          }
+        ],
+        "useful_work": [
+          {
+            "id": "a14c8c7cc2e2c1a82724da24ab59a1e897caa111df4b53869de22b4d4030cc6e",
+            "task": {
+              "id": "2818a81d97606bbad99d6b3a6421cd9fd9dd18cdb1a1fcd7372dd133dc0ab99a",
+              "type": "sum_squares",
+              "values": [
+                7,
+                8,
+                9
+              ],
+              "input_hash": "a41ad919bdd6044484ca97585e715e69b10493c6d5c044d08d761bffcfc835dd"
+            },
+            "worker": "prism_41c0d339d77023eda507fc7ca0a03ce537872ec7",
+            "public_key": "a18193dfe6561f14623102d921550d1d9fef2b27f2cc71e995131f71f6a01149",
+            "result": 194,
+            "output_hash": "7559ca4a957c8c82ba04781cd66a68d6022229fca0e8e88d8e487c96ee4446d0",
+            "score": 3,
+            "signature": "f4bae8f3b86d4ab2d69d6efb68a4f6e7b896d611bb28b1fb6a5b9be7b5030ab27af24d6e0747f61dcf5e959a61ac868d3f145dab0f4a10c4544008ec892b8b05"
+          }
+        ],
+        "hash": "ac7248957077bba5ef51454542a84507ad11266071e98e32446e0a2faf80ea90"
+      },
+      {
+        "height": 7,
+        "timestamp": "2026-09-11T12:48:31.1944631Z",
+        "previous_hash": "ac7248957077bba5ef51454542a84507ad11266071e98e32446e0a2faf80ea90",
+        "proposer": "prism_41c0d339d77023eda507fc7ca0a03ce537872ec7",
+        "reward": 5,
+        "transactions": [
+          {
+            "id": "bb4411cf06a3ac9a42f2dfa0434f153d8dde6e3c018ab039f446ac4446878ea8",
+            "from": "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+            "to": "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c",
+            "amount": 1,
+            "nonce": 3,
+            "public_key": "df1f76fb76662fddd2128fb5fe7b94b8b6ff6ca3456029a3d68a704c2a74b286",
+            "signature": "89d181672d5c651f41c80db3cd704d54a2c893df144b80291e7fedcaf09b8a656412211bbe863cbddcef7a5810f9b0a35526324b8a616ca2d3dff0bede30a50c"
+          }
+        ],
+        "useful_work": [
+          {
+            "id": "7cc2674d08470c342eb00f21bd2d472b977653c3e9e7d1c3e8a8a1534bf1ce18",
+            "task": {
+              "id": "7fa74e5e1183e4f796bd70ef6165a15742142ebf207d4371f271747418b8195f",
+              "type": "sum_squares",
+              "values": [
+                8,
+                9,
+                10
+              ],
+              "input_hash": "092b8c64dd8e4a5c6d9ff65830ec6de56193bf15a5e92d7c3ce25b24febaa1e5"
+            },
+            "worker": "prism_41c0d339d77023eda507fc7ca0a03ce537872ec7",
+            "public_key": "a18193dfe6561f14623102d921550d1d9fef2b27f2cc71e995131f71f6a01149",
+            "result": 245,
+            "output_hash": "011af72a910ac4acf367eef9e6b761e0980842c30d4e9809840f4141d5163ede",
+            "score": 3,
+            "signature": "200b4068c756ceab1945f044dc0606a1fd1813a1e64401dfab8fb1cdaf6bc944a3c131006ab52e870073e5c627f0ac3397b58ea1e64216152ae1dc54bee5700e"
+          }
+        ],
+        "hash": "f74462cd4c9eae53c5709c2976c5a867421dab355735c2fc460929125b1fde57"
+      },
+      {
+        "height": 8,
+        "timestamp": "2026-09-11T12:48:52.4577796Z",
+        "previous_hash": "f74462cd4c9eae53c5709c2976c5a867421dab355735c2fc460929125b1fde57",
+        "proposer": "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c",
+        "reward": 5,
+        "transactions": null,
+        "useful_work": null,
+        "authority_executions": [
+          {
+            "proposal_id": "66ab674efda84b532c822ae9e0a451dde0d11676c2a9eb71e9d011661a95593f"
+          }
+        ],
+        "hash": "8e6f645af8a266a3973c4a77d0334015e1a8e931dc1c17b29ad5605f91a27406"
+      }
+    ],
+    "LockedStakes": {
+      "prism_41c0d339d77023eda507fc7ca0a03ce537872ec7": 200,
+      "prism_91e09dda8b18ca23de50770a03a1d32824802f2b": 500,
+      "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c": 300
+    },
+    "config": {
+      "reserved_authorities": {
+        "Ecosystem": [
+          "prism_41c0d339d77023eda507fc7ca0a03ce537872ec7",
+          "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+          "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c"
+        ],
+        "Treasury": [
+          "prism_41c0d339d77023eda507fc7ca0a03ce537872ec7",
+          "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+          "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c"
+        ],
+        "Team": [
+          "prism_41c0d339d77023eda507fc7ca0a03ce537872ec7",
+          "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+          "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c"
+        ],
+        "Liquidity": [
+          "prism_41c0d339d77023eda507fc7ca0a03ce537872ec7",
+          "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+          "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c"
+        ],
+        "EcosystemThreshold": 2,
+        "TreasuryThreshold": 2,
+        "TeamThreshold": 2,
+        "LiquidityThreshold": 2
+      }
+    }
+  },
+  "validators": [
+    {
+      "address": "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+      "stake": 500
+    },
+    {
+      "address": "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c",
+      "stake": 300
+    },
+    {
+      "address": "prism_41c0d339d77023eda507fc7ca0a03ce537872ec7",
+      "stake": 200
+    }
+  ]
+}
