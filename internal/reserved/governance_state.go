@@ -8,6 +8,7 @@ type GovernanceState struct {
 	Replay        *ReplayState
 
 	PendingProposals map[string]PendingAuthorityProposal
+	PendingTransfers map[string]PendingReservedTransferProposal
 }
 
 func NewGovernanceState(
@@ -29,6 +30,9 @@ func NewGovernanceState(
 		Replay:        NewReplayState(),
 		PendingProposals: make(
 			map[string]PendingAuthorityProposal,
+		),
+		PendingTransfers: make(
+			map[string]PendingReservedTransferProposal,
 		),
 	}, nil
 }

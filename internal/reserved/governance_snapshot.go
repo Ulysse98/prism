@@ -10,7 +10,8 @@ type GovernanceSnapshot struct {
 	CurrentPolicy AuthorityPolicy `json:"current_policy"`
 	Replay        ReplaySnapshot  `json:"replay"`
 
-	PendingProposals []PendingAuthorityProposal `json:"pending_proposals,omitempty"`
+	PendingProposals []PendingAuthorityProposal        `json:"pending_proposals,omitempty"`
+	PendingTransfers []PendingReservedTransferProposal `json:"pending_transfers,omitempty"`
 }
 
 func (state *GovernanceState) Snapshot() (
@@ -90,7 +91,6 @@ func (state *GovernanceState) Snapshot() (
 			)
 	}
 
-	// Keep snapshot serialization deterministic regardless of Go map order.
 	sort.Slice(
 		pendingProposals,
 		func(
@@ -102,11 +102,67 @@ func (state *GovernanceState) Snapshot() (
 		},
 	)
 
+	pendingTransfers :=
+		make(
+			[]PendingReservedTransferProposal,
+			0,
+			len(state.PendingTransfers),
+		)
+
+	for proposalID, pending := range state.PendingTransfers {
+
+		if proposalID !=
+			pending.Proposal.ID {
+
+			return GovernanceSnapshot{},
+				fmt.Errorf(
+					"pending reserved transfer map key mismatch",
+				)
+		}
+
+		if err :=
+			ValidatePendingReservedTransferProposal(
+				pending,
+			); err != nil {
+
+			return GovernanceSnapshot{},
+				fmt.Errorf(
+					"invalid pending reserved transfer proposal: %w",
+					err,
+				)
+		}
+
+		cloned := pending
+
+		cloned.Proposal =
+			cloneReservedTransferProposal(
+				pending.Proposal,
+			)
+
+		pendingTransfers =
+			append(
+				pendingTransfers,
+				cloned,
+			)
+	}
+
+	sort.Slice(
+		pendingTransfers,
+		func(
+			i int,
+			j int,
+		) bool {
+			return pendingTransfers[i].Proposal.ID <
+				pendingTransfers[j].Proposal.ID
+		},
+	)
+
 	return GovernanceSnapshot{
 		ChainID:          state.ChainID,
 		CurrentPolicy:    state.CurrentPolicy,
 		Replay:           replaySnapshot,
 		PendingProposals: pendingProposals,
+		PendingTransfers: pendingTransfers,
 	}, nil
 }
 
@@ -148,7 +204,7 @@ func GovernanceStateFromSnapshot(
 		Nonce uint64
 	}
 
-	usedPendingNonces :=
+	usedPendingAuthorityNonces :=
 		make(
 			map[poolNonce]struct{},
 		)
@@ -197,7 +253,7 @@ func GovernanceStateFromSnapshot(
 		}
 
 		if _, exists :=
-			usedPendingNonces[key]; exists {
+			usedPendingAuthorityNonces[key]; exists {
 
 			return nil,
 				fmt.Errorf(
@@ -205,7 +261,7 @@ func GovernanceStateFromSnapshot(
 				)
 		}
 
-		usedPendingNonces[key] =
+		usedPendingAuthorityNonces[key] =
 			struct{}{}
 
 		cloned := pending
@@ -219,10 +275,88 @@ func GovernanceStateFromSnapshot(
 			cloned
 	}
 
+	pendingTransfers :=
+		make(
+			map[string]PendingReservedTransferProposal,
+			len(snapshot.PendingTransfers),
+		)
+
+	usedPendingTransferNonces :=
+		make(
+			map[poolNonce]struct{},
+		)
+
+	for _, pending := range snapshot.PendingTransfers {
+
+		if err :=
+			ValidatePendingReservedTransferProposal(
+				pending,
+			); err != nil {
+
+			return nil,
+				fmt.Errorf(
+					"invalid stored pending reserved transfer proposal: %w",
+					err,
+				)
+		}
+
+		if snapshot.ChainID != "" &&
+			pending.Proposal.ChainID !=
+				snapshot.ChainID {
+
+			return nil,
+				fmt.Errorf(
+					"stored pending reserved transfer proposal chain ID mismatch",
+				)
+		}
+
+		proposalID :=
+			pending.Proposal.ID
+
+		if _, exists :=
+			pendingTransfers[proposalID]; exists {
+
+			return nil,
+				fmt.Errorf(
+					"duplicate stored pending reserved transfer proposal",
+				)
+		}
+
+		key := poolNonce{
+			Pool: string(
+				pending.Proposal.Pool,
+			),
+			Nonce: pending.Proposal.Nonce,
+		}
+
+		if _, exists :=
+			usedPendingTransferNonces[key]; exists {
+
+			return nil,
+				fmt.Errorf(
+					"duplicate stored pending reserved transfer proposal nonce",
+				)
+		}
+
+		usedPendingTransferNonces[key] =
+			struct{}{}
+
+		cloned := pending
+
+		cloned.Proposal =
+			cloneReservedTransferProposal(
+				pending.Proposal,
+			)
+
+		pendingTransfers[proposalID] =
+			cloned
+	}
+
 	return &GovernanceState{
 		ChainID:          snapshot.ChainID,
 		CurrentPolicy:    snapshot.CurrentPolicy,
 		Replay:           replay,
 		PendingProposals: pendingProposals,
+		PendingTransfers: pendingTransfers,
 	}, nil
 }
