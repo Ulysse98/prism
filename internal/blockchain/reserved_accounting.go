@@ -17,6 +17,16 @@ func (bc *Blockchain) GetReservedAccountingState() (
 				"blockchain cannot be nil",
 			)
 	}
+	if bc.hasReservedTransferExecutions() {
+		_, accounting, err :=
+			bc.replayReservedTransferConsensusState()
+
+		if err != nil {
+			return nil, err
+		}
+
+		return accounting, nil
+	}
 
 	genesisSupply, err :=
 		bc.GenesisSupply()

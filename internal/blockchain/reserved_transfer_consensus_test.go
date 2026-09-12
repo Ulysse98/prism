@@ -223,3 +223,252 @@ func TestReservedTransferProposalBelowQuorumFailsConsensus(
 		)
 	}
 }
+
+func appendReservedTransferExecutionConsensusBlock(
+	t *testing.T,
+	fixture queuedGovernanceConsensusFixture,
+	execution reserved.ReservedTransferExecution,
+) {
+	t.Helper()
+
+	bc := fixture.bc
+
+	previous :=
+		bc.Blocks[len(bc.Blocks)-1]
+
+	nextHeight :=
+		previous.Height + 1
+
+	proposer, err :=
+		fixture.pos.SelectProposer(
+			previous.Hash,
+			nextHeight,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	block := Block{
+		Height: nextHeight,
+		Timestamp: time.Unix(
+			int64(nextHeight+4000),
+			0,
+		).UTC(),
+		PreviousHash: previous.Hash,
+		Proposer:     proposer.Address,
+		Reward:       consensus.DefaultProposerReward,
+		ReservedTransferExecutions: []reserved.ReservedTransferExecution{
+			execution,
+		},
+	}
+
+	block.Hash =
+		CalculateHash(block)
+
+	bc.Blocks = append(
+		bc.Blocks,
+		block,
+	)
+}
+
+func TestReservedTransferExecutionFailsConsensusBeforeDelay(
+	t *testing.T,
+) {
+	fixture :=
+		newQueuedGovernanceConsensusFixture(t)
+
+	advanceToQueuedGovernanceActivation(
+		t,
+		fixture,
+	)
+
+	proposal :=
+		signedReservedTransferConsensusProposal(
+			t,
+			fixture,
+			1,
+		)
+
+	appendReservedTransferProposalConsensusBlock(
+		t,
+		fixture,
+		proposal,
+	)
+
+	// Proposal is included at height 3.
+	// With the five-block governance delay, execution starts at height 8.
+	// Advance only through height 6 so the execution lands at height 7.
+	for {
+		last :=
+			fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+		if last.Height >= 6 {
+			break
+		}
+
+		appendQueuedGovernanceFillerBlock(
+			t,
+			fixture,
+		)
+	}
+
+	appendReservedTransferExecutionConsensusBlock(
+		t,
+		fixture,
+		reserved.NewReservedTransferExecution(
+			proposal.ID,
+		),
+	)
+
+	last :=
+		fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+	if last.Height != 7 {
+		t.Fatalf(
+			"expected early transfer execution at height 7, got %d",
+			last.Height,
+		)
+	}
+
+	if fixture.bc.ValidateChain(
+		fixture.pos,
+	) {
+		t.Fatal(
+			"expected reserved transfer execution before timelock to fail consensus",
+		)
+	}
+
+	if _, err :=
+		fixture.bc.GetReservedAccountingState(); err == nil {
+
+		t.Fatal(
+			"expected accounting replay to reject early reserved transfer execution",
+		)
+	}
+}
+
+func TestReservedTransferExecutionPassesConsensusAtBoundary(
+	t *testing.T,
+) {
+	fixture :=
+		newQueuedGovernanceConsensusFixture(t)
+
+	advanceToQueuedGovernanceActivation(
+		t,
+		fixture,
+	)
+
+	proposal :=
+		signedReservedTransferConsensusProposal(
+			t,
+			fixture,
+			1,
+		)
+
+	appendReservedTransferProposalConsensusBlock(
+		t,
+		fixture,
+		proposal,
+	)
+
+	// Advance through height 7 so execution lands exactly at height 8.
+	for {
+		last :=
+			fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+		if last.Height >= 7 {
+			break
+		}
+
+		appendQueuedGovernanceFillerBlock(
+			t,
+			fixture,
+		)
+	}
+
+	appendReservedTransferExecutionConsensusBlock(
+		t,
+		fixture,
+		reserved.NewReservedTransferExecution(
+			proposal.ID,
+		),
+	)
+
+	last :=
+		fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+	if last.Height != 8 {
+		t.Fatalf(
+			"expected boundary transfer execution at height 8, got %d",
+			last.Height,
+		)
+	}
+
+	if !fixture.bc.ValidateChain(
+		fixture.pos,
+	) {
+		t.Fatal(
+			"expected reserved transfer execution at timelock boundary to pass consensus",
+		)
+	}
+
+	governance, err :=
+		fixture.bc.GetGovernanceState()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, exists :=
+		governance.GetPendingReservedTransferProposal(
+			proposal.ID,
+		); exists {
+
+		t.Fatal(
+			"executed reserved transfer remained pending",
+		)
+	}
+
+	accounting, err :=
+		fixture.bc.GetReservedAccountingState()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if accounting.Usage.Treasury != 100 {
+		t.Fatalf(
+			"unexpected treasury usage after execution: got=%d expected=100",
+			accounting.Usage.Treasury,
+		)
+	}
+}
+
+func TestReservedTransferUnknownExecutionFailsConsensus(
+	t *testing.T,
+) {
+	fixture :=
+		newQueuedGovernanceConsensusFixture(t)
+
+	advanceToQueuedGovernanceActivation(
+		t,
+		fixture,
+	)
+
+	appendReservedTransferExecutionConsensusBlock(
+		t,
+		fixture,
+		reserved.NewReservedTransferExecution(
+			"unknown-transfer-proposal",
+		),
+	)
+
+	if fixture.bc.ValidateChain(
+		fixture.pos,
+	) {
+		t.Fatal(
+			"expected unknown reserved transfer execution to fail consensus",
+		)
+	}
+}
