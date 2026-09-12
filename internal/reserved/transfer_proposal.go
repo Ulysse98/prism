@@ -99,11 +99,12 @@ func ValidateReservedTransferProposal(
 	supplyPolicy :=
 		consensus.DefaultSupplyPolicy()
 
-	if _, err :=
+	allocation, err :=
 		supplyPolicy.ReservedPoolAllocation(
 			proposal.Pool,
-		); err != nil {
+		)
 
+	if err != nil {
 		return err
 	}
 
@@ -122,6 +123,12 @@ func ValidateReservedTransferProposal(
 	if proposal.Amount == 0 {
 		return fmt.Errorf(
 			"reserved transfer proposal amount must be greater than zero",
+		)
+	}
+
+	if proposal.Amount > allocation {
+		return fmt.Errorf(
+			"reserved transfer proposal amount exceeds pool allocation",
 		)
 	}
 

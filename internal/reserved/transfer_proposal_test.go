@@ -304,3 +304,37 @@ func TestValidateReservedTransferProposalRejectsTamperedID(
 		)
 	}
 }
+
+func TestValidateReservedTransferProposalRejectsAmountAbovePoolAllocation(
+	t *testing.T,
+) {
+	proposal :=
+		NewReservedTransferProposal(
+			"prism-devnet",
+			1,
+			consensus.ReservedPoolTreasury,
+			"recipient",
+			consensus.TreasuryAllocation+1,
+		)
+
+	err :=
+		ValidateReservedTransferProposal(
+			proposal,
+		)
+
+	if err == nil {
+		t.Fatal(
+			"expected transfer above pool allocation to be rejected",
+		)
+	}
+
+	if !strings.Contains(
+		err.Error(),
+		"amount exceeds pool allocation",
+	) {
+		t.Fatalf(
+			"unexpected error: %v",
+			err,
+		)
+	}
+}
