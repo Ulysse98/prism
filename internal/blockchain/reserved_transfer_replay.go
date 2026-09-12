@@ -8,9 +8,9 @@ import (
 )
 
 // hasReservedTransferGovernance reports whether the canonical chain contains
-// at least one governed reserved-transfer execution.
+// at least one governed reserved-transfer proposal or execution.
 //
-// Chains without transfer executions retain the exact historical v0.29
+// Chains without governed reserved-transfer proposals or executions retain the exact historical v0.29
 // governance/accounting replay paths.
 func (bc *Blockchain) hasReservedTransferGovernance() bool {
 	if bc == nil {
