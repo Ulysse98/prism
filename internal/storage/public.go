@@ -98,3 +98,40 @@ func LoadPublic(
 
 	return chain, pos, wallets, nil
 }
+
+func SavePublicChain(
+	dataDir string,
+	chain *blockchain.Blockchain,
+	pos *consensus.ProofOfStake,
+) error {
+	if chain == nil {
+		return fmt.Errorf(
+			"blockchain cannot be nil",
+		)
+	}
+
+	if pos == nil {
+		return fmt.Errorf(
+			"proof of stake engine cannot be nil",
+		)
+	}
+
+	if !ExistsPublic(dataDir) {
+		return fmt.Errorf(
+			"public Prism state not found: %s",
+			dataDir,
+		)
+	}
+
+	if !chain.ValidateChain(pos) {
+		return fmt.Errorf(
+			"refusing to save invalid public blockchain",
+		)
+	}
+
+	return saveChain(
+		dataDir,
+		chain,
+		pos,
+	)
+}

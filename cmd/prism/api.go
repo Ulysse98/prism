@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"prism/internal/blockchain"
@@ -17,6 +18,7 @@ import (
 
 type apiServer struct {
 	dataPath string
+	stateMu  sync.Mutex
 }
 
 type apiStatusResponse struct {
@@ -178,6 +180,11 @@ func runAPICommand(args []string) {
 		"/api/v1/mine/start",
 		api.handleMineStart,
 	)
+
+	mux.HandleFunc(
+		"/api/v1/mine/submit",
+		api.handleMineSubmit,
+	)
 	listenAddress := fmt.Sprintf(
 		"%s:%d",
 		*host,
@@ -206,6 +213,7 @@ func runAPICommand(args []string) {
 	fmt.Println("  GET /api/v1/humanity")
 	fmt.Println("  GET /api/v1/reserved")
 	fmt.Println("  POST /api/v1/mine/start")
+	fmt.Println("  POST /api/v1/mine/submit")
 	fmt.Println()
 
 	fmt.Println(
