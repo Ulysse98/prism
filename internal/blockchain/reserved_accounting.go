@@ -177,6 +177,16 @@ func (bc *Blockchain) GetReservedAccountingState() (
 			}
 		}
 
+		if block.Height >=
+			GovernedReservedTransferActivationHeight &&
+			len(block.ReservedGrants) != 0 {
+
+			return nil, fmt.Errorf(
+				"legacy reserved grants are not allowed at or after governed transfer activation height %d: block height %d",
+				GovernedReservedTransferActivationHeight,
+				block.Height,
+			)
+		}
 		for grantIndex, grant := range block.ReservedGrants {
 
 			if err :=

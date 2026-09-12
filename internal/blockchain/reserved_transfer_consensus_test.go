@@ -101,7 +101,7 @@ func TestReservedTransferProposalParticipatesInConsensus(
 	fixture :=
 		newQueuedGovernanceConsensusFixture(t)
 
-	advanceToQueuedGovernanceActivation(
+	advanceToGovernedReservedTransferActivation(
 		t,
 		fixture,
 	)
@@ -146,7 +146,7 @@ func TestReservedTransferProposalParticipatesInConsensus(
 	}
 
 	if pending.ProposalHeight !=
-		QueuedGovernanceActivationHeight {
+		GovernedReservedTransferActivationHeight {
 
 		t.Fatalf(
 			"unexpected proposal height: %d",
@@ -155,7 +155,7 @@ func TestReservedTransferProposalParticipatesInConsensus(
 	}
 
 	expectedExecuteAfter :=
-		QueuedGovernanceActivationHeight +
+		GovernedReservedTransferActivationHeight +
 			reserved.DefaultGovernanceDelayBlocks
 
 	if pending.ExecuteAfterHeight !=
@@ -175,7 +175,7 @@ func TestReservedTransferProposalBelowQuorumFailsConsensus(
 	fixture :=
 		newQueuedGovernanceConsensusFixture(t)
 
-	advanceToQueuedGovernanceActivation(
+	advanceToGovernedReservedTransferActivation(
 		t,
 		fixture,
 	)
@@ -278,7 +278,7 @@ func TestReservedTransferExecutionFailsConsensusBeforeDelay(
 	fixture :=
 		newQueuedGovernanceConsensusFixture(t)
 
-	advanceToQueuedGovernanceActivation(
+	advanceToGovernedReservedTransferActivation(
 		t,
 		fixture,
 	)
@@ -303,7 +303,7 @@ func TestReservedTransferExecutionFailsConsensusBeforeDelay(
 		last :=
 			fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
 
-		if last.Height >= 6 {
+		if last.Height >= 7 {
 			break
 		}
 
@@ -324,7 +324,7 @@ func TestReservedTransferExecutionFailsConsensusBeforeDelay(
 	last :=
 		fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
 
-	if last.Height != 7 {
+	if last.Height != 8 {
 		t.Fatalf(
 			"expected early transfer execution at height 7, got %d",
 			last.Height,
@@ -354,7 +354,7 @@ func TestReservedTransferExecutionPassesConsensusAtBoundary(
 	fixture :=
 		newQueuedGovernanceConsensusFixture(t)
 
-	advanceToQueuedGovernanceActivation(
+	advanceToGovernedReservedTransferActivation(
 		t,
 		fixture,
 	)
@@ -377,7 +377,7 @@ func TestReservedTransferExecutionPassesConsensusAtBoundary(
 		last :=
 			fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
 
-		if last.Height >= 7 {
+		if last.Height >= 8 {
 			break
 		}
 
@@ -398,7 +398,7 @@ func TestReservedTransferExecutionPassesConsensusAtBoundary(
 	last :=
 		fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
 
-	if last.Height != 8 {
+	if last.Height != 9 {
 		t.Fatalf(
 			"expected boundary transfer execution at height 8, got %d",
 			last.Height,
@@ -451,7 +451,7 @@ func TestReservedTransferUnknownExecutionFailsConsensus(
 	fixture :=
 		newQueuedGovernanceConsensusFixture(t)
 
-	advanceToQueuedGovernanceActivation(
+	advanceToGovernedReservedTransferActivation(
 		t,
 		fixture,
 	)
@@ -479,7 +479,7 @@ func TestReservedTransferStaleNonceRejectedAfterExecution(
 	fixture :=
 		newQueuedGovernanceConsensusFixture(t)
 
-	advanceToQueuedGovernanceActivation(
+	advanceToGovernedReservedTransferActivation(
 		t,
 		fixture,
 	)
@@ -501,7 +501,7 @@ func TestReservedTransferStaleNonceRejectedAfterExecution(
 		last :=
 			fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
 
-		if last.Height >= 7 {
+		if last.Height >= 8 {
 			break
 		}
 
@@ -593,7 +593,7 @@ func TestReservedTransferCreditsOnlyAtExecution(
 	fixture :=
 		newQueuedGovernanceConsensusFixture(t)
 
-	advanceToQueuedGovernanceActivation(
+	advanceToGovernedReservedTransferActivation(
 		t,
 		fixture,
 	)
@@ -641,7 +641,7 @@ func TestReservedTransferCreditsOnlyAtExecution(
 		last :=
 			fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
 
-		if last.Height >= 7 {
+		if last.Height >= 8 {
 			break
 		}
 
@@ -727,6 +727,103 @@ func TestReservedTransferCreditsOnlyAtExecution(
 
 		t.Fatal(
 			"executed reserved transfer remained pending",
+		)
+	}
+}
+
+func advanceToGovernedReservedTransferActivation(
+	t *testing.T,
+	fixture queuedGovernanceConsensusFixture,
+) {
+	t.Helper()
+
+	// Preserve the historical v0.29 queued-governance boundary first.
+	advanceToQueuedGovernanceActivation(
+		t,
+		fixture,
+	)
+
+	targetHeight :=
+		GovernedReservedTransferActivationHeight - 1
+
+	for {
+		last :=
+			fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+		if last.Height >= targetHeight {
+			return
+		}
+
+		appendQueuedGovernanceFillerBlock(
+			t,
+			fixture,
+		)
+	}
+}
+
+func TestReservedTransferProposalRejectedBeforeTransferActivation(
+	t *testing.T,
+) {
+	fixture :=
+		newQueuedGovernanceConsensusFixture(t)
+
+	// Advance only to the v0.29 boundary.
+	// The next block will be height 3, while governed
+	// reserved transfers activate at height 4.
+	advanceToQueuedGovernanceActivation(
+		t,
+		fixture,
+	)
+
+	proposal :=
+		signedReservedTransferConsensusProposal(
+			t,
+			fixture,
+			1,
+		)
+
+	appendReservedTransferProposalConsensusBlock(
+		t,
+		fixture,
+		proposal,
+	)
+
+	last :=
+		fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+	if last.Height !=
+		QueuedGovernanceActivationHeight {
+
+		t.Fatalf(
+			"expected pre-transfer proposal at height %d, got %d",
+			QueuedGovernanceActivationHeight,
+			last.Height,
+		)
+	}
+
+	if last.Height >=
+		GovernedReservedTransferActivationHeight {
+
+		t.Fatalf(
+			"test setup crossed governed transfer activation: height=%d activation=%d",
+			last.Height,
+			GovernedReservedTransferActivationHeight,
+		)
+	}
+
+	if fixture.bc.ValidateChain(
+		fixture.pos,
+	) {
+		t.Fatal(
+			"expected reserved transfer proposal before v0.30 activation to fail consensus",
+		)
+	}
+
+	if _, err :=
+		fixture.bc.GetGovernanceState(); err == nil {
+
+		t.Fatal(
+			"expected governance replay to reject reserved transfer proposal before activation",
 		)
 	}
 }

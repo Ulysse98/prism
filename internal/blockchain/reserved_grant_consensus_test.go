@@ -269,3 +269,230 @@ func TestGenesisRejectsThresholdReservedGrant(
 		)
 	}
 }
+
+func signedThresholdGrantWithNonceForBlockchain(
+	t *testing.T,
+	bc *Blockchain,
+	authorities []*wallet.Wallet,
+	nonce uint64,
+	approvalCount int,
+) reserved.Grant {
+	t.Helper()
+
+	recipient, err :=
+		wallet.New()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chainID, err :=
+		bc.ChainID()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	grant :=
+		reserved.NewGrant(
+			chainID,
+			nonce,
+			consensus.ReservedPoolTreasury,
+			recipient.Address,
+			100,
+		)
+
+	for i := 0; i < approvalCount; i++ {
+		if err :=
+			grant.AddApproval(
+				authorities[i].Address,
+				authorities[i].PublicKeyHex(),
+				authorities[i].PrivateKey,
+			); err != nil {
+
+			t.Fatal(err)
+		}
+	}
+
+	return grant
+}
+
+func appendThresholdGrantAtNextHeight(
+	t *testing.T,
+	bc *Blockchain,
+	validator *wallet.Wallet,
+	grant reserved.Grant,
+) {
+	t.Helper()
+
+	previous :=
+		bc.Blocks[len(bc.Blocks)-1]
+
+	nextHeight :=
+		previous.Height + 1
+
+	rewardPolicy :=
+		consensus.DefaultRewardPolicy()
+
+	block := Block{
+		Height:       nextHeight,
+		Timestamp:    time.Unix(int64(nextHeight+1000), 0).UTC(),
+		PreviousHash: previous.Hash,
+		Proposer:     validator.Address,
+		Reward:       rewardPolicy.ProposerReward,
+		ReservedGrants: []reserved.Grant{
+			grant,
+		},
+	}
+
+	block.Hash =
+		CalculateHash(block)
+
+	bc.Blocks =
+		append(
+			bc.Blocks,
+			block,
+		)
+}
+
+func TestLegacyReservedGrantAllowedBeforeGovernedTransferActivation(
+	t *testing.T,
+) {
+	bc, pos, validator, authorities :=
+		thresholdGrantBlockchain(t)
+
+	for nonce := uint64(1); nonce <
+		GovernedReservedTransferActivationHeight; nonce++ {
+
+		grant :=
+			signedThresholdGrantWithNonceForBlockchain(
+				t,
+				bc,
+				authorities,
+				nonce,
+				2,
+			)
+
+		appendThresholdGrantAtNextHeight(
+			t,
+			bc,
+			validator,
+			grant,
+		)
+	}
+
+	last :=
+		bc.Blocks[len(bc.Blocks)-1]
+
+	expectedHeight :=
+		GovernedReservedTransferActivationHeight - 1
+
+	if last.Height != expectedHeight {
+		t.Fatalf(
+			"expected last legacy grant at height %d, got %d",
+			expectedHeight,
+			last.Height,
+		)
+	}
+
+	if !bc.ValidateChain(pos) {
+		t.Fatal(
+			"expected legacy reserved grants before v0.30 activation to remain valid",
+		)
+	}
+
+	if _, err :=
+		bc.GetReservedAccountingState(); err != nil {
+
+		t.Fatalf(
+			"expected legacy reserved accounting before v0.30 activation to remain valid: %v",
+			err,
+		)
+	}
+}
+
+func TestLegacyReservedGrantRejectedAtGovernedTransferActivation(
+	t *testing.T,
+) {
+	bc, pos, validator, authorities :=
+		thresholdGrantBlockchain(t)
+
+	// Build valid historical grants through height 3.
+	for nonce := uint64(1); nonce <
+		GovernedReservedTransferActivationHeight; nonce++ {
+
+		grant :=
+			signedThresholdGrantWithNonceForBlockchain(
+				t,
+				bc,
+				authorities,
+				nonce,
+				2,
+			)
+
+		appendThresholdGrantAtNextHeight(
+			t,
+			bc,
+			validator,
+			grant,
+		)
+	}
+
+	if !bc.ValidateChain(pos) {
+		t.Fatal(
+			"historical legacy grant chain should validate before v0.30 activation",
+		)
+	}
+
+	// The next grant lands exactly on the v0.30 activation height.
+	blockedGrant :=
+		signedThresholdGrantWithNonceForBlockchain(
+			t,
+			bc,
+			authorities,
+			GovernedReservedTransferActivationHeight,
+			2,
+		)
+
+	appendThresholdGrantAtNextHeight(
+		t,
+		bc,
+		validator,
+		blockedGrant,
+	)
+
+	last :=
+		bc.Blocks[len(bc.Blocks)-1]
+
+	if last.Height !=
+		GovernedReservedTransferActivationHeight {
+
+		t.Fatalf(
+			"expected blocked legacy grant at activation height %d, got %d",
+			GovernedReservedTransferActivationHeight,
+			last.Height,
+		)
+	}
+
+	if _, err :=
+		bc.GetReservedAccountingState(); err == nil {
+
+		t.Fatal(
+			"expected legacy reserved grant at v0.30 activation to fail accounting replay",
+		)
+	}
+
+	if _, err :=
+		bc.GetState(); err == nil {
+
+		t.Fatal(
+			"expected legacy reserved grant at v0.30 activation to fail state reconstruction",
+		)
+	}
+
+	if bc.ValidateChain(pos) {
+		t.Fatal(
+			"expected legacy reserved grant at v0.30 activation to fail consensus",
+		)
+	}
+}

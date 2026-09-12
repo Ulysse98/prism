@@ -183,6 +183,10 @@ func (bc *Blockchain) replayReservedTransferConsensusState() (
 			block.Height >=
 				QueuedGovernanceActivationHeight
 
+		transferEra :=
+			block.Height >=
+				GovernedReservedTransferActivationHeight
+
 		if !queuedEra {
 			if len(block.AuthorityProposals) != 0 {
 				return nil, nil,
@@ -201,22 +205,34 @@ func (bc *Blockchain) replayReservedTransferConsensusState() (
 						block.Height,
 					)
 			}
-
-			if len(block.ReservedTransferProposals) != 0 ||
-				len(block.ReservedTransferExecutions) != 0 {
-
-				return nil, nil,
-					fmt.Errorf(
-						"reserved transfer governance is not allowed before queued governance activation height %d: block height %d",
-						QueuedGovernanceActivationHeight,
-						block.Height,
-					)
-			}
 		} else if len(block.AuthorityChanges) != 0 {
 			return nil, nil,
 				fmt.Errorf(
 					"direct authority changes are not allowed at or after queued governance activation height %d: block height %d",
 					QueuedGovernanceActivationHeight,
+					block.Height,
+				)
+		}
+
+		if !transferEra &&
+			(len(block.ReservedTransferProposals) != 0 ||
+				len(block.ReservedTransferExecutions) != 0) {
+
+			return nil, nil,
+				fmt.Errorf(
+					"reserved transfer governance is not allowed before governed transfer activation height %d: block height %d",
+					GovernedReservedTransferActivationHeight,
+					block.Height,
+				)
+		}
+
+		if transferEra &&
+			len(block.ReservedGrants) != 0 {
+
+			return nil, nil,
+				fmt.Errorf(
+					"legacy reserved grants are not allowed at or after governed transfer activation height %d: block height %d",
+					GovernedReservedTransferActivationHeight,
 					block.Height,
 				)
 		}
