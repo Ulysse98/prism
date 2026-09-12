@@ -29,7 +29,7 @@ func main() {
 
 	if !jsonWorkLog {
 		fmt.Println("====================================")
-		fmt.Println("         PRISM NODE v0.29")
+		fmt.Println("         PRISM NODE v0.30")
 		fmt.Println("====================================")
 		fmt.Println()
 	}
@@ -66,6 +66,19 @@ func main() {
 		return
 	}
 
+	if command == "node-transfer-propose" {
+		runNodeReservedTransferProposeCommand(
+			os.Args[2:],
+		)
+		return
+	}
+
+	if command == "node-transfer-execute" {
+		runNodeReservedTransferExecuteCommand(
+			os.Args[2:],
+		)
+		return
+	}
 	if command == "node-human" {
 		runNodeHumanCommand(os.Args[2:])
 		return
@@ -1411,6 +1424,13 @@ func printUsage() {
 		`  .\prism.exe node-governance-execute --port 7001 <proposal-id>`,
 	)
 
+	fmt.Println(
+		`  .\prism.exe node-transfer-propose --port 7001 treasury Bob 100 1`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe node-transfer-execute --port 7001 <proposal-id>`,
+	)
 	fmt.Println(
 		`  .\prism.exe node-human --data data/node-7001 Alice proof_001 nullifier_001`,
 	)
