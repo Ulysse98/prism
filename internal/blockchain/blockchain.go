@@ -859,6 +859,17 @@ func (bc *Blockchain) GetState() (
 				)
 			}
 
+			if len(block.ReservedTransferProposals) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain reserved transfer proposals",
+				)
+			}
+
+			if len(block.ReservedTransferExecutions) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain reserved transfer executions",
+				)
+			}
 			for _, tx := range block.Transactions {
 				if err := transaction.ValidateGenesis(
 					tx,
@@ -925,7 +936,9 @@ func (bc *Blockchain) GetState() (
 			len(block.ReservedRevocations) == 0 &&
 			len(block.AuthorityChanges) == 0 &&
 			len(block.AuthorityProposals) == 0 &&
-			len(block.AuthorityExecutions) == 0 {
+			len(block.AuthorityExecutions) == 0 &&
+			len(block.ReservedTransferProposals) == 0 &&
+			len(block.ReservedTransferExecutions) == 0 {
 
 			return State{}, fmt.Errorf(
 				"empty normal block at height %d",
@@ -1317,6 +1330,14 @@ func (bc *Blockchain) ValidateChain(
 		return false
 	}
 
+	if len(genesis.ReservedTransferProposals) != 0 {
+		return false
+	}
+
+	if len(genesis.ReservedTransferExecutions) != 0 {
+		return false
+	}
+
 	if CalculateHash(genesis) != genesis.Hash {
 		return false
 	}
@@ -1371,7 +1392,9 @@ func (bc *Blockchain) ValidateChain(
 			len(current.ReservedRevocations) == 0 &&
 			len(current.AuthorityChanges) == 0 &&
 			len(current.AuthorityProposals) == 0 &&
-			len(current.AuthorityExecutions) == 0 {
+			len(current.AuthorityExecutions) == 0 &&
+			len(current.ReservedTransferProposals) == 0 &&
+			len(current.ReservedTransferExecutions) == 0 {
 
 			return false
 		}

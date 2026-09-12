@@ -22,22 +22,24 @@ const BlockReward uint64 = consensus.DefaultProposerReward
 const UsefulWorkReward uint64 = consensus.DefaultUsefulWorkReward
 
 type Block struct {
-	Height                 uint64                        `json:"height"`
-	Timestamp              time.Time                     `json:"timestamp"`
-	PreviousHash           string                        `json:"previous_hash"`
-	Proposer               string                        `json:"proposer"`
-	Reward                 uint64                        `json:"reward"`
-	Transactions           []transaction.Transaction     `json:"transactions"`
-	UsefulWork             []usefulwork.Proof            `json:"useful_work"`
-	Humanity               []identity.Attestation        `json:"humanity,omitempty"`
-	ParticipationClaims    []poup.Claim                  `json:"participation_claims,omitempty"`
-	ReservedAuthorizations []reserved.Authorization      `json:"reserved_authorizations,omitempty"`
-	ReservedGrants         []reserved.Grant              `json:"reserved_grants,omitempty"`
-	ReservedRevocations    []reserved.Revocation         `json:"reserved_revocations,omitempty"`
-	AuthorityChanges       []reserved.AuthorityChange    `json:"authority_changes,omitempty"`
-	AuthorityProposals     []reserved.AuthorityProposal  `json:"authority_proposals,omitempty"`
-	AuthorityExecutions    []reserved.AuthorityExecution `json:"authority_executions,omitempty"`
-	Hash                   string                        `json:"hash"`
+	Height                     uint64                               `json:"height"`
+	Timestamp                  time.Time                            `json:"timestamp"`
+	PreviousHash               string                               `json:"previous_hash"`
+	Proposer                   string                               `json:"proposer"`
+	Reward                     uint64                               `json:"reward"`
+	Transactions               []transaction.Transaction            `json:"transactions"`
+	UsefulWork                 []usefulwork.Proof                   `json:"useful_work"`
+	Humanity                   []identity.Attestation               `json:"humanity,omitempty"`
+	ParticipationClaims        []poup.Claim                         `json:"participation_claims,omitempty"`
+	ReservedAuthorizations     []reserved.Authorization             `json:"reserved_authorizations,omitempty"`
+	ReservedGrants             []reserved.Grant                     `json:"reserved_grants,omitempty"`
+	ReservedRevocations        []reserved.Revocation                `json:"reserved_revocations,omitempty"`
+	AuthorityChanges           []reserved.AuthorityChange           `json:"authority_changes,omitempty"`
+	AuthorityProposals         []reserved.AuthorityProposal         `json:"authority_proposals,omitempty"`
+	AuthorityExecutions        []reserved.AuthorityExecution        `json:"authority_executions,omitempty"`
+	ReservedTransferProposals  []reserved.ReservedTransferProposal  `json:"reserved_transfer_proposals,omitempty"`
+	ReservedTransferExecutions []reserved.ReservedTransferExecution `json:"reserved_transfer_executions,omitempty"`
+	Hash                       string                               `json:"hash"`
 }
 
 func CalculateHash(
@@ -58,6 +60,20 @@ func CalculateHash(
 		panic(err)
 	}
 
+	// Governed-reserved-transfer-aware hash format.
+	//
+	// Blocks containing reserved transfer proposals or executions use
+	// the v0.30 hash domain. Historical v0.29 queued-governance blocks
+	// continue using queued-governance-block-v1 below.
+	if len(block.ReservedTransferProposals) > 0 ||
+		len(block.ReservedTransferExecutions) > 0 {
+
+		return calculateQueuedGovernanceBlockHashV2(
+			block,
+			transactionData,
+			usefulWorkData,
+		)
+	}
 	// Queued-governance-aware hash format.
 	//
 	// This branch runs before the v0.27 authority-change branch so blocks
