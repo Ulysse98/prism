@@ -586,3 +586,147 @@ func TestReservedTransferStaleNonceRejectedAfterExecution(
 		)
 	}
 }
+
+func TestReservedTransferCreditsOnlyAtExecution(
+	t *testing.T,
+) {
+	fixture :=
+		newQueuedGovernanceConsensusFixture(t)
+
+	advanceToQueuedGovernanceActivation(
+		t,
+		fixture,
+	)
+
+	before, err :=
+		fixture.bc.BalanceOf(
+			fixture.sink.Address,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	proposal :=
+		signedReservedTransferConsensusProposal(
+			t,
+			fixture,
+			1,
+		)
+
+	appendReservedTransferProposalConsensusBlock(
+		t,
+		fixture,
+		proposal,
+	)
+
+	afterProposal, err :=
+		fixture.bc.BalanceOf(
+			fixture.sink.Address,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if afterProposal != before {
+		t.Fatalf(
+			"proposal credited recipient before execution: before=%d after=%d",
+			before,
+			afterProposal,
+		)
+	}
+
+	for {
+		last :=
+			fixture.bc.Blocks[len(fixture.bc.Blocks)-1]
+
+		if last.Height >= 7 {
+			break
+		}
+
+		appendQueuedGovernanceFillerBlock(
+			t,
+			fixture,
+		)
+	}
+
+	beforeExecution, err :=
+		fixture.bc.BalanceOf(
+			fixture.sink.Address,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	appendReservedTransferExecutionConsensusBlock(
+		t,
+		fixture,
+		reserved.NewReservedTransferExecution(
+			proposal.ID,
+		),
+	)
+
+	if !fixture.bc.ValidateChain(
+		fixture.pos,
+	) {
+		t.Fatal(
+			"expected governed reserved transfer execution to pass consensus",
+		)
+	}
+
+	afterExecution, err :=
+		fixture.bc.BalanceOf(
+			fixture.sink.Address,
+		)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected :=
+		beforeExecution + proposal.Amount
+
+	if afterExecution != expected {
+		t.Fatalf(
+			"reserved transfer did not credit recipient exactly once: before=%d amount=%d after=%d expected=%d",
+			beforeExecution,
+			proposal.Amount,
+			afterExecution,
+			expected,
+		)
+	}
+
+	accounting, err :=
+		fixture.bc.GetReservedAccountingState()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if accounting.Usage.Treasury != proposal.Amount {
+		t.Fatalf(
+			"unexpected treasury usage: got=%d expected=%d",
+			accounting.Usage.Treasury,
+			proposal.Amount,
+		)
+	}
+
+	governance, err :=
+		fixture.bc.GetGovernanceState()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, exists :=
+		governance.GetPendingReservedTransferProposal(
+			proposal.ID,
+		); exists {
+
+		t.Fatal(
+			"executed reserved transfer remained pending",
+		)
+	}
+}

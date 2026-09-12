@@ -74,3 +74,37 @@ func creditReservedGrant(
 
 	return nil
 }
+
+func creditReservedTransfer(
+	state *State,
+	proposal reserved.ReservedTransferProposal,
+) error {
+	if state == nil {
+		return fmt.Errorf(
+			"state cannot be nil",
+		)
+	}
+
+	if state.Balances == nil {
+		return fmt.Errorf(
+			"state balances cannot be nil",
+		)
+	}
+
+	current :=
+		state.Balances[proposal.Recipient]
+
+	if current >
+		math.MaxUint64-proposal.Amount {
+
+		return fmt.Errorf(
+			"reserved transfer balance overflow for %s",
+			proposal.Recipient,
+		)
+	}
+
+	state.Balances[proposal.Recipient] =
+		current + proposal.Amount
+
+	return nil
+}

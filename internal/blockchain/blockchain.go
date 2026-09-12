@@ -7,6 +7,7 @@ import (
 
 	"prism/internal/consensus"
 	"prism/internal/identity"
+	"prism/internal/reserved"
 	"prism/internal/transaction"
 	"prism/internal/usefulwork"
 )
@@ -748,7 +749,8 @@ func (bc *Blockchain) GetState() (
 
 		if len(block.ReservedAuthorizations) != 0 ||
 			len(block.ReservedGrants) != 0 ||
-			len(block.ReservedRevocations) != 0 {
+			len(block.ReservedRevocations) != 0 ||
+			len(block.ReservedTransferExecutions) != 0 {
 
 			hasReservedEmissions = true
 			break
@@ -786,6 +788,10 @@ func (bc *Blockchain) GetState() (
 	usedParticipationClaims := make(
 		map[participationClaimKey]struct{},
 	)
+	reservedTransferProposals :=
+		make(
+			map[string]reserved.ReservedTransferProposal,
+		)
 
 	var proposerEmission uint64
 	var usefulWorkEmission uint64
@@ -1167,6 +1173,57 @@ func (bc *Blockchain) GetState() (
 				)
 			}
 		}
+		// Governed reserved transfers.
+		//
+		// Governance and reserved accounting have already been
+		// consensus-validated before balance reconstruction.
+		//
+		// Executions are processed before proposals in the current
+		// block so a proposal cannot be queued and paid in one block.
+		for executionIndex, execution := range block.ReservedTransferExecutions {
+
+			proposal, exists :=
+				reservedTransferProposals[execution.ProposalID]
+
+			if !exists {
+				return State{}, fmt.Errorf(
+					"reserved transfer execution references unavailable proposal in block %d at index %d: %s",
+					blockIndex,
+					executionIndex,
+					execution.ProposalID,
+				)
+			}
+
+			if err :=
+				creditReservedTransfer(
+					&state,
+					proposal,
+				); err != nil {
+
+				return State{}, fmt.Errorf(
+					"reserved transfer execution credit failed in block %d at index %d: %w",
+					blockIndex,
+					executionIndex,
+					err,
+				)
+			}
+		}
+
+		for proposalIndex, proposal := range block.ReservedTransferProposals {
+
+			if _, exists :=
+				reservedTransferProposals[proposal.ID]; exists {
+
+				return State{}, fmt.Errorf(
+					"duplicate reserved transfer proposal during balance reconstruction in block %d at index %d: %s",
+					blockIndex,
+					proposalIndex,
+					proposal.ID,
+				)
+			}
+
+			reservedTransferProposals[proposal.ID] = proposal
+		}
 
 		// PoS proposer reward.
 		if state.Balances[block.Proposer] >
@@ -1341,7 +1398,6 @@ func (bc *Blockchain) ValidateChain(
 	if CalculateHash(genesis) != genesis.Hash {
 		return false
 	}
-
 	var proposerEmission uint64
 
 	for i := 1; i < len(bc.Blocks); i++ {
