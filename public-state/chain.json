@@ -304,6 +304,54 @@
           }
         ],
         "hash": "8e6f645af8a266a3973c4a77d0334015e1a8e931dc1c17b29ad5605f91a27406"
+      },
+      {
+        "height": 9,
+        "timestamp": "2026-09-12T11:38:18.2174564Z",
+        "previous_hash": "8e6f645af8a266a3973c4a77d0334015e1a8e931dc1c17b29ad5605f91a27406",
+        "proposer": "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+        "reward": 5,
+        "transactions": null,
+        "useful_work": null,
+        "humanity": [
+          {
+            "address": "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+            "provider": "World ID",
+            "action": "prism_poup",
+            "nullifier_hash": "a6c96ea1a8fa032c36a713924d13dd9b949bcc1945e1e6c58616b1127471a08b"
+          }
+        ],
+        "hash": "ee05b9d5f6d5e891086d05c56f1db91bacb7e14dc33b54475953615a88cb0fae"
+      },
+      {
+        "height": 10,
+        "timestamp": "2026-09-12T11:38:28.8957983Z",
+        "previous_hash": "ee05b9d5f6d5e891086d05c56f1db91bacb7e14dc33b54475953615a88cb0fae",
+        "proposer": "prism_97f844d6b007c3f940a57ef946959cfd38fecf2c",
+        "reward": 5,
+        "transactions": null,
+        "useful_work": [
+          {
+            "id": "e9a3253648a67f5f2cf347c70bca33b2061378b533995d7bf9decda4e5e75150",
+            "task": {
+              "id": "5fa2477abf2cc99d4b2bbeb9a9d02354eb7898f0e757486b35ed51c064dd6e80",
+              "type": "sum_squares",
+              "values": [
+                8,
+                13,
+                21
+              ],
+              "input_hash": "5b9aaa26cf24a6fe2ccf9751d0aee6458bb809ec2bbbdb9466920c329cfabf22"
+            },
+            "worker": "prism_91e09dda8b18ca23de50770a03a1d32824802f2b",
+            "public_key": "df1f76fb76662fddd2128fb5fe7b94b8b6ff6ca3456029a3d68a704c2a74b286",
+            "result": 674,
+            "output_hash": "8ef532f440c91b5dfa24570e53d6bded96c4064a45e6d18a61c5e08b172b9814",
+            "score": 3,
+            "signature": "b90b8c12b325f3d9d1632598fb0a6e1a0d9fe56340a562fbbb238784cf4c4351c9b47660df41c520fde11309b8a48fc92dcea249d9ecf3455fd1a52a34ce820a"
+          }
+        ],
+        "hash": "c919da441cd22b0b42cb8a4af75f1e3fcff374a37bc624fcaf2ed93a3efcc3e6"
       }
     ],
     "LockedStakes": {
