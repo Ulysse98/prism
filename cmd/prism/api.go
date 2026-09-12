@@ -173,6 +173,11 @@ func runAPICommand(args []string) {
 		"/api/v1/reserved",
 		api.handleReserved,
 	)
+
+	mux.HandleFunc(
+		"/api/v1/mine/start",
+		api.handleMineStart,
+	)
 	listenAddress := fmt.Sprintf(
 		"%s:%d",
 		*host,
@@ -186,7 +191,7 @@ func runAPICommand(args []string) {
 	}
 
 	fmt.Println("=== PRISM HTTP API ===")
-	fmt.Println("Version: 0.30")
+	fmt.Println("Version: 0.31")
 	fmt.Println("P2P protocol:", p2p.ProtocolVersion)
 	fmt.Println("Node data:", *nodeData)
 	fmt.Println("Listening:", listenAddress)
@@ -200,6 +205,7 @@ func runAPICommand(args []string) {
 	fmt.Println("  GET /api/v1/work")
 	fmt.Println("  GET /api/v1/humanity")
 	fmt.Println("  GET /api/v1/reserved")
+	fmt.Println("  POST /api/v1/mine/start")
 	fmt.Println()
 
 	fmt.Println(
@@ -248,7 +254,7 @@ func (api *apiServer) handleHealth(
 	response := apiHealthResponse{
 		Status:     "ok",
 		Network:    "Prism",
-		Version:    "0.30",
+		Version:    "0.31",
 		Protocol:   p2p.ProtocolVersion,
 		ChainID:    p2p.MakeChainID(genesis.Hash),
 		Height:     last.Height,
@@ -304,7 +310,7 @@ func (api *apiServer) handleStatus(
 
 	response := apiStatusResponse{
 		Network:     "Prism",
-		Version:     "0.30",
+		Version:     "0.31",
 		Protocol:    p2p.ProtocolVersion,
 		ChainID:     p2p.MakeChainID(genesis.Hash),
 		Height:      last.Height,
@@ -671,7 +677,7 @@ func apiCORS(
 
 			writer.Header().Set(
 				"Access-Control-Allow-Methods",
-				"GET, OPTIONS",
+				"GET, POST, OPTIONS",
 			)
 
 			writer.Header().Set(
