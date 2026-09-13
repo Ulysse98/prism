@@ -6,17 +6,21 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math"
 
 	"prism/internal/wallet"
 )
 
-const TaskTypeSumSquares = "sum_squares"
+const (
+	TaskTypeSumSquares = "sum_squares"
+	TaskTypeDotProduct = "dot_product"
+	TaskTypePrimeCount = "prime_count"
+)
 
 type Task struct {
 	ID        string   `json:"id"`
 	Type      string   `json:"type"`
 	Values    []uint64 `json:"values"`
+	ValuesB   []uint64 `json:"values_b,omitempty"`
 	InputHash string   `json:"input_hash"`
 }
 
@@ -101,22 +105,46 @@ func ValidateTask(
 	task Task,
 ) error {
 
-	if task.Type != TaskTypeSumSquares {
+	var expectedInputHash string
+	var err error
+
+	switch task.Type {
+	case TaskTypeSumSquares:
+		if err = validateSingleVectorTask(task); err != nil {
+			return err
+		}
+
+		expectedInputHash, err = calculateInputHash(
+			task.Values,
+		)
+
+	case TaskTypeDotProduct:
+		if err = validateDotProductTask(task); err != nil {
+			return err
+		}
+
+		expectedInputHash, err =
+			calculateDotProductInputHash(
+				task.Values,
+				task.ValuesB,
+			)
+
+	case TaskTypePrimeCount:
+		if err = validateSingleVectorTask(task); err != nil {
+			return err
+		}
+
+		expectedInputHash, err = calculateInputHash(
+			task.Values,
+		)
+
+	default:
 		return fmt.Errorf(
 			"unsupported useful work task type: %s",
 			task.Type,
 		)
 	}
 
-	if len(task.Values) == 0 {
-		return fmt.Errorf(
-			"useful work task cannot be empty",
-		)
-	}
-
-	expectedInputHash, err := calculateInputHash(
-		task.Values,
-	)
 	if err != nil {
 		return err
 	}
@@ -144,29 +172,29 @@ func Compute(
 		return 0, err
 	}
 
-	var result uint64
+	switch task.Type {
+	case TaskTypeSumSquares:
+		return computeSumSquares(
+			task.Values,
+		)
 
-	for _, value := range task.Values {
-		if value != 0 &&
-			value > math.MaxUint64/value {
+	case TaskTypeDotProduct:
+		return computeDotProduct(
+			task.Values,
+			task.ValuesB,
+		)
 
-			return 0, fmt.Errorf(
-				"useful work multiplication overflow",
-			)
-		}
+	case TaskTypePrimeCount:
+		return computePrimeCount(
+			task.Values,
+		), nil
 
-		square := value * value
-
-		if result > math.MaxUint64-square {
-			return 0, fmt.Errorf(
-				"useful work addition overflow",
-			)
-		}
-
-		result += square
+	default:
+		return 0, fmt.Errorf(
+			"unsupported useful work task type: %s",
+			task.Type,
+		)
 	}
-
-	return result, nil
 }
 
 func calculateOutputHash(
@@ -189,7 +217,14 @@ func scoreForTask(
 	task Task,
 ) uint64 {
 
-	return uint64(len(task.Values))
+	switch task.Type {
+	case TaskTypeDotProduct:
+		return uint64(len(task.Values)) +
+			uint64(len(task.ValuesB))
+
+	default:
+		return uint64(len(task.Values))
+	}
 }
 
 func proofPayload(
