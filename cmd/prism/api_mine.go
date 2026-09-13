@@ -13,6 +13,7 @@ import (
 
 type apiMineStartRequest struct {
 	Worker string `json:"worker"`
+	Task   string `json:"task,omitempty"`
 }
 
 type apiMineJob struct {
@@ -21,6 +22,7 @@ type apiMineJob struct {
 	WorkerAddress     string   `json:"workerAddress"`
 	Task              string   `json:"task"`
 	Input             []uint64 `json:"input"`
+	InputB            []uint64 `json:"inputB,omitempty"`
 	InputHash         string   `json:"inputHash"`
 	Difficulty        string   `json:"difficulty"`
 	Reward            uint64   `json:"reward"`
@@ -44,15 +46,17 @@ type apiMineSubmitRequest struct {
 func mineTaskForHeight(
 	height uint64,
 ) (usefulwork.Task, error) {
-	base := (height % 97) + 11
 
-	return usefulwork.NewSumSquaresTask(
-		[]uint64{
-			base,
-			base + 3,
-			base + 7,
-		},
-	)
+	option, err :=
+		mineTaskForHeightAndType(
+			height,
+			"",
+		)
+	if err != nil {
+		return usefulwork.Task{}, err
+	}
+
+	return option.Task, nil
 }
 
 func (api *apiServer) handleMineStart(
@@ -88,6 +92,9 @@ func (api *apiServer) handleMineStart(
 
 	payload.Worker =
 		strings.TrimSpace(payload.Worker)
+
+	payload.Task =
+		strings.TrimSpace(payload.Task)
 
 	if payload.Worker == "" {
 		apiWriteError(
@@ -137,17 +144,22 @@ func (api *apiServer) handleMineStart(
 	lastBlock :=
 		chain.Blocks[len(chain.Blocks)-1]
 
-	task, err :=
-		mineTaskForHeight(lastBlock.Height)
+	option, err :=
+		mineTaskForHeightAndType(
+			lastBlock.Height,
+			payload.Task,
+		)
 
 	if err != nil {
 		apiWriteError(
 			writer,
-			http.StatusInternalServerError,
+			http.StatusBadRequest,
 			err,
 		)
 		return
 	}
+
+	task := option.Task
 
 	job := apiMineJob{
 		ID:                task.ID,
@@ -155,8 +167,9 @@ func (api *apiServer) handleMineStart(
 		WorkerAddress:     workerAddress,
 		Task:              task.Type,
 		Input:             task.Values,
+		InputB:            task.ValuesB,
 		InputHash:         task.InputHash,
-		Difficulty:        "LOW",
+		Difficulty:        option.Difficulty,
 		Reward:            blockchain.UsefulWorkReward,
 		Status:            "READY",
 		CreatedAt:         time.Now().UTC().Format(time.RFC3339),
@@ -262,28 +275,22 @@ func (api *apiServer) handleMineSubmit(
 		return
 	}
 
-	task, err :=
-		mineTaskForHeight(
+	option, err :=
+		mineTaskForJobID(
 			payload.SourceChainHeight,
+			payload.JobID,
 		)
 
 	if err != nil {
 		apiWriteError(
 			writer,
-			http.StatusInternalServerError,
+			http.StatusBadRequest,
 			err,
 		)
 		return
 	}
 
-	if payload.JobID != task.ID {
-		apiWriteError(
-			writer,
-			http.StatusBadRequest,
-			fmt.Errorf("invalid PoUW job ID"),
-		)
-		return
-	}
+	task := option.Task
 
 	proof := usefulwork.Proof{
 		ID:         payload.ProofID,
