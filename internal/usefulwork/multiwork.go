@@ -95,6 +95,16 @@ func validateSingleVectorTask(
 		)
 	}
 
+	if task.RowsA != 0 ||
+		task.ColsA != 0 ||
+		task.ColsB != 0 {
+
+		return fmt.Errorf(
+			"task type %s does not accept matrix dimensions",
+			task.Type,
+		)
+	}
+
 	return nil
 }
 
@@ -115,6 +125,15 @@ func validateDotProductTask(
 
 		return fmt.Errorf(
 			"dot product vectors must have equal length",
+		)
+	}
+
+	if task.RowsA != 0 ||
+		task.ColsA != 0 ||
+		task.ColsB != 0 {
+
+		return fmt.Errorf(
+			"dot product does not accept matrix dimensions",
 		)
 	}
 

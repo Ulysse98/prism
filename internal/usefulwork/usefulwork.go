@@ -11,9 +11,10 @@ import (
 )
 
 const (
-	TaskTypeSumSquares = "sum_squares"
-	TaskTypeDotProduct = "dot_product"
-	TaskTypePrimeCount = "prime_count"
+	TaskTypeSumSquares     = "sum_squares"
+	TaskTypeDotProduct     = "dot_product"
+	TaskTypePrimeCount     = "prime_count"
+	TaskTypeMatrixMultiply = "matrix_multiply"
 )
 
 type Task struct {
@@ -21,18 +22,22 @@ type Task struct {
 	Type      string   `json:"type"`
 	Values    []uint64 `json:"values"`
 	ValuesB   []uint64 `json:"values_b,omitempty"`
+	RowsA     uint64   `json:"rows_a,omitempty"`
+	ColsA     uint64   `json:"cols_a,omitempty"`
+	ColsB     uint64   `json:"cols_b,omitempty"`
 	InputHash string   `json:"input_hash"`
 }
 
 type Proof struct {
-	ID         string `json:"id"`
-	Task       Task   `json:"task"`
-	Worker     string `json:"worker"`
-	PublicKey  string `json:"public_key"`
-	Result     uint64 `json:"result"`
-	OutputHash string `json:"output_hash"`
-	Score      uint64 `json:"score"`
-	Signature  string `json:"signature"`
+	ID           string   `json:"id"`
+	Task         Task     `json:"task"`
+	Worker       string   `json:"worker"`
+	PublicKey    string   `json:"public_key"`
+	Result       uint64   `json:"result"`
+	ResultValues []uint64 `json:"result_values,omitempty"`
+	OutputHash   string   `json:"output_hash"`
+	Score        uint64   `json:"score"`
+	Signature    string   `json:"signature"`
 }
 
 func NewSumSquaresTask(
@@ -138,6 +143,16 @@ func ValidateTask(
 			task.Values,
 		)
 
+	case TaskTypeMatrixMultiply:
+		if err = validateMatrixMultiplyTask(task); err != nil {
+			return err
+		}
+
+		expectedInputHash, err =
+			calculateMatrixMultiplyInputHash(
+				task,
+			)
+
 	default:
 		return fmt.Errorf(
 			"unsupported useful work task type: %s",
@@ -189,6 +204,11 @@ func Compute(
 			task.Values,
 		), nil
 
+	case TaskTypeMatrixMultiply:
+		return 0, fmt.Errorf(
+			"matrix_multiply returns matrix output; use ComputeMatrix",
+		)
+
 	default:
 		return 0, fmt.Errorf(
 			"unsupported useful work task type: %s",
@@ -221,6 +241,9 @@ func scoreForTask(
 	case TaskTypeDotProduct:
 		return uint64(len(task.Values)) +
 			uint64(len(task.ValuesB))
+
+	case TaskTypeMatrixMultiply:
+		return matrixWorkUnits(task)
 
 	default:
 		return uint64(len(task.Values))
@@ -268,18 +291,47 @@ func Execute(
 		return Proof{}, err
 	}
 
-	result, err := Compute(task)
-	if err != nil {
-		return Proof{}, err
+	proof := Proof{
+		Task:      task,
+		Worker:    worker.Address,
+		PublicKey: worker.PublicKeyHex(),
+		Score:     scoreForTask(task),
 	}
 
-	proof := Proof{
-		Task:       task,
-		Worker:     worker.Address,
-		PublicKey:  worker.PublicKeyHex(),
-		Result:     result,
-		OutputHash: calculateOutputHash(result),
-		Score:      scoreForTask(task),
+	if task.Type ==
+		TaskTypeMatrixMultiply {
+
+		resultValues, err :=
+			ComputeMatrix(task)
+		if err != nil {
+			return Proof{}, err
+		}
+
+		outputHash, err :=
+			calculateValuesOutputHash(
+				resultValues,
+			)
+		if err != nil {
+			return Proof{}, err
+		}
+
+		proof.ResultValues =
+			resultValues
+
+		proof.OutputHash =
+			outputHash
+	} else {
+		result, err := Compute(task)
+		if err != nil {
+			return Proof{}, err
+		}
+
+		proof.Result = result
+
+		proof.OutputHash =
+			calculateOutputHash(
+				result,
+			)
 	}
 
 	proof.ID = CalculateProofID(proof)
@@ -316,29 +368,82 @@ func VerifyProof(
 		)
 	}
 
-	expectedResult, err := Compute(
-		proof.Task,
-	)
-	if err != nil {
-		return err
-	}
+	if proof.Task.Type ==
+		TaskTypeMatrixMultiply {
 
-	if proof.Result != expectedResult {
-		return fmt.Errorf(
-			"invalid useful work result: expected %d, got %d",
-			expectedResult,
-			proof.Result,
-		)
-	}
+		if proof.Result != 0 {
+			return fmt.Errorf(
+				"matrix useful work must not contain scalar result",
+			)
+		}
 
-	expectedOutputHash := calculateOutputHash(
-		proof.Result,
-	)
+		expectedValues, err :=
+			ComputeMatrix(
+				proof.Task,
+			)
+		if err != nil {
+			return err
+		}
 
-	if proof.OutputHash != expectedOutputHash {
-		return fmt.Errorf(
-			"invalid useful work output hash",
-		)
+		if !equalUint64Slices(
+			proof.ResultValues,
+			expectedValues,
+		) {
+			return fmt.Errorf(
+				"invalid useful work matrix result",
+			)
+		}
+
+		expectedOutputHash, err :=
+			calculateValuesOutputHash(
+				expectedValues,
+			)
+		if err != nil {
+			return err
+		}
+
+		if proof.OutputHash !=
+			expectedOutputHash {
+
+			return fmt.Errorf(
+				"invalid useful work output hash",
+			)
+		}
+	} else {
+		if len(proof.ResultValues) != 0 {
+			return fmt.Errorf(
+				"scalar useful work must not contain matrix result",
+			)
+		}
+
+		expectedResult, err :=
+			Compute(
+				proof.Task,
+			)
+		if err != nil {
+			return err
+		}
+
+		if proof.Result != expectedResult {
+			return fmt.Errorf(
+				"invalid useful work result: expected %d, got %d",
+				expectedResult,
+				proof.Result,
+			)
+		}
+
+		expectedOutputHash :=
+			calculateOutputHash(
+				proof.Result,
+			)
+
+		if proof.OutputHash !=
+			expectedOutputHash {
+
+			return fmt.Errorf(
+				"invalid useful work output hash",
+			)
+		}
 	}
 
 	expectedScore := scoreForTask(
