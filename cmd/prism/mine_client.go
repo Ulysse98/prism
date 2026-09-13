@@ -47,6 +47,12 @@ func runMineAPICommand(args []string) {
 		"local Prism data directory containing the miner wallet",
 	)
 
+	taskType := flags.String(
+		"task",
+		"",
+		"useful work task type (sum_squares, dot_product, prime_count, matrix_multiply)",
+	)
+
 	if err := flags.Parse(args); err != nil {
 		return
 	}
@@ -54,7 +60,21 @@ func runMineAPICommand(args []string) {
 	if flags.NArg() != 1 {
 		fmt.Println("Usage:")
 		fmt.Println(
-			`.\\prism.exe mine-api -data .\data Alice`,
+			`.\prism.exe mine-api -data .\data Alice`,
+		)
+		fmt.Println()
+		fmt.Println("Optional task selection:")
+		fmt.Println(
+			`.\prism.exe mine-api -data .\data -task sum_squares Alice`,
+		)
+		fmt.Println(
+			`.\prism.exe mine-api -data .\data -task dot_product Alice`,
+		)
+		fmt.Println(
+			`.\prism.exe mine-api -data .\data -task prime_count Alice`,
+		)
+		fmt.Println(
+			`.\prism.exe mine-api -data .\data -task matrix_multiply Alice`,
 		)
 		return
 	}
@@ -90,6 +110,7 @@ func runMineAPICommand(args []string) {
 		baseURL+"/mine/start",
 		apiMineStartRequest{
 			Worker: workerName,
+			Task:   *taskType,
 		},
 		&startResponse,
 	)
@@ -106,9 +127,32 @@ func runMineAPICommand(args []string) {
 	fmt.Println("Worker:", job.Worker)
 	fmt.Println("Address:", job.WorkerAddress)
 	fmt.Println("Task:", job.Task)
+	fmt.Println("Difficulty:", job.Difficulty)
+	fmt.Println("Reward:", job.Reward, "PRISM")
 	fmt.Println("Input:", job.Input)
+
+	if len(job.InputB) > 0 {
+		fmt.Println("Input B:", job.InputB)
+	}
+
+	if job.RowsA != 0 ||
+		job.ColsA != 0 ||
+		job.ColsB != 0 {
+
+		fmt.Printf(
+			"Matrix dimensions: A=%dx%d B=%dx%d\n",
+			job.RowsA,
+			job.ColsA,
+			job.ColsA,
+			job.ColsB,
+		)
+	}
+
 	fmt.Println("Job:", job.ID)
-	fmt.Println("Source height:", job.SourceChainHeight)
+	fmt.Println(
+		"Source height:",
+		job.SourceChainHeight,
+	)
 	fmt.Println()
 
 	if job.WorkerAddress != worker.Address {
@@ -122,6 +166,10 @@ func runMineAPICommand(args []string) {
 		ID:        job.ID,
 		Type:      job.Task,
 		Values:    job.Input,
+		ValuesB:   job.InputB,
+		RowsA:     job.RowsA,
+		ColsA:     job.ColsA,
+		ColsB:     job.ColsB,
 		InputHash: job.InputHash,
 	}
 
@@ -133,15 +181,30 @@ func runMineAPICommand(args []string) {
 	)
 
 	if err != nil {
-		fmt.Println("Useful work execution failed:")
+		fmt.Println(
+			"Useful work execution failed:",
+		)
 		fmt.Println(err)
 		return
 	}
 
-	fmt.Println("Result:", proof.Result)
+	if len(proof.ResultValues) > 0 {
+		fmt.Println(
+			"Result:",
+			proof.ResultValues,
+		)
+	} else {
+		fmt.Println(
+			"Result:",
+			proof.Result,
+		)
+	}
+
 	fmt.Println("Score:", proof.Score)
 	fmt.Println("Proof ID:", proof.ID)
-	fmt.Println("Signature: VERIFIED LOCALLY")
+	fmt.Println(
+		"Signature: VERIFIED LOCALLY",
+	)
 	fmt.Println()
 
 	var submitResponse apiMineSubmitResponse
@@ -155,6 +218,7 @@ func runMineAPICommand(args []string) {
 			WorkerAddress:     proof.Worker,
 			PublicKey:         proof.PublicKey,
 			Result:            proof.Result,
+			ResultValues:      proof.ResultValues,
 			OutputHash:        proof.OutputHash,
 			Score:             proof.Score,
 			ProofID:           proof.ID,
@@ -170,12 +234,31 @@ func runMineAPICommand(args []string) {
 	}
 
 	fmt.Println("=== MINING CONFIRMED ===")
-	fmt.Println("Verified:", submitResponse.Verified)
-	fmt.Println("Block:", submitResponse.Block)
-	fmt.Println("Reward:", submitResponse.Reward, "PRISM")
-	fmt.Println("Total supply:", submitResponse.TotalSupply)
-	fmt.Println("Block hash:", submitResponse.Proof.BlockHash)
-	fmt.Println("Proof ID:", submitResponse.Proof.ProofID)
+	fmt.Println(
+		"Verified:",
+		submitResponse.Verified,
+	)
+	fmt.Println(
+		"Block:",
+		submitResponse.Block,
+	)
+	fmt.Println(
+		"Reward:",
+		submitResponse.Reward,
+		"PRISM",
+	)
+	fmt.Println(
+		"Total supply:",
+		submitResponse.TotalSupply,
+	)
+	fmt.Println(
+		"Block hash:",
+		submitResponse.Proof.BlockHash,
+	)
+	fmt.Println(
+		"Proof ID:",
+		submitResponse.Proof.ProofID,
+	)
 }
 
 func mineAPIPost(
