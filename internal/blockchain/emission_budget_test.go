@@ -50,29 +50,38 @@ func TestEmissionStateReportsRemainingRewardPools(
 		t.Fatal(err)
 	}
 
+	const (
+		expectedProposerRemaining      uint64 = 19_999_495
+		expectedUsefulWorkRemaining    uint64 = 19_999_872
+		expectedParticipationRemaining uint64 = 19_999_990
+	)
+
 	if remaining.ProposerRemaining !=
-		19_999_495 {
+		expectedProposerRemaining {
 
 		t.Fatalf(
-			"expected proposer remaining 19999495, got %d",
+			"expected proposer remaining %d, got %d",
+			expectedProposerRemaining,
 			remaining.ProposerRemaining,
 		)
 	}
 
 	if remaining.UsefulWorkRemaining !=
-		19_999_800 {
+		expectedUsefulWorkRemaining {
 
 		t.Fatalf(
-			"expected useful work remaining 19999800, got %d",
+			"expected useful work remaining %d, got %d",
+			expectedUsefulWorkRemaining,
 			remaining.UsefulWorkRemaining,
 		)
 	}
 
 	if remaining.ParticipationRemaining !=
-		19_999_990 {
+		expectedParticipationRemaining {
 
 		t.Fatalf(
-			"expected participation remaining 19999990, got %d",
+			"expected participation remaining %d, got %d",
+			expectedParticipationRemaining,
 			remaining.ParticipationRemaining,
 		)
 	}
@@ -84,9 +93,14 @@ func TestEmissionStateReportsRemainingRewardPools(
 		t.Fatal(err)
 	}
 
-	if total != 59_999_285 {
+	const expectedNetworkRemaining uint64 = expectedProposerRemaining +
+		expectedUsefulWorkRemaining +
+		expectedParticipationRemaining
+
+	if total != expectedNetworkRemaining {
 		t.Fatalf(
-			"expected remaining network rewards 59999285, got %d",
+			"expected remaining network rewards %d, got %d",
+			expectedNetworkRemaining,
 			total,
 		)
 	}

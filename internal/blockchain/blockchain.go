@@ -788,6 +788,7 @@ func (bc *Blockchain) GetState() (
 	usedParticipationClaims := make(
 		map[participationClaimKey]struct{},
 	)
+
 	reservedTransferProposals :=
 		make(
 			map[string]reserved.ReservedTransferProposal,
@@ -876,6 +877,7 @@ func (bc *Blockchain) GetState() (
 					"genesis block cannot contain reserved transfer executions",
 				)
 			}
+
 			for _, tx := range block.Transactions {
 				if err := transaction.ValidateGenesis(
 					tx,
@@ -1013,9 +1015,16 @@ func (bc *Blockchain) GetState() (
 
 			usedTasks[proof.Task.ID] = struct{}{}
 
+			baseWorkReward :=
+				consensus.UsefulWorkBaseReward(
+					block.Height,
+					proof.Score,
+					rewardPolicy,
+				)
+
 			workReward, err :=
 				consensus.BoundedPoolReward(
-					rewardPolicy.UsefulWorkReward,
+					baseWorkReward,
 					usefulWorkEmission,
 					supplyPolicy.UsefulWorkRewardPool,
 				)
@@ -1160,6 +1169,7 @@ func (bc *Blockchain) GetState() (
 		}
 
 		for grantIndex, grant := range block.ReservedGrants {
+
 			if err := creditReservedGrant(
 				&state,
 				grant,
@@ -1173,6 +1183,7 @@ func (bc *Blockchain) GetState() (
 				)
 			}
 		}
+
 		// Governed reserved transfers.
 		//
 		// Governance and reserved accounting have already been
@@ -1222,7 +1233,8 @@ func (bc *Blockchain) GetState() (
 				)
 			}
 
-			reservedTransferProposals[proposal.ID] = proposal
+			reservedTransferProposals[proposal.ID] =
+				proposal
 		}
 
 		// PoS proposer reward.
@@ -1398,6 +1410,7 @@ func (bc *Blockchain) ValidateChain(
 	if CalculateHash(genesis) != genesis.Hash {
 		return false
 	}
+
 	var proposerEmission uint64
 
 	for i := 1; i < len(bc.Blocks); i++ {

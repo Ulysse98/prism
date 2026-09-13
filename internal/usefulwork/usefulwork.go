@@ -250,6 +250,18 @@ func scoreForTask(
 	}
 }
 
+// WorkUnits returns the deterministic amount of useful work
+// represented by a valid PoUW task.
+func WorkUnits(
+	task Task,
+) (uint64, error) {
+	if err := ValidateTask(task); err != nil {
+		return 0, err
+	}
+
+	return scoreForTask(task), nil
+}
+
 func proofPayload(
 	proof Proof,
 ) string {

@@ -86,9 +86,21 @@ func TestEmissionStateTracksPoSPoUWAndPoUP(
 		t.Fatal(err)
 	}
 
+	// 101 non-genesis blocks:
+	//
+	// PoS:
+	//   101 * 5 = 505
+	//
+	// PoUW:
+	//   blocks 1-28   -> 28 * 2 = 56
+	//   blocks 29-100 -> 72 * 1 = 72
+	//   total         -> 128
+	//
+	// PoUP:
+	//   one claim = 10
 	const (
 		expectedPoS  uint64 = 505
-		expectedPoUW uint64 = 200
+		expectedPoUW uint64 = 128
 		expectedPoUP uint64 = 10
 	)
 
@@ -129,9 +141,14 @@ func TestEmissionStateTracksPoSPoUWAndPoUP(
 		t.Fatal(err)
 	}
 
-	if total != 715 {
+	const expectedNetworkEmission uint64 = expectedPoS +
+		expectedPoUW +
+		expectedPoUP
+
+	if total != expectedNetworkEmission {
 		t.Fatalf(
-			"expected network emission 715, got %d",
+			"expected network emission %d, got %d",
+			expectedNetworkEmission,
 			total,
 		)
 	}

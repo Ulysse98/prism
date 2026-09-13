@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"prism/internal/blockchain"
+	"prism/internal/consensus"
 	"prism/internal/usefulwork"
 )
 
@@ -50,17 +50,72 @@ type apiMineSubmitRequest struct {
 func mineTaskForHeight(
 	height uint64,
 ) (usefulwork.Task, error) {
-
 	option, err :=
 		mineTaskForHeightAndType(
 			height,
 			"",
 		)
+
 	if err != nil {
 		return usefulwork.Task{}, err
 	}
 
 	return option.Task, nil
+}
+
+// mineRewardForWork calculates the exact PoUW reward that consensus
+// will mint for a proof at the supplied block height.
+//
+// It applies both:
+//   - the score-based reward schedule;
+//   - the finite PoUW reward-pool cap.
+func mineRewardForWork(
+	height uint64,
+	workUnits uint64,
+	usefulWorkEmission uint64,
+) (uint64, error) {
+	rewardPolicy :=
+		consensus.DefaultRewardPolicy()
+
+	if err := rewardPolicy.Validate(); err != nil {
+		return 0, fmt.Errorf(
+			"invalid reward policy: %w",
+			err,
+		)
+	}
+
+	supplyPolicy :=
+		consensus.DefaultSupplyPolicy()
+
+	if err := supplyPolicy.Validate(); err != nil {
+		return 0, fmt.Errorf(
+			"invalid supply policy: %w",
+			err,
+		)
+	}
+
+	baseReward :=
+		consensus.UsefulWorkBaseReward(
+			height,
+			workUnits,
+			rewardPolicy,
+		)
+
+	reward, err :=
+		consensus.BoundedPoolReward(
+			baseReward,
+			usefulWorkEmission,
+			supplyPolicy.UsefulWorkRewardPool,
+		)
+
+	if err != nil {
+		return 0, fmt.Errorf(
+			"cannot calculate useful work reward: %w",
+			err,
+		)
+	}
+
+	return reward, nil
 }
 
 func (api *apiServer) handleMineStart(
@@ -79,10 +134,14 @@ func (api *apiServer) handleMineStart(
 
 	var payload apiMineStartRequest
 
-	decoder := json.NewDecoder(request.Body)
+	decoder := json.NewDecoder(
+		request.Body,
+	)
 	decoder.DisallowUnknownFields()
 
-	if err := decoder.Decode(&payload); err != nil {
+	if err := decoder.Decode(
+		&payload,
+	); err != nil {
 		apiWriteError(
 			writer,
 			http.StatusBadRequest,
@@ -95,16 +154,22 @@ func (api *apiServer) handleMineStart(
 	}
 
 	payload.Worker =
-		strings.TrimSpace(payload.Worker)
+		strings.TrimSpace(
+			payload.Worker,
+		)
 
 	payload.Task =
-		strings.TrimSpace(payload.Task)
+		strings.TrimSpace(
+			payload.Task,
+		)
 
 	if payload.Worker == "" {
 		apiWriteError(
 			writer,
 			http.StatusBadRequest,
-			fmt.Errorf("worker is required"),
+			fmt.Errorf(
+				"worker is required",
+			),
 		)
 		return
 	}
@@ -125,7 +190,9 @@ func (api *apiServer) handleMineStart(
 		apiWriteError(
 			writer,
 			http.StatusInternalServerError,
-			fmt.Errorf("blockchain is empty"),
+			fmt.Errorf(
+				"blockchain is empty",
+			),
 		)
 		return
 	}
@@ -145,8 +212,7 @@ func (api *apiServer) handleMineStart(
 		return
 	}
 
-	lastBlock :=
-		chain.Blocks[len(chain.Blocks)-1]
+	lastBlock := chain.Blocks[len(chain.Blocks)-1]
 
 	option, err :=
 		mineTaskForHeightAndType(
@@ -165,21 +231,71 @@ func (api *apiServer) handleMineStart(
 
 	task := option.Task
 
+	workUnits, err :=
+		usefulwork.WorkUnits(
+			task,
+		)
+
+	if err != nil {
+		apiWriteError(
+			writer,
+			http.StatusInternalServerError,
+			fmt.Errorf(
+				"cannot calculate PoUW work units: %w",
+				err,
+			),
+		)
+		return
+	}
+
+	emission, err :=
+		chain.GetEmissionState()
+
+	if err != nil {
+		apiWriteError(
+			writer,
+			http.StatusInternalServerError,
+			fmt.Errorf(
+				"cannot calculate current emissions: %w",
+				err,
+			),
+		)
+		return
+	}
+
+	reward, err :=
+		mineRewardForWork(
+			lastBlock.Height+1,
+			workUnits,
+			emission.UsefulWorkEmission,
+		)
+
+	if err != nil {
+		apiWriteError(
+			writer,
+			http.StatusInternalServerError,
+			err,
+		)
+		return
+	}
+
 	job := apiMineJob{
-		ID:                task.ID,
-		Worker:            workerLabel,
-		WorkerAddress:     workerAddress,
-		Task:              task.Type,
-		Input:             task.Values,
-		InputB:            task.ValuesB,
-		RowsA:             task.RowsA,
-		ColsA:             task.ColsA,
-		ColsB:             task.ColsB,
-		InputHash:         task.InputHash,
-		Difficulty:        option.Difficulty,
-		Reward:            blockchain.UsefulWorkReward,
-		Status:            "READY",
-		CreatedAt:         time.Now().UTC().Format(time.RFC3339),
+		ID:            task.ID,
+		Worker:        workerLabel,
+		WorkerAddress: workerAddress,
+		Task:          task.Type,
+		Input:         task.Values,
+		InputB:        task.ValuesB,
+		RowsA:         task.RowsA,
+		ColsA:         task.ColsA,
+		ColsB:         task.ColsB,
+		InputHash:     task.InputHash,
+		Difficulty:    option.Difficulty,
+		Reward:        reward,
+		Status:        "READY",
+		CreatedAt: time.Now().
+			UTC().
+			Format(time.RFC3339),
 		SourceChainHeight: lastBlock.Height,
 	}
 
@@ -196,22 +312,34 @@ func (api *apiServer) handleMineSubmit(
 	writer http.ResponseWriter,
 	request *http.Request,
 ) {
-	if !apiPOSTOnly(writer, request) {
+	if !apiPOSTOnly(
+		writer,
+		request,
+	) {
 		return
 	}
 
-	request.Body = http.MaxBytesReader(
-		writer,
-		request.Body,
-		16384,
-	)
+	request.Body =
+		http.MaxBytesReader(
+			writer,
+			request.Body,
+			16384,
+		)
 
 	var payload apiMineSubmitRequest
 
-	decoder := json.NewDecoder(request.Body)
+	decoder :=
+		json.NewDecoder(
+			request.Body,
+		)
+
 	decoder.DisallowUnknownFields()
 
-	if err := decoder.Decode(&payload); err != nil {
+	if err :=
+		decoder.Decode(
+			&payload,
+		); err != nil {
+
 		apiWriteError(
 			writer,
 			http.StatusBadRequest,
@@ -259,13 +387,14 @@ func (api *apiServer) handleMineSubmit(
 		apiWriteError(
 			writer,
 			http.StatusInternalServerError,
-			fmt.Errorf("blockchain is empty"),
+			fmt.Errorf(
+				"blockchain is empty",
+			),
 		)
 		return
 	}
 
-	lastBlock :=
-		chain.Blocks[len(chain.Blocks)-1]
+	lastBlock := chain.Blocks[len(chain.Blocks)-1]
 
 	if payload.SourceChainHeight !=
 		lastBlock.Height {
@@ -325,6 +454,41 @@ func (api *apiServer) handleMineSubmit(
 		return
 	}
 
+	// Calculate the reward before creating the block.
+	//
+	// stateMu is held here, so no competing mine submit can alter
+	// the source emission between this calculation and AddBlock.
+	emission, err :=
+		chain.GetEmissionState()
+
+	if err != nil {
+		apiWriteError(
+			writer,
+			http.StatusInternalServerError,
+			fmt.Errorf(
+				"cannot calculate current emissions: %w",
+				err,
+			),
+		)
+		return
+	}
+
+	reward, err :=
+		mineRewardForWork(
+			lastBlock.Height+1,
+			proof.Score,
+			emission.UsefulWorkEmission,
+		)
+
+	if err != nil {
+		apiWriteError(
+			writer,
+			http.StatusInternalServerError,
+			err,
+		)
+		return
+	}
+
 	proposer, err :=
 		pos.SelectProposer(
 			lastBlock.Hash,
@@ -343,7 +507,9 @@ func (api *apiServer) handleMineSubmit(
 	block, err :=
 		chain.AddBlock(
 			nil,
-			[]usefulwork.Proof{proof},
+			[]usefulwork.Proof{
+				proof,
+			},
 			proposer.Address,
 			pos,
 		)
@@ -382,31 +548,32 @@ func (api *apiServer) handleMineSubmit(
 		return
 	}
 
-	responseProof := apiWorkResponse{
-		Block: block.Height,
-		Worker: walletNameForAddress(
-			proof.Worker,
-			wallets,
-		),
-		WorkerAddress: proof.Worker,
-		Task:          proof.Task.Type,
-		TaskID:        proof.Task.ID,
-		Result:        proof.Result,
-		ResultValues:  proof.ResultValues,
-		Score:         proof.Score,
-		Reward:        blockchain.UsefulWorkReward,
-		Verified:      true,
-		OutputHash:    proof.OutputHash,
-		ProofID:       proof.ID,
-		BlockHash:     block.Hash,
-	}
+	responseProof :=
+		apiWorkResponse{
+			Block: block.Height,
+			Worker: walletNameForAddress(
+				proof.Worker,
+				wallets,
+			),
+			WorkerAddress: proof.Worker,
+			Task:          proof.Task.Type,
+			TaskID:        proof.Task.ID,
+			Result:        proof.Result,
+			ResultValues:  proof.ResultValues,
+			Score:         proof.Score,
+			Reward:        reward,
+			Verified:      true,
+			OutputHash:    proof.OutputHash,
+			ProofID:       proof.ID,
+			BlockHash:     block.Hash,
+		}
 
 	apiWriteJSON(
 		writer,
 		http.StatusOK,
 		map[string]any{
 			"verified":    true,
-			"reward":      blockchain.UsefulWorkReward,
+			"reward":      reward,
 			"block":       block.Height,
 			"totalSupply": totalSupply,
 			"proof":       responseProof,
@@ -418,7 +585,9 @@ func apiPOSTOnly(
 	writer http.ResponseWriter,
 	request *http.Request,
 ) bool {
-	if request.Method == http.MethodPost {
+	if request.Method ==
+		http.MethodPost {
+
 		return true
 	}
 

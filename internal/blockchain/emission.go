@@ -99,10 +99,17 @@ func (bc *Blockchain) GetEmissionState() (
 		emission.ProposerEmission +=
 			block.Reward
 
-		for range block.UsefulWork {
+		for _, proof := range block.UsefulWork {
+			baseWorkReward :=
+				consensus.UsefulWorkBaseReward(
+					block.Height,
+					proof.Score,
+					rewardPolicy,
+				)
+
 			workReward, err :=
 				consensus.BoundedPoolReward(
-					rewardPolicy.UsefulWorkReward,
+					baseWorkReward,
 					emission.UsefulWorkEmission,
 					supplyPolicy.UsefulWorkRewardPool,
 				)
