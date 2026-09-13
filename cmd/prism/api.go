@@ -199,7 +199,7 @@ func runAPICommand(args []string) {
 	}
 
 	fmt.Println("=== PRISM HTTP API ===")
-	fmt.Println("Version: 0.32")
+	fmt.Println("Version: 0.35")
 	fmt.Println("P2P protocol:", p2p.ProtocolVersion)
 	fmt.Println("Node data:", *nodeData)
 	fmt.Println("Listening:", listenAddress)
