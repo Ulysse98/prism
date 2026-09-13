@@ -6,7 +6,7 @@ import (
 	"prism/internal/usefulwork"
 )
 
-func TestMineTaskCatalogHasThreeWorkloads(
+func TestMineTaskCatalogHasFourWorkloads(
 	t *testing.T,
 ) {
 
@@ -16,9 +16,9 @@ func TestMineTaskCatalogHasThreeWorkloads(
 		t.Fatal(err)
 	}
 
-	if len(options) != 3 {
+	if len(options) != 4 {
 		t.Fatalf(
-			"expected 3 workloads, got %d",
+			"expected 4 workloads, got %d",
 			len(options),
 		)
 	}
@@ -61,6 +61,7 @@ func TestMineTaskCatalogHasThreeWorkloads(
 		usefulwork.TaskTypeSumSquares,
 		usefulwork.TaskTypeDotProduct,
 		usefulwork.TaskTypePrimeCount,
+		usefulwork.TaskTypeMatrixMultiply,
 	} {
 		if !seenTypes[expected] {
 			t.Fatalf(

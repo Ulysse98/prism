@@ -23,6 +23,9 @@ type apiMineJob struct {
 	Task              string   `json:"task"`
 	Input             []uint64 `json:"input"`
 	InputB            []uint64 `json:"inputB,omitempty"`
+	RowsA             uint64   `json:"rowsA,omitempty"`
+	ColsA             uint64   `json:"colsA,omitempty"`
+	ColsB             uint64   `json:"colsB,omitempty"`
 	InputHash         string   `json:"inputHash"`
 	Difficulty        string   `json:"difficulty"`
 	Reward            uint64   `json:"reward"`
@@ -32,15 +35,16 @@ type apiMineJob struct {
 }
 
 type apiMineSubmitRequest struct {
-	JobID             string `json:"jobId"`
-	SourceChainHeight uint64 `json:"sourceChainHeight"`
-	WorkerAddress     string `json:"workerAddress"`
-	PublicKey         string `json:"publicKey"`
-	Result            uint64 `json:"result"`
-	OutputHash        string `json:"outputHash"`
-	Score             uint64 `json:"score"`
-	ProofID           string `json:"proofId"`
-	Signature         string `json:"signature"`
+	JobID             string   `json:"jobId"`
+	SourceChainHeight uint64   `json:"sourceChainHeight"`
+	WorkerAddress     string   `json:"workerAddress"`
+	PublicKey         string   `json:"publicKey"`
+	Result            uint64   `json:"result"`
+	ResultValues      []uint64 `json:"resultValues,omitempty"`
+	OutputHash        string   `json:"outputHash"`
+	Score             uint64   `json:"score"`
+	ProofID           string   `json:"proofId"`
+	Signature         string   `json:"signature"`
 }
 
 func mineTaskForHeight(
@@ -168,6 +172,9 @@ func (api *apiServer) handleMineStart(
 		Task:              task.Type,
 		Input:             task.Values,
 		InputB:            task.ValuesB,
+		RowsA:             task.RowsA,
+		ColsA:             task.ColsA,
+		ColsB:             task.ColsB,
 		InputHash:         task.InputHash,
 		Difficulty:        option.Difficulty,
 		Reward:            blockchain.UsefulWorkReward,
@@ -293,14 +300,15 @@ func (api *apiServer) handleMineSubmit(
 	task := option.Task
 
 	proof := usefulwork.Proof{
-		ID:         payload.ProofID,
-		Task:       task,
-		Worker:     payload.WorkerAddress,
-		PublicKey:  payload.PublicKey,
-		Result:     payload.Result,
-		OutputHash: payload.OutputHash,
-		Score:      payload.Score,
-		Signature:  payload.Signature,
+		ID:           payload.ProofID,
+		Task:         task,
+		Worker:       payload.WorkerAddress,
+		PublicKey:    payload.PublicKey,
+		Result:       payload.Result,
+		ResultValues: payload.ResultValues,
+		OutputHash:   payload.OutputHash,
+		Score:        payload.Score,
+		Signature:    payload.Signature,
 	}
 
 	if err := usefulwork.VerifyProof(
@@ -384,6 +392,7 @@ func (api *apiServer) handleMineSubmit(
 		Task:          proof.Task.Type,
 		TaskID:        proof.Task.ID,
 		Result:        proof.Result,
+		ResultValues:  proof.ResultValues,
 		Score:         proof.Score,
 		Reward:        blockchain.UsefulWorkReward,
 		Verified:      true,

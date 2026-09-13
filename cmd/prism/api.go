@@ -66,18 +66,19 @@ type apiParticipationResponse struct {
 }
 
 type apiWorkResponse struct {
-	Block         uint64 `json:"block"`
-	Worker        string `json:"worker"`
-	WorkerAddress string `json:"workerAddress"`
-	Task          string `json:"task"`
-	TaskID        string `json:"taskId"`
-	Result        uint64 `json:"result"`
-	Score         uint64 `json:"score"`
-	Reward        uint64 `json:"reward"`
-	Verified      bool   `json:"verified"`
-	OutputHash    string `json:"outputHash"`
-	ProofID       string `json:"proofId"`
-	BlockHash     string `json:"blockHash"`
+	Block         uint64   `json:"block"`
+	Worker        string   `json:"worker"`
+	WorkerAddress string   `json:"workerAddress"`
+	Task          string   `json:"task"`
+	TaskID        string   `json:"taskId"`
+	Result        uint64   `json:"result"`
+	ResultValues  []uint64 `json:"resultValues,omitempty"`
+	Score         uint64   `json:"score"`
+	Reward        uint64   `json:"reward"`
+	Verified      bool     `json:"verified"`
+	OutputHash    string   `json:"outputHash"`
+	ProofID       string   `json:"proofId"`
+	BlockHash     string   `json:"blockHash"`
 }
 
 type apiHumanityResponse struct {

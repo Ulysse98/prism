@@ -64,6 +64,29 @@ func mineTaskCatalogForHeight(
 		return nil, err
 	}
 
+	matrixMultiply, err :=
+		usefulwork.NewMatrixMultiplyTask(
+			2,
+			3,
+			2,
+			[]uint64{
+				base,
+				base + 1,
+				base + 2,
+				base + 3,
+				base + 4,
+				base + 5,
+			},
+			[]uint64{
+				2, 3,
+				5, 7,
+				11, 13,
+			},
+		)
+	if err != nil {
+		return nil, err
+	}
+
 	return []mineTaskOption{
 		{
 			Task:       sumSquares,
@@ -76,6 +99,10 @@ func mineTaskCatalogForHeight(
 		{
 			Task:       primeCount,
 			Difficulty: "MEDIUM",
+		},
+		{
+			Task:       matrixMultiply,
+			Difficulty: "HIGH",
 		},
 	}, nil
 }
