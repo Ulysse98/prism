@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"prism/internal/consensus"
+	"prism/internal/identity"
+	"prism/internal/reserved"
 	"prism/internal/transaction"
 	"prism/internal/usefulwork"
 )
@@ -13,6 +15,7 @@ import (
 type Blockchain struct {
 	Blocks       []Block
 	LockedStakes map[string]uint64
+	Config       ChainConfig `json:"config"`
 }
 
 type State struct {
@@ -20,8 +23,12 @@ type State struct {
 	Nonces   map[string]uint64
 }
 
-func NewBlockchain(initialBalances map[string]uint64) (*Blockchain, error) {
-	genesis, err := CreateGenesisBlock(initialBalances)
+func NewBlockchain(
+	initialBalances map[string]uint64,
+) (*Blockchain, error) {
+	genesis, err := CreateGenesisBlock(
+		initialBalances,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -29,23 +36,35 @@ func NewBlockchain(initialBalances map[string]uint64) (*Blockchain, error) {
 	return &Blockchain{
 		Blocks:       []Block{genesis},
 		LockedStakes: make(map[string]uint64),
+		Config:       DefaultChainConfig(),
 	}, nil
 }
 
-func (bc *Blockchain) LockStake(address string, amount uint64) error {
+func (bc *Blockchain) LockStake(
+	address string,
+	amount uint64,
+) error {
 	if address == "" {
-		return fmt.Errorf("stake address cannot be empty")
+		return fmt.Errorf(
+			"stake address cannot be empty",
+		)
 	}
 
 	if address == "GENESIS" {
-		return fmt.Errorf("GENESIS cannot stake")
+		return fmt.Errorf(
+			"GENESIS cannot stake",
+		)
 	}
 
 	if amount == 0 {
-		return fmt.Errorf("stake amount must be greater than zero")
+		return fmt.Errorf(
+			"stake amount must be greater than zero",
+		)
 	}
 
-	balance, err := bc.BalanceOf(address)
+	balance, err := bc.BalanceOf(
+		address,
+	)
 	if err != nil {
 		return err
 	}
@@ -53,7 +72,9 @@ func (bc *Blockchain) LockStake(address string, amount uint64) error {
 	currentLocked := bc.LockedStakes[address]
 
 	if balance < currentLocked {
-		return fmt.Errorf("locked stake exceeds account balance")
+		return fmt.Errorf(
+			"locked stake exceeds account balance",
+		)
 	}
 
 	available := balance - currentLocked
@@ -67,7 +88,9 @@ func (bc *Blockchain) LockStake(address string, amount uint64) error {
 	}
 
 	if currentLocked > math.MaxUint64-amount {
-		return fmt.Errorf("stake overflow")
+		return fmt.Errorf(
+			"stake overflow",
+		)
 	}
 
 	bc.LockedStakes[address] += amount
@@ -75,9 +98,14 @@ func (bc *Blockchain) LockStake(address string, amount uint64) error {
 	return nil
 }
 
-func (bc *Blockchain) UnlockStake(address string, amount uint64) error {
+func (bc *Blockchain) UnlockStake(
+	address string,
+	amount uint64,
+) error {
 	if amount == 0 {
-		return fmt.Errorf("unstake amount must be greater than zero")
+		return fmt.Errorf(
+			"unstake amount must be greater than zero",
+		)
 	}
 
 	currentLocked := bc.LockedStakes[address]
@@ -93,23 +121,34 @@ func (bc *Blockchain) UnlockStake(address string, amount uint64) error {
 	bc.LockedStakes[address] -= amount
 
 	if bc.LockedStakes[address] == 0 {
-		delete(bc.LockedStakes, address)
+		delete(
+			bc.LockedStakes,
+			address,
+		)
 	}
 
 	return nil
 }
 
-func (bc *Blockchain) LockedStakeOf(address string) uint64 {
+func (bc *Blockchain) LockedStakeOf(
+	address string,
+) uint64 {
 	return bc.LockedStakes[address]
 }
 
-func (bc *Blockchain) AvailableBalanceOf(address string) (uint64, error) {
-	balance, err := bc.BalanceOf(address)
+func (bc *Blockchain) AvailableBalanceOf(
+	address string,
+) (uint64, error) {
+	balance, err := bc.BalanceOf(
+		address,
+	)
 	if err != nil {
 		return 0, err
 	}
 
-	locked := bc.LockedStakeOf(address)
+	locked := bc.LockedStakeOf(
+		address,
+	)
 
 	if locked > balance {
 		return 0, fmt.Errorf(
@@ -121,30 +160,104 @@ func (bc *Blockchain) AvailableBalanceOf(address string) (uint64, error) {
 	return balance - locked, nil
 }
 
+// AddBlock creates a normal Prism block containing
+// transactions and/or useful work.
 func (bc *Blockchain) AddBlock(
 	transactions []transaction.Transaction,
 	workProofs []usefulwork.Proof,
 	proposer string,
 	pos *consensus.ProofOfStake,
 ) (Block, error) {
+	return bc.addBlock(
+		transactions,
+		workProofs,
+		nil,
+		proposer,
+		pos,
+	)
+}
+
+// AddHumanityBlock creates a Prism block containing
+// humanity attestations.
+func (bc *Blockchain) AddHumanityBlock(
+	attestations []identity.Attestation,
+	proposer string,
+	pos *consensus.ProofOfStake,
+) (Block, error) {
+	return bc.addBlock(
+		nil,
+		nil,
+		attestations,
+		proposer,
+		pos,
+	)
+}
+
+// addBlock is the common block-production path.
+func (bc *Blockchain) addBlock(
+	transactions []transaction.Transaction,
+	workProofs []usefulwork.Proof,
+	attestations []identity.Attestation,
+	proposer string,
+	pos *consensus.ProofOfStake,
+) (Block, error) {
+
+	rewardPolicy := consensus.DefaultRewardPolicy()
+
+	if err := rewardPolicy.Validate(); err != nil {
+		return Block{}, fmt.Errorf(
+			"invalid reward policy: %w",
+			err,
+		)
+	}
+
+	supplyPolicy :=
+		consensus.DefaultSupplyPolicy()
+
+	if err := supplyPolicy.Validate(); err != nil {
+		return Block{}, fmt.Errorf(
+			"invalid supply policy: %w",
+			err,
+		)
+	}
+
 	if pos == nil {
-		return Block{}, fmt.Errorf("proof of stake engine cannot be nil")
+		return Block{}, fmt.Errorf(
+			"proof of stake engine cannot be nil",
+		)
 	}
 
 	if proposer == "" {
-		return Block{}, fmt.Errorf("block proposer cannot be empty")
+		return Block{}, fmt.Errorf(
+			"block proposer cannot be empty",
+		)
 	}
 
 	if proposer == "GENESIS" {
-		return Block{}, fmt.Errorf("GENESIS cannot propose normal blocks")
+		return Block{}, fmt.Errorf(
+			"GENESIS cannot propose normal blocks",
+		)
 	}
 
-	if len(transactions) == 0 && len(workProofs) == 0 {
-		return Block{}, fmt.Errorf("cannot create an empty block")
+	if len(transactions) == 0 &&
+		len(workProofs) == 0 &&
+		len(attestations) == 0 {
+
+		return Block{}, fmt.Errorf(
+			"cannot create an empty block",
+		)
 	}
 
-	if err := bc.ValidateValidatorSet(pos); err != nil {
+	if err := bc.ValidateValidatorSet(
+		pos,
+	); err != nil {
 		return Block{}, err
+	}
+
+	if len(bc.Blocks) == 0 {
+		return Block{}, fmt.Errorf(
+			"blockchain has no genesis block",
+		)
 	}
 
 	previousBlock := bc.Blocks[len(bc.Blocks)-1]
@@ -172,8 +285,11 @@ func (bc *Blockchain) AddBlock(
 		return Block{}, err
 	}
 
+	// Validate transactions against current spendable state.
 	for _, tx := range transactions {
-		if err := transaction.ValidateSigned(tx); err != nil {
+		if err := transaction.ValidateSigned(
+			tx,
+		); err != nil {
 			return Block{}, err
 		}
 
@@ -197,23 +313,55 @@ func (bc *Blockchain) AddBlock(
 			)
 		}
 
+		if state.Balances[tx.To] >
+			math.MaxUint64-tx.Amount {
+
+			return Block{}, fmt.Errorf(
+				"recipient balance overflow",
+			)
+		}
+
 		state.Balances[tx.From] -= tx.Amount
 		state.Balances[tx.To] += tx.Amount
 		state.Nonces[tx.From]++
 	}
 
-	usedTasks := make(map[string]struct{})
+	// Reconstruct already-consumed consensus objects.
+	usedTasks := make(
+		map[string]struct{},
+	)
+
+	usedHumanAddresses := make(
+		map[string]struct{},
+	)
+
+	usedNullifierHashes := make(
+		map[string]struct{},
+	)
 
 	for _, block := range bc.Blocks {
 		for _, proof := range block.UsefulWork {
 			usedTasks[proof.Task.ID] = struct{}{}
 		}
+
+		for _, attestation := range block.Humanity {
+			usedHumanAddresses[attestation.Address] =
+				struct{}{}
+
+			usedNullifierHashes[attestation.NullifierHash] =
+				struct{}{}
+		}
 	}
 
-	newTasks := make(map[string]struct{})
+	// Validate useful work.
+	newTasks := make(
+		map[string]struct{},
+	)
 
 	for _, proof := range workProofs {
-		if err := usefulwork.VerifyProof(proof); err != nil {
+		if err := usefulwork.VerifyProof(
+			proof,
+		); err != nil {
 			return Block{}, fmt.Errorf(
 				"invalid useful work proof: %w",
 				err,
@@ -237,48 +385,296 @@ func (bc *Blockchain) AddBlock(
 		newTasks[proof.Task.ID] = struct{}{}
 	}
 
-	blockTransactions := make(
-		[]transaction.Transaction,
-		len(transactions),
+	// Validate humanity attestations.
+	newHumanAddresses := make(
+		map[string]struct{},
 	)
-	copy(blockTransactions, transactions)
 
-	blockWork := make(
-		[]usefulwork.Proof,
-		len(workProofs),
+	newNullifierHashes := make(
+		map[string]struct{},
 	)
-	copy(blockWork, workProofs)
+
+	for _, attestation := range attestations {
+		if err := identity.ValidateAttestation(
+			attestation,
+		); err != nil {
+			return Block{}, fmt.Errorf(
+				"invalid humanity attestation: %w",
+				err,
+			)
+		}
+
+		if _, exists :=
+			usedHumanAddresses[attestation.Address]; exists {
+
+			return Block{}, fmt.Errorf(
+				"prism address already humanity verified: %s",
+				attestation.Address,
+			)
+		}
+
+		if _, exists :=
+			usedNullifierHashes[attestation.NullifierHash]; exists {
+
+			return Block{}, fmt.Errorf(
+				"humanity nullifier already attested",
+			)
+		}
+
+		if _, exists :=
+			newHumanAddresses[attestation.Address]; exists {
+
+			return Block{}, fmt.Errorf(
+				"duplicate humanity address in block: %s",
+				attestation.Address,
+			)
+		}
+
+		if _, exists :=
+			newNullifierHashes[attestation.NullifierHash]; exists {
+
+			return Block{}, fmt.Errorf(
+				"duplicate humanity nullifier in block",
+			)
+		}
+
+		newHumanAddresses[attestation.Address] =
+			struct{}{}
+
+		newNullifierHashes[attestation.NullifierHash] =
+			struct{}{}
+	}
+
+	emission, err :=
+		bc.GetEmissionState()
+
+	if err != nil {
+		return Block{}, fmt.Errorf(
+			"cannot calculate current emissions: %w",
+			err,
+		)
+	}
+
+	proposerReward, err :=
+		consensus.BoundedPoolReward(
+			rewardPolicy.ProposerReward,
+			emission.ProposerEmission,
+			supplyPolicy.ProposerRewardPool,
+		)
+
+	if err != nil {
+		return Block{}, fmt.Errorf(
+			"cannot calculate proposer reward: %w",
+			err,
+		)
+	}
+
+	blockTransactions := append(
+		[]transaction.Transaction(nil),
+		transactions...,
+	)
+
+	blockWork := append(
+		[]usefulwork.Proof(nil),
+		workProofs...,
+	)
+
+	blockHumanity := append(
+		[]identity.Attestation(nil),
+		attestations...,
+	)
 
 	block := Block{
 		Height:       nextHeight,
 		Timestamp:    time.Now().UTC(),
 		PreviousHash: previousBlock.Hash,
 		Proposer:     proposer,
-		Reward:       BlockReward,
+		Reward:       proposerReward,
 		Transactions: blockTransactions,
 		UsefulWork:   blockWork,
+		Humanity:     blockHumanity,
 	}
 
-	block.Hash = CalculateHash(block)
+	block.Hash = CalculateHash(
+		block,
+	)
 
-	bc.Blocks = append(bc.Blocks, block)
+	bc.Blocks = append(
+		bc.Blocks,
+		block,
+	)
 
 	return block, nil
+}
+
+// AppendValidatedBlock validates and appends an exact block
+// received from another Prism node.
+//
+// Unlike AddBlock, this method never recreates the block timestamp
+// or hash. The received block is validated as part of a candidate
+// chain before the local chain is mutated.
+func (bc *Blockchain) AppendValidatedBlock(
+	block Block,
+	pos *consensus.ProofOfStake,
+) error {
+	if bc == nil {
+		return fmt.Errorf(
+			"blockchain cannot be nil",
+		)
+	}
+
+	if pos == nil {
+		return fmt.Errorf(
+			"proof of stake engine cannot be nil",
+		)
+	}
+
+	if len(bc.Blocks) == 0 {
+		return fmt.Errorf(
+			"blockchain has no genesis block",
+		)
+	}
+
+	previous := bc.Blocks[len(bc.Blocks)-1]
+
+	if block.Height != previous.Height+1 {
+		return fmt.Errorf(
+			"invalid received block height: expected %d, got %d",
+			previous.Height+1,
+			block.Height,
+		)
+	}
+
+	if block.PreviousHash != previous.Hash {
+		return fmt.Errorf(
+			"received block does not extend local tip",
+		)
+	}
+
+	if block.Hash == "" {
+		return fmt.Errorf(
+			"received block hash cannot be empty",
+		)
+	}
+
+	if CalculateHash(block) != block.Hash {
+		return fmt.Errorf(
+			"invalid received block hash",
+		)
+	}
+
+	candidateBlocks := make(
+		[]Block,
+		len(bc.Blocks),
+		len(bc.Blocks)+1,
+	)
+
+	copy(
+		candidateBlocks,
+		bc.Blocks,
+	)
+
+	candidateBlocks = append(
+		candidateBlocks,
+		block,
+	)
+
+	lockedStakes := make(
+		map[string]uint64,
+		len(bc.LockedStakes),
+	)
+
+	for address, amount := range bc.LockedStakes {
+		lockedStakes[address] = amount
+	}
+
+	candidate := &Blockchain{
+		Blocks:       candidateBlocks,
+		LockedStakes: lockedStakes,
+		Config:       bc.Config,
+	}
+
+	if !candidate.ValidateChain(pos) {
+		return fmt.Errorf(
+			"received block failed chain validation",
+		)
+	}
+
+	bc.Blocks = candidateBlocks
+
+	return nil
+}
+
+// IsVerified reports whether an address has a valid
+// humanity attestation recorded in the Prism blockchain.
+func (bc *Blockchain) IsVerified(
+	address string,
+) bool {
+	if address == "" || len(bc.Blocks) == 0 {
+		return false
+	}
+
+	lastBlock := bc.Blocks[len(bc.Blocks)-1]
+
+	return bc.IsVerifiedAtHeight(
+		address,
+		lastBlock.Height,
+	)
+}
+
+// IsVerifiedAtHeight reports whether an address had a valid
+// humanity attestation recorded at or before the given block height.
+//
+// This prevents Proof of Useful Participation from retroactively
+// rewarding activity performed before humanity verification.
+func (bc *Blockchain) IsVerifiedAtHeight(
+	address string,
+	height uint64,
+) bool {
+	if address == "" {
+		return false
+	}
+
+	for _, block := range bc.Blocks {
+		if block.Height > height {
+			break
+		}
+
+		for _, attestation := range block.Humanity {
+			if attestation.Address != address {
+				continue
+			}
+
+			if identity.ValidateAttestation(
+				attestation,
+			) == nil {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func (bc *Blockchain) ValidateValidatorSet(
 	pos *consensus.ProofOfStake,
 ) error {
 	if pos == nil {
-		return fmt.Errorf("proof of stake engine cannot be nil")
+		return fmt.Errorf(
+			"proof of stake engine cannot be nil",
+		)
 	}
 
 	if len(pos.Validators) == 0 {
-		return fmt.Errorf("no validators registered")
+		return fmt.Errorf(
+			"no validators registered",
+		)
 	}
 
 	for _, validator := range pos.Validators {
-		locked := bc.LockedStakeOf(validator.Address)
+		locked := bc.LockedStakeOf(
+			validator.Address,
+		)
 
 		if locked != validator.Stake {
 			return fmt.Errorf(
@@ -306,18 +702,108 @@ func (bc *Blockchain) ValidateValidatorSet(
 	return nil
 }
 
-func (bc *Blockchain) GetState() (State, error) {
+// GetState deterministically rebuilds Prism balances,
+// nonces, PoS rewards, PoUW rewards and humanity state
+// from the blockchain.
+func (bc *Blockchain) GetState() (
+	State,
+	error,
+) {
+
+	rewardPolicy := consensus.DefaultRewardPolicy()
+
+	if err := rewardPolicy.Validate(); err != nil {
+		return State{}, fmt.Errorf(
+			"invalid reward policy: %w",
+			err,
+		)
+	}
+
+	supplyPolicy :=
+		consensus.DefaultSupplyPolicy()
+
+	if err := supplyPolicy.Validate(); err != nil {
+		return State{}, fmt.Errorf(
+			"invalid supply policy: %w",
+			err,
+		)
+	}
+
+	// Governance is consensus state.
+	// Replaying it here makes invalid authority changes,
+	// proposals or executions invalidate deterministic
+	// state reconstruction and therefore ValidateChain.
+	if _, err := bc.GetGovernanceState(); err != nil {
+		return State{}, fmt.Errorf(
+			"invalid reserved governance: %w",
+			err,
+		)
+	}
+
+	hasReservedEmissions := false
+
+	for blockIndex, block := range bc.Blocks {
+		if blockIndex == 0 {
+			continue
+		}
+
+		if len(block.ReservedAuthorizations) != 0 ||
+			len(block.ReservedGrants) != 0 ||
+			len(block.ReservedRevocations) != 0 ||
+			len(block.ReservedTransferExecutions) != 0 {
+
+			hasReservedEmissions = true
+			break
+		}
+	}
+
+	if hasReservedEmissions {
+		if _, err :=
+			bc.GetReservedAccountingState(); err != nil {
+
+			return State{}, fmt.Errorf(
+				"invalid reserved accounting: %w",
+				err,
+			)
+		}
+	}
+
 	state := State{
 		Balances: make(map[string]uint64),
 		Nonces:   make(map[string]uint64),
 	}
 
-	usedTasks := make(map[string]struct{})
+	usedTasks := make(
+		map[string]struct{},
+	)
+
+	usedHumanAddresses := make(
+		map[string]struct{},
+	)
+
+	usedNullifierHashes := make(
+		map[string]struct{},
+	)
+
+	usedParticipationClaims := make(
+		map[participationClaimKey]struct{},
+	)
+
+	reservedTransferProposals :=
+		make(
+			map[string]reserved.ReservedTransferProposal,
+		)
+
+	var proposerEmission uint64
+	var usefulWorkEmission uint64
+	var participationEmission uint64
 
 	for blockIndex, block := range bc.Blocks {
 		if blockIndex == 0 {
 			if block.Proposer != "GENESIS" {
-				return State{}, fmt.Errorf("invalid genesis proposer")
+				return State{}, fmt.Errorf(
+					"invalid genesis proposer",
+				)
 			}
 
 			if block.Reward != 0 {
@@ -332,12 +818,76 @@ func (bc *Blockchain) GetState() (State, error) {
 				)
 			}
 
+			if len(block.Humanity) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain humanity attestations",
+				)
+			}
+
+			if len(block.ParticipationClaims) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain participation claims",
+				)
+			}
+
+			if len(block.ReservedAuthorizations) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain reserved authorizations",
+				)
+			}
+
+			if len(block.ReservedGrants) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain reserved grants",
+				)
+			}
+
+			if len(block.ReservedRevocations) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain reserved revocations",
+				)
+			}
+
+			if len(block.AuthorityChanges) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain reserved authority changes",
+				)
+			}
+
+			if len(block.AuthorityProposals) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain authority proposals",
+				)
+			}
+
+			if len(block.AuthorityExecutions) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain authority executions",
+				)
+			}
+
+			if len(block.ReservedTransferProposals) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain reserved transfer proposals",
+				)
+			}
+
+			if len(block.ReservedTransferExecutions) != 0 {
+				return State{}, fmt.Errorf(
+					"genesis block cannot contain reserved transfer executions",
+				)
+			}
+
 			for _, tx := range block.Transactions {
-				if err := transaction.ValidateGenesis(tx); err != nil {
+				if err := transaction.ValidateGenesis(
+					tx,
+				); err != nil {
 					return State{}, err
 				}
 
-				if state.Balances[tx.To] > math.MaxUint64-tx.Amount {
+				if state.Balances[tx.To] >
+					math.MaxUint64-tx.Amount {
+
 					return State{}, fmt.Errorf(
 						"genesis balance overflow",
 					)
@@ -349,29 +899,66 @@ func (bc *Blockchain) GetState() (State, error) {
 			continue
 		}
 
-		if block.Proposer == "" || block.Proposer == "GENESIS" {
+		if block.Proposer == "" ||
+			block.Proposer == "GENESIS" {
+
 			return State{}, fmt.Errorf(
 				"invalid proposer in block %d",
 				blockIndex,
 			)
 		}
 
-		if block.Reward != BlockReward {
+		expectedProposerReward, err :=
+			consensus.BoundedPoolReward(
+				rewardPolicy.ProposerReward,
+				proposerEmission,
+				supplyPolicy.ProposerRewardPool,
+			)
+
+		if err != nil {
 			return State{}, fmt.Errorf(
-				"invalid reward in block %d",
+				"invalid proposer emission in block %d: %w",
 				blockIndex,
+				err,
 			)
 		}
 
-		if len(block.Transactions) == 0 && len(block.UsefulWork) == 0 {
+		if block.Reward != expectedProposerReward {
+			return State{}, fmt.Errorf(
+				"invalid reward in block %d: expected %d, got %d",
+				blockIndex,
+				expectedProposerReward,
+				block.Reward,
+			)
+		}
+
+		// Transactions, Useful Work, Humanity, PoUP,
+		// reserved emissions or governance can make a
+		// normal block non-empty.
+		if len(block.Transactions) == 0 &&
+			len(block.UsefulWork) == 0 &&
+			len(block.Humanity) == 0 &&
+			len(block.ParticipationClaims) == 0 &&
+			len(block.ReservedAuthorizations) == 0 &&
+			len(block.ReservedGrants) == 0 &&
+			len(block.ReservedRevocations) == 0 &&
+			len(block.AuthorityChanges) == 0 &&
+			len(block.AuthorityProposals) == 0 &&
+			len(block.AuthorityExecutions) == 0 &&
+			len(block.ReservedTransferProposals) == 0 &&
+			len(block.ReservedTransferExecutions) == 0 {
+
 			return State{}, fmt.Errorf(
 				"empty normal block at height %d",
 				block.Height,
 			)
 		}
 
+		// Transactions.
 		for _, tx := range block.Transactions {
-			if err := transaction.ValidateSigned(tx); err != nil {
+			if err := transaction.ValidateSigned(
+				tx,
+			); err != nil {
 				return State{}, err
 			}
 
@@ -393,7 +980,9 @@ func (bc *Blockchain) GetState() (State, error) {
 				)
 			}
 
-			if state.Balances[tx.To] > math.MaxUint64-tx.Amount {
+			if state.Balances[tx.To] >
+				math.MaxUint64-tx.Amount {
+
 				return State{}, fmt.Errorf(
 					"recipient balance overflow",
 				)
@@ -404,8 +993,11 @@ func (bc *Blockchain) GetState() (State, error) {
 			state.Nonces[tx.From]++
 		}
 
+		// Useful Work.
 		for _, proof := range block.UsefulWork {
-			if err := usefulwork.VerifyProof(proof); err != nil {
+			if err := usefulwork.VerifyProof(
+				proof,
+			); err != nil {
 				return State{}, fmt.Errorf(
 					"invalid useful work in block %d: %w",
 					blockIndex,
@@ -413,7 +1005,9 @@ func (bc *Blockchain) GetState() (State, error) {
 				)
 			}
 
-			if _, exists := usedTasks[proof.Task.ID]; exists {
+			if _, exists :=
+				usedTasks[proof.Task.ID]; exists {
+
 				return State{}, fmt.Errorf(
 					"useful work task rewarded more than once",
 				)
@@ -421,30 +1015,251 @@ func (bc *Blockchain) GetState() (State, error) {
 
 			usedTasks[proof.Task.ID] = struct{}{}
 
+			baseWorkReward :=
+				consensus.UsefulWorkBaseReward(
+					block.Height,
+					proof.Score,
+					rewardPolicy,
+				)
+
+			workReward, err :=
+				consensus.BoundedPoolReward(
+					baseWorkReward,
+					usefulWorkEmission,
+					supplyPolicy.UsefulWorkRewardPool,
+				)
+
+			if err != nil {
+				return State{}, fmt.Errorf(
+					"invalid useful work emission in block %d: %w",
+					blockIndex,
+					err,
+				)
+			}
+
 			if state.Balances[proof.Worker] >
-				math.MaxUint64-UsefulWorkReward {
+				math.MaxUint64-workReward {
+
 				return State{}, fmt.Errorf(
 					"useful work reward overflow",
 				)
 			}
 
-			state.Balances[proof.Worker] += UsefulWorkReward
+			state.Balances[proof.Worker] +=
+				workReward
+
+			usefulWorkEmission +=
+				workReward
 		}
 
+		// Humanity attestations.
+		for _, attestation := range block.Humanity {
+			if err := identity.ValidateAttestation(
+				attestation,
+			); err != nil {
+				return State{}, fmt.Errorf(
+					"invalid humanity attestation in block %d: %w",
+					blockIndex,
+					err,
+				)
+			}
+
+			if _, exists :=
+				usedHumanAddresses[attestation.Address]; exists {
+
+				return State{}, fmt.Errorf(
+					"humanity address attested more than once: %s",
+					attestation.Address,
+				)
+			}
+
+			if _, exists :=
+				usedNullifierHashes[attestation.NullifierHash]; exists {
+
+				return State{}, fmt.Errorf(
+					"humanity nullifier attested more than once",
+				)
+			}
+
+			usedHumanAddresses[attestation.Address] =
+				struct{}{}
+
+			usedNullifierHashes[attestation.NullifierHash] =
+				struct{}{}
+		}
+
+		// Proof of Useful Participation claims.
+		//
+		// Claims are consensus-validated and deterministically
+		// credited to balances here.
+		for _, claim := range block.ParticipationClaims {
+			if err := bc.validateParticipationClaimWithEmission(
+				claim,
+				block.Height,
+				rewardPolicy,
+				participationEmission,
+				supplyPolicy,
+			); err != nil {
+				return State{}, fmt.Errorf(
+					"invalid participation claim in block %d: %w",
+					blockIndex,
+					err,
+				)
+			}
+
+			key := participationClaimKey{
+				Address: claim.Address,
+				Period:  claim.Period,
+			}
+
+			if _, exists :=
+				usedParticipationClaims[key]; exists {
+
+				return State{}, fmt.Errorf(
+					"participation reward already claimed for address %s period %d",
+					claim.Address,
+					claim.Period,
+				)
+			}
+
+			if err := creditParticipationReward(
+				&state,
+				claim,
+			); err != nil {
+				return State{}, fmt.Errorf(
+					"participation reward credit failed in block %d: %w",
+					blockIndex,
+					err,
+				)
+			}
+
+			if participationEmission >
+				math.MaxUint64-claim.Amount {
+
+				return State{}, fmt.Errorf(
+					"participation emission overflow",
+				)
+			}
+
+			participationEmission +=
+				claim.Amount
+
+			usedParticipationClaims[key] =
+				struct{}{}
+		}
+
+		// Reserved emissions.
+		//
+		// The complete reserved replay was validated before
+		// balance reconstruction, so credits are deterministic.
+		for authorizationIndex, authorization := range block.ReservedAuthorizations {
+
+			if err := creditReservedAuthorization(
+				&state,
+				authorization,
+			); err != nil {
+
+				return State{}, fmt.Errorf(
+					"reserved authorization credit failed in block %d at index %d: %w",
+					blockIndex,
+					authorizationIndex,
+					err,
+				)
+			}
+		}
+
+		for grantIndex, grant := range block.ReservedGrants {
+
+			if err := creditReservedGrant(
+				&state,
+				grant,
+			); err != nil {
+
+				return State{}, fmt.Errorf(
+					"reserved grant credit failed in block %d at index %d: %w",
+					blockIndex,
+					grantIndex,
+					err,
+				)
+			}
+		}
+
+		// Governed reserved transfers.
+		//
+		// Governance and reserved accounting have already been
+		// consensus-validated before balance reconstruction.
+		//
+		// Executions are processed before proposals in the current
+		// block so a proposal cannot be queued and paid in one block.
+		for executionIndex, execution := range block.ReservedTransferExecutions {
+
+			proposal, exists :=
+				reservedTransferProposals[execution.ProposalID]
+
+			if !exists {
+				return State{}, fmt.Errorf(
+					"reserved transfer execution references unavailable proposal in block %d at index %d: %s",
+					blockIndex,
+					executionIndex,
+					execution.ProposalID,
+				)
+			}
+
+			if err :=
+				creditReservedTransfer(
+					&state,
+					proposal,
+				); err != nil {
+
+				return State{}, fmt.Errorf(
+					"reserved transfer execution credit failed in block %d at index %d: %w",
+					blockIndex,
+					executionIndex,
+					err,
+				)
+			}
+		}
+
+		for proposalIndex, proposal := range block.ReservedTransferProposals {
+
+			if _, exists :=
+				reservedTransferProposals[proposal.ID]; exists {
+
+				return State{}, fmt.Errorf(
+					"duplicate reserved transfer proposal during balance reconstruction in block %d at index %d: %s",
+					blockIndex,
+					proposalIndex,
+					proposal.ID,
+				)
+			}
+
+			reservedTransferProposals[proposal.ID] =
+				proposal
+		}
+
+		// PoS proposer reward.
 		if state.Balances[block.Proposer] >
 			math.MaxUint64-block.Reward {
+
 			return State{}, fmt.Errorf(
 				"block reward overflow",
 			)
 		}
 
-		state.Balances[block.Proposer] += block.Reward
+		state.Balances[block.Proposer] +=
+			block.Reward
+
+		proposerEmission +=
+			block.Reward
 	}
 
 	return state, nil
 }
 
-func (bc *Blockchain) GetSpendableState() (State, error) {
+func (bc *Blockchain) GetSpendableState() (
+	State,
+	error,
+) {
 	state, err := bc.GetState()
 	if err != nil {
 		return State{}, err
@@ -464,7 +1279,9 @@ func (bc *Blockchain) GetSpendableState() (State, error) {
 	return state, nil
 }
 
-func (bc *Blockchain) BalanceOf(account string) (uint64, error) {
+func (bc *Blockchain) BalanceOf(
+	account string,
+) (uint64, error) {
 	state, err := bc.GetState()
 	if err != nil {
 		return 0, err
@@ -473,7 +1290,9 @@ func (bc *Blockchain) BalanceOf(account string) (uint64, error) {
 	return state.Balances[account], nil
 }
 
-func (bc *Blockchain) NonceOf(account string) (uint64, error) {
+func (bc *Blockchain) NonceOf(
+	account string,
+) (uint64, error) {
 	state, err := bc.GetState()
 	if err != nil {
 		return 0, err
@@ -482,7 +1301,10 @@ func (bc *Blockchain) NonceOf(account string) (uint64, error) {
 	return state.Nonces[account], nil
 }
 
-func (bc *Blockchain) TotalSupply() (uint64, error) {
+func (bc *Blockchain) TotalSupply() (
+	uint64,
+	error,
+) {
 	state, err := bc.GetState()
 	if err != nil {
 		return 0, err
@@ -506,11 +1328,32 @@ func (bc *Blockchain) TotalSupply() (uint64, error) {
 func (bc *Blockchain) ValidateChain(
 	pos *consensus.ProofOfStake,
 ) bool {
+	rewardPolicy := consensus.DefaultRewardPolicy()
+
+	if err := rewardPolicy.Validate(); err != nil {
+		return false
+	}
+
+	supplyPolicy :=
+		consensus.DefaultSupplyPolicy()
+
+	if err := supplyPolicy.Validate(); err != nil {
+		return false
+	}
+
+	if _, err :=
+		bc.Config.Canonical(); err != nil {
+
+		return false
+	}
+
 	if len(bc.Blocks) == 0 {
 		return false
 	}
 
-	if err := bc.ValidateValidatorSet(pos); err != nil {
+	if err := bc.ValidateValidatorSet(
+		pos,
+	); err != nil {
 		return false
 	}
 
@@ -536,9 +1379,39 @@ func (bc *Blockchain) ValidateChain(
 		return false
 	}
 
+	if len(genesis.Humanity) != 0 {
+		return false
+	}
+
+	if len(genesis.ParticipationClaims) != 0 {
+		return false
+	}
+
+	if len(genesis.AuthorityChanges) != 0 {
+		return false
+	}
+
+	if len(genesis.AuthorityProposals) != 0 {
+		return false
+	}
+
+	if len(genesis.AuthorityExecutions) != 0 {
+		return false
+	}
+
+	if len(genesis.ReservedTransferProposals) != 0 {
+		return false
+	}
+
+	if len(genesis.ReservedTransferExecutions) != 0 {
+		return false
+	}
+
 	if CalculateHash(genesis) != genesis.Hash {
 		return false
 	}
+
+	var proposerEmission uint64
 
 	for i := 1; i < len(bc.Blocks); i++ {
 		current := bc.Blocks[i]
@@ -554,15 +1427,44 @@ func (bc *Blockchain) ValidateChain(
 
 		if current.Proposer == "" ||
 			current.Proposer == "GENESIS" {
+
 			return false
 		}
 
-		if current.Reward != BlockReward {
+		expectedProposerReward, err :=
+			consensus.BoundedPoolReward(
+				rewardPolicy.ProposerReward,
+				proposerEmission,
+				supplyPolicy.ProposerRewardPool,
+			)
+
+		if err != nil {
 			return false
 		}
 
+		if current.Reward != expectedProposerReward {
+			return false
+		}
+
+		proposerEmission +=
+			current.Reward
+
+		// Transactions, Useful Work, Humanity, PoUP,
+		// reserved emissions or governance can make a
+		// normal block non-empty.
 		if len(current.Transactions) == 0 &&
-			len(current.UsefulWork) == 0 {
+			len(current.UsefulWork) == 0 &&
+			len(current.Humanity) == 0 &&
+			len(current.ParticipationClaims) == 0 &&
+			len(current.ReservedAuthorizations) == 0 &&
+			len(current.ReservedGrants) == 0 &&
+			len(current.ReservedRevocations) == 0 &&
+			len(current.AuthorityChanges) == 0 &&
+			len(current.AuthorityProposals) == 0 &&
+			len(current.AuthorityExecutions) == 0 &&
+			len(current.ReservedTransferProposals) == 0 &&
+			len(current.ReservedTransferExecutions) == 0 {
+
 			return false
 		}
 
@@ -574,15 +1476,21 @@ func (bc *Blockchain) ValidateChain(
 			return false
 		}
 
-		if current.Proposer != expectedProposer.Address {
+		if current.Proposer !=
+			expectedProposer.Address {
+
 			return false
 		}
 
-		if CalculateHash(current) != current.Hash {
+		if CalculateHash(current) !=
+			current.Hash {
+
 			return false
 		}
 	}
 
+	// GetState also validates transactions, Useful Work,
+	// Humanity attestations and on-chain governance.
 	if _, err := bc.GetState(); err != nil {
 		return false
 	}

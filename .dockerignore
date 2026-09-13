@@ -1,0 +1,9 @@
+﻿.git
+.gitignore
+data
+*.exe
+*.pdf
+*.log
+Dockerfile*
+compose*.yaml
+docker-compose*.yml

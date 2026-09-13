@@ -8,22 +8,38 @@ import (
 	"sort"
 	"time"
 
+	"prism/internal/consensus"
+	"prism/internal/identity"
+	"prism/internal/poup"
+	"prism/internal/reserved"
 	"prism/internal/transaction"
 	"prism/internal/usefulwork"
 )
 
-const BlockReward uint64 = 5
-const UsefulWorkReward uint64 = 2
+// Compatibility aliases for code written before v0.20.
+// Consensus owns the canonical reward parameters.
+const BlockReward uint64 = consensus.DefaultProposerReward
+const UsefulWorkReward uint64 = consensus.DefaultUsefulWorkReward
 
 type Block struct {
-	Height       uint64                    `json:"height"`
-	Timestamp    time.Time                 `json:"timestamp"`
-	PreviousHash string                    `json:"previous_hash"`
-	Proposer     string                    `json:"proposer"`
-	Reward       uint64                    `json:"reward"`
-	Transactions []transaction.Transaction `json:"transactions"`
-	UsefulWork   []usefulwork.Proof        `json:"useful_work"`
-	Hash         string                    `json:"hash"`
+	Height                     uint64                               `json:"height"`
+	Timestamp                  time.Time                            `json:"timestamp"`
+	PreviousHash               string                               `json:"previous_hash"`
+	Proposer                   string                               `json:"proposer"`
+	Reward                     uint64                               `json:"reward"`
+	Transactions               []transaction.Transaction            `json:"transactions"`
+	UsefulWork                 []usefulwork.Proof                   `json:"useful_work"`
+	Humanity                   []identity.Attestation               `json:"humanity,omitempty"`
+	ParticipationClaims        []poup.Claim                         `json:"participation_claims,omitempty"`
+	ReservedAuthorizations     []reserved.Authorization             `json:"reserved_authorizations,omitempty"`
+	ReservedGrants             []reserved.Grant                     `json:"reserved_grants,omitempty"`
+	ReservedRevocations        []reserved.Revocation                `json:"reserved_revocations,omitempty"`
+	AuthorityChanges           []reserved.AuthorityChange           `json:"authority_changes,omitempty"`
+	AuthorityProposals         []reserved.AuthorityProposal         `json:"authority_proposals,omitempty"`
+	AuthorityExecutions        []reserved.AuthorityExecution        `json:"authority_executions,omitempty"`
+	ReservedTransferProposals  []reserved.ReservedTransferProposal  `json:"reserved_transfer_proposals,omitempty"`
+	ReservedTransferExecutions []reserved.ReservedTransferExecution `json:"reserved_transfer_executions,omitempty"`
+	Hash                       string                               `json:"hash"`
 }
 
 func CalculateHash(
@@ -44,8 +60,373 @@ func CalculateHash(
 		panic(err)
 	}
 
+	// Governed-reserved-transfer-aware hash format.
+	//
+	// Blocks containing reserved transfer proposals or executions use
+	// the v0.30 hash domain. Historical v0.29 queued-governance blocks
+	// continue using queued-governance-block-v1 below.
+	if len(block.ReservedTransferProposals) > 0 ||
+		len(block.ReservedTransferExecutions) > 0 {
+
+		return calculateQueuedGovernanceBlockHashV2(
+			block,
+			transactionData,
+			usefulWorkData,
+		)
+	}
+	// Queued-governance-aware hash format.
+	//
+	// This branch runs before the v0.27 authority-change branch so blocks
+	// containing queued governance commit every governance field.
+	//
+	// Existing Prism blocks with no AuthorityProposals or
+	// AuthorityExecutions retain their exact historical hash domains.
+	if len(block.AuthorityProposals) > 0 ||
+		len(block.AuthorityExecutions) > 0 {
+
+		return calculateQueuedGovernanceBlockHash(
+			block,
+			transactionData,
+			usefulWorkData,
+		)
+	}
+
+	// Reserved-authority-change-aware hash format.
+	//
+	// Blocks containing on-chain authority changes use the
+	// v0.27 hash domain. Existing Prism blocks retain their
+	// exact historical hash formats.
+	if len(block.AuthorityChanges) > 0 {
+		humanityData, err := json.Marshal(
+			block.Humanity,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		claimData, err := json.Marshal(
+			block.ParticipationClaims,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		authorizationData, err := json.Marshal(
+			block.ReservedAuthorizations,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		grantData, err := json.Marshal(
+			block.ReservedGrants,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		revocationData, err := json.Marshal(
+			block.ReservedRevocations,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		authorityChangeData, err := json.Marshal(
+			block.AuthorityChanges,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		payload := fmt.Sprintf(
+			"reserved-authority-change-block-v1|%d|%s|%s|%s|%d|%s|%s|%s|%s|%s|%s|%s|%s",
+			block.Height,
+			block.Timestamp.UTC().Format(
+				time.RFC3339Nano,
+			),
+			block.PreviousHash,
+			block.Proposer,
+			block.Reward,
+			string(transactionData),
+			string(usefulWorkData),
+			string(humanityData),
+			string(claimData),
+			string(authorizationData),
+			string(grantData),
+			string(revocationData),
+			string(authorityChangeData),
+		)
+
+		hash := sha256.Sum256(
+			[]byte(payload),
+		)
+
+		return hex.EncodeToString(
+			hash[:],
+		)
+	}
+
+	// Reserved-grant-revocation-aware hash format.
+	//
+	// Blocks containing revocations use the v0.24 hash
+	// domain. Older Prism blocks retain their exact
+	// historical hash formats.
+	if len(block.ReservedRevocations) > 0 {
+		humanityData, err := json.Marshal(
+			block.Humanity,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		claimData, err := json.Marshal(
+			block.ParticipationClaims,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		authorizationData, err := json.Marshal(
+			block.ReservedAuthorizations,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		grantData, err := json.Marshal(
+			block.ReservedGrants,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		revocationData, err := json.Marshal(
+			block.ReservedRevocations,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		payload := fmt.Sprintf(
+			"reserved-revocation-block-v1|%d|%s|%s|%s|%d|%s|%s|%s|%s|%s|%s|%s",
+			block.Height,
+			block.Timestamp.UTC().Format(
+				time.RFC3339Nano,
+			),
+			block.PreviousHash,
+			block.Proposer,
+			block.Reward,
+			string(transactionData),
+			string(usefulWorkData),
+			string(humanityData),
+			string(claimData),
+			string(authorizationData),
+			string(grantData),
+			string(revocationData),
+		)
+
+		hash := sha256.Sum256(
+			[]byte(payload),
+		)
+
+		return hex.EncodeToString(
+			hash[:],
+		)
+	}
+
+	// Threshold-reserved-grant-aware hash format.
+	//
+	// Blocks containing threshold grants use the v0.22 hash
+	// domain. Existing v0.21 reserved authorization blocks
+	// continue through the reserved-block-v1 path below.
+	if len(block.ReservedGrants) > 0 {
+		humanityData, err := json.Marshal(
+			block.Humanity,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		claimData, err := json.Marshal(
+			block.ParticipationClaims,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		authorizationData, err := json.Marshal(
+			block.ReservedAuthorizations,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		grantData, err := json.Marshal(
+			block.ReservedGrants,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		payload := fmt.Sprintf(
+			"reserved-grant-block-v1|%d|%s|%s|%s|%d|%s|%s|%s|%s|%s|%s",
+			block.Height,
+			block.Timestamp.UTC().Format(
+				time.RFC3339Nano,
+			),
+			block.PreviousHash,
+			block.Proposer,
+			block.Reward,
+			string(transactionData),
+			string(usefulWorkData),
+			string(humanityData),
+			string(claimData),
+			string(authorizationData),
+			string(grantData),
+		)
+
+		hash := sha256.Sum256(
+			[]byte(payload),
+		)
+
+		return hex.EncodeToString(
+			hash[:],
+		)
+	}
+
+	// Reserved-authorization-aware hash format.
+	//
+	// Existing blocks without reserved authorizations retain
+	// their exact legacy, humanity or PoUP hash formats below.
+	if len(block.ReservedAuthorizations) > 0 {
+		humanityData, err := json.Marshal(
+			block.Humanity,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		claimData, err := json.Marshal(
+			block.ParticipationClaims,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		reservedData, err := json.Marshal(
+			block.ReservedAuthorizations,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		payload := fmt.Sprintf(
+			"reserved-block-v1|%d|%s|%s|%s|%d|%s|%s|%s|%s|%s",
+			block.Height,
+			block.Timestamp.UTC().Format(
+				time.RFC3339Nano,
+			),
+			block.PreviousHash,
+			block.Proposer,
+			block.Reward,
+			string(transactionData),
+			string(usefulWorkData),
+			string(humanityData),
+			string(claimData),
+			string(reservedData),
+		)
+
+		hash := sha256.Sum256(
+			[]byte(payload),
+		)
+
+		return hex.EncodeToString(
+			hash[:],
+		)
+	}
+
+	// PoUP claim-aware hash format.
+	//
+	// Existing blocks without participation claims continue
+	// through the legacy or humanity-aware formats below.
+	if len(block.ParticipationClaims) > 0 {
+		humanityData, err := json.Marshal(
+			block.Humanity,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		claimData, err := json.Marshal(
+			block.ParticipationClaims,
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		payload := fmt.Sprintf(
+			"poup-v1|%d|%s|%s|%s|%d|%s|%s|%s|%s",
+			block.Height,
+			block.Timestamp.UTC().Format(
+				time.RFC3339Nano,
+			),
+			block.PreviousHash,
+			block.Proposer,
+			block.Reward,
+			string(transactionData),
+			string(usefulWorkData),
+			string(humanityData),
+			string(claimData),
+		)
+
+		hash := sha256.Sum256(
+			[]byte(payload),
+		)
+
+		return hex.EncodeToString(
+			hash[:],
+		)
+	}
+
+	// Legacy hash format.
+	//
+	// Blocks created before humanity attestations existed must
+	// retain exactly the same hash so existing Prism chains
+	// continue to validate.
+	if len(block.Humanity) == 0 {
+		payload := fmt.Sprintf(
+			"%d|%s|%s|%s|%d|%s|%s",
+			block.Height,
+			block.Timestamp.UTC().Format(
+				time.RFC3339Nano,
+			),
+			block.PreviousHash,
+			block.Proposer,
+			block.Reward,
+			string(transactionData),
+			string(usefulWorkData),
+		)
+
+		hash := sha256.Sum256(
+			[]byte(payload),
+		)
+
+		return hex.EncodeToString(
+			hash[:],
+		)
+	}
+
+	humanityData, err := json.Marshal(
+		block.Humanity,
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	// Humanity-aware hash format.
 	payload := fmt.Sprintf(
-		"%d|%s|%s|%s|%d|%s|%s",
+		"%d|%s|%s|%s|%d|%s|%s|%s",
 		block.Height,
 		block.Timestamp.UTC().Format(
 			time.RFC3339Nano,
@@ -55,13 +436,16 @@ func CalculateHash(
 		block.Reward,
 		string(transactionData),
 		string(usefulWorkData),
+		string(humanityData),
 	)
 
 	hash := sha256.Sum256(
 		[]byte(payload),
 	)
 
-	return hex.EncodeToString(hash[:])
+	return hex.EncodeToString(
+		hash[:],
+	)
 }
 
 func CreateGenesisBlock(

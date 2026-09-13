@@ -2,13 +2,16 @@ package main
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"prism/internal/blockchain"
 	"prism/internal/consensus"
+	"prism/internal/identity"
 	"prism/internal/mempool"
 	"prism/internal/participation"
 	"prism/internal/storage"
@@ -20,10 +23,16 @@ import (
 const dataDir = "data"
 
 func main() {
-	fmt.Println("====================================")
-	fmt.Println("         PRISM NODE v0.16")
-	fmt.Println("====================================")
-	fmt.Println()
+	jsonWorkLog := len(os.Args) == 3 &&
+		strings.EqualFold(os.Args[1], "worklog") &&
+		os.Args[2] == "--json"
+
+	if !jsonWorkLog {
+		fmt.Println("====================================")
+		fmt.Println("         PRISM NODE v0.35.1")
+		fmt.Println("====================================")
+		fmt.Println()
+	}
 
 	if len(os.Args) < 2 {
 		printUsage()
@@ -43,12 +52,60 @@ func main() {
 		return
 	}
 
+	if command == "node-governance-propose" {
+		runNodeGovernanceProposeCommand(
+			os.Args[2:],
+		)
+		return
+	}
+
+	if command == "node-governance-execute" {
+		runNodeGovernanceExecuteCommand(
+			os.Args[2:],
+		)
+		return
+	}
+
+	if command == "node-transfer-propose" {
+		runNodeReservedTransferProposeCommand(
+			os.Args[2:],
+		)
+		return
+	}
+
+	if command == "node-transfer-execute" {
+		runNodeReservedTransferExecuteCommand(
+			os.Args[2:],
+		)
+		return
+	}
+
+	if command == "node-human" {
+		runNodeHumanCommand(os.Args[2:])
+		return
+	}
+
+	if command == "node-send" {
+		runNodeSendCommand(os.Args[2:])
+		return
+	}
+
+	if command == "api" {
+		runAPICommand(os.Args[2:])
+		return
+	}
+
+	if command == "mine-api" {
+		runMineAPICommand(os.Args[2:])
+		return
+	}
+
 	chain, pos, wallets, created, err := loadOrCreateNode()
 	if err != nil {
 		panic(err)
 	}
 
-	if created {
+	if created && !jsonWorkLog {
 		fmt.Println("New Prism state created.")
 		fmt.Println()
 	}
@@ -80,12 +137,58 @@ func main() {
 			wallets,
 		)
 
+	case "reserved":
+		runReservedCommand(
+			os.Args[2:],
+			chain,
+			pos,
+			wallets,
+		)
+
 	case "participation":
 		runParticipation(
 			chain,
 			pos,
 			wallets,
 		)
+
+	case "participate":
+		if len(os.Args) != 3 {
+			fmt.Println("Usage:")
+			fmt.Println(`.\prism.exe participate Bob`)
+			return
+		}
+
+		if err := runParticipate(
+			os.Args[2],
+			chain,
+			pos,
+			wallets,
+		); err != nil {
+			fmt.Println("Participation rejected:")
+			fmt.Println(err)
+		}
+
+	case "human":
+		if len(os.Args) != 5 {
+			fmt.Println("Usage:")
+			fmt.Println(
+				`.\prism.exe human Alice proof_001 nullifier_001`,
+			)
+			return
+		}
+
+		if err := runHuman(
+			os.Args[2],
+			os.Args[3],
+			os.Args[4],
+			chain,
+			pos,
+			wallets,
+		); err != nil {
+			fmt.Println("Humanity proof rejected:")
+			fmt.Println(err)
+		}
 
 	case "send":
 		if len(os.Args) != 5 {
@@ -124,6 +227,35 @@ func main() {
 			fmt.Println(err)
 		}
 
+	case "worklog":
+		if len(os.Args) == 2 {
+			runWorkLog(
+				chain,
+				wallets,
+			)
+			return
+		}
+
+		if len(os.Args) != 3 ||
+			os.Args[2] != "--json" {
+
+			fmt.Println("Usage:")
+			fmt.Println(`.\prism.exe worklog`)
+			fmt.Println(`.\prism.exe worklog --json`)
+			return
+		}
+
+		if err := runWorkLogJSON(
+			chain,
+			wallets,
+		); err != nil {
+			fmt.Fprintln(
+				os.Stderr,
+				"Work log JSON failed:",
+				err,
+			)
+		}
+
 	case "help":
 		printUsage()
 
@@ -155,13 +287,40 @@ func runStatus(
 
 	fmt.Println("=== PRISM STATUS ===")
 
-	fmt.Printf("Blocks:       %d\n", len(chain.Blocks))
-	fmt.Printf("Height:       %d\n", lastBlock.Height)
-	fmt.Printf("Validators:   %d\n", len(pos.Validators))
-	fmt.Printf("Total stake:  %d PRISM\n", pos.TotalStake())
-	fmt.Printf("Total supply: %d PRISM\n", totalSupply)
-	fmt.Printf("Chain valid:  %t\n", chain.ValidateChain(pos))
-	fmt.Println("Last hash:", lastBlock.Hash)
+	fmt.Printf(
+		"Blocks:       %d\n",
+		len(chain.Blocks),
+	)
+
+	fmt.Printf(
+		"Height:       %d\n",
+		lastBlock.Height,
+	)
+
+	fmt.Printf(
+		"Validators:   %d\n",
+		len(pos.Validators),
+	)
+
+	fmt.Printf(
+		"Total stake:  %d PRISM\n",
+		pos.TotalStake(),
+	)
+
+	fmt.Printf(
+		"Total supply: %d PRISM\n",
+		totalSupply,
+	)
+
+	fmt.Printf(
+		"Chain valid:  %t\n",
+		chain.ValidateChain(pos),
+	)
+
+	fmt.Println(
+		"Last hash:",
+		lastBlock.Hash,
+	)
 }
 
 func runWallets(
@@ -183,7 +342,10 @@ func runWallets(
 		}
 
 		fmt.Println(name)
-		fmt.Println(" ", currentWallet.Address)
+		fmt.Println(
+			" ",
+			currentWallet.Address,
+		)
 	}
 }
 
@@ -207,7 +369,9 @@ func runBalance(
 		panic(err)
 	}
 
-	available, err := chain.AvailableBalanceOf(address)
+	available, err := chain.AvailableBalanceOf(
+		address,
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -219,12 +383,35 @@ func runBalance(
 		panic(err)
 	}
 
-	fmt.Printf("=== BALANCE: %s ===\n", label)
-	fmt.Println("Address:", address)
-	fmt.Printf("Total:     %d PRISM\n", total)
-	fmt.Printf("Locked:    %d PRISM\n", locked)
-	fmt.Printf("Available: %d PRISM\n", available)
-	fmt.Printf("Nonce:     %d\n", nonce)
+	fmt.Printf(
+		"=== BALANCE: %s ===\n",
+		label,
+	)
+
+	fmt.Println(
+		"Address:",
+		address,
+	)
+
+	fmt.Printf(
+		"Total:     %d PRISM\n",
+		total,
+	)
+
+	fmt.Printf(
+		"Locked:    %d PRISM\n",
+		locked,
+	)
+
+	fmt.Printf(
+		"Available: %d PRISM\n",
+		available,
+	)
+
+	fmt.Printf(
+		"Nonce:     %d\n",
+		nonce,
+	)
 }
 
 func runValidators(
@@ -262,7 +449,9 @@ func runValidators(
 
 		fmt.Println(
 			"   Address:",
-			shortAddress(validator.Address),
+			shortAddress(
+				validator.Address,
+			),
 		)
 
 		fmt.Printf(
@@ -295,6 +484,7 @@ func runParticipation(
 	scores, err := participation.Calculate(
 		chain,
 		pos,
+		chain,
 	)
 	if err != nil {
 		fmt.Println(
@@ -309,9 +499,15 @@ func runParticipation(
 		"=== PROOF OF USEFUL PARTICIPATION ===",
 	)
 
+	fmt.Println(
+		"Human verification: ON-CHAIN REQUIRED",
+	)
+
+	fmt.Println()
+
 	if len(scores) == 0 {
 		fmt.Println(
-			"No participation recorded yet.",
+			"No on-chain humanity-verified participation recorded yet.",
 		)
 		return
 	}
@@ -331,6 +527,10 @@ func runParticipation(
 		fmt.Println(
 			"   Address:",
 			shortAddress(score.Address),
+		)
+
+		fmt.Println(
+			"   Humanity: ON-CHAIN VERIFIED",
 		)
 
 		fmt.Printf(
@@ -358,6 +558,162 @@ func runParticipation(
 			score.ParticipationScore,
 		)
 	}
+}
+
+func runHuman(
+	participantIdentifier string,
+	proofText string,
+	nullifier string,
+	chain *blockchain.Blockchain,
+	pos *consensus.ProofOfStake,
+	wallets map[string]*wallet.Wallet,
+) error {
+	const worldIDAction = "prism_poup"
+
+	address, participantName, err := resolveAddress(
+		participantIdentifier,
+		wallets,
+	)
+	if err != nil {
+		return err
+	}
+
+	if chain.IsVerified(address) {
+		return fmt.Errorf(
+			"prism address already humanity verified",
+		)
+	}
+
+	verifier, err := identity.NewWorldIDVerifier(
+		filepath.Join(
+			dataDir,
+			"worldid-nullifiers.json",
+		),
+	)
+	if err != nil {
+		return err
+	}
+
+	proof := identity.WorldIDProof{
+		Nullifier: nullifier,
+		Proof:     proofText,
+		Action:    worldIDAction,
+	}
+
+	if err := verifier.Verify(
+		proof,
+		worldIDAction,
+	); err != nil {
+		return err
+	}
+
+	attestation, err := identity.NewWorldIDAttestation(
+		address,
+		nullifier,
+		worldIDAction,
+	)
+	if err != nil {
+		return err
+	}
+
+	lastBlock := chain.Blocks[len(chain.Blocks)-1]
+
+	proposer, err := pos.SelectProposer(
+		lastBlock.Hash,
+		lastBlock.Height+1,
+	)
+	if err != nil {
+		return err
+	}
+
+	block, err := chain.AddHumanityBlock(
+		[]identity.Attestation{
+			attestation,
+		},
+		proposer.Address,
+		pos,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := storage.Save(
+		dataDir,
+		chain,
+		pos,
+		wallets,
+	); err != nil {
+		return err
+	}
+
+	fmt.Println(
+		"=== HUMANITY ATTESTATION CONFIRMED ===",
+	)
+
+	fmt.Println()
+
+	fmt.Println(
+		"Participant:",
+		participantName,
+	)
+
+	fmt.Println(
+		"Address:",
+		shortAddress(address),
+	)
+
+	fmt.Println(
+		"Provider:",
+		attestation.Provider,
+	)
+
+	fmt.Println(
+		"Action:",
+		attestation.Action,
+	)
+
+	fmt.Println(
+		"Proof: VERIFIED",
+	)
+
+	fmt.Println(
+		"Nullifier hash:",
+		attestation.NullifierHash,
+	)
+
+	fmt.Println(
+		"Replay check: PASSED",
+	)
+
+	fmt.Println(
+		"Humanity: ON-CHAIN",
+	)
+
+	fmt.Println(
+		"Block:",
+		block.Height,
+	)
+
+	fmt.Println(
+		"PoS proposer:",
+		walletNameForAddress(
+			block.Proposer,
+			wallets,
+		),
+	)
+
+	fmt.Println(
+		"Block hash:",
+		block.Hash,
+	)
+
+	fmt.Println()
+
+	fmt.Println(
+		"Eligible for Proof of Useful Participation: YES",
+	)
+
+	return nil
 }
 
 func runSend(
@@ -568,6 +924,20 @@ func runUsefulWork(
 
 	lastBlock := chain.Blocks[len(chain.Blocks)-1]
 
+	emission, err := chain.GetEmissionState()
+	if err != nil {
+		return err
+	}
+
+	workerReward, err := mineRewardForWork(
+		lastBlock.Height+1,
+		proof.Score,
+		emission.UsefulWorkEmission,
+	)
+	if err != nil {
+		return err
+	}
+
 	proposer, err := pos.SelectProposer(
 		lastBlock.Hash,
 		lastBlock.Height+1,
@@ -628,7 +998,7 @@ func runUsefulWork(
 
 	fmt.Printf(
 		"Worker reward: %d PRISM\n",
-		blockchain.UsefulWorkReward,
+		workerReward,
 	)
 
 	fmt.Printf(
@@ -657,6 +1027,190 @@ func runUsefulWork(
 	return nil
 }
 
+func runWorkLog(
+	chain *blockchain.Blockchain,
+	wallets map[string]*wallet.Wallet,
+) {
+	fmt.Println("=== USEFUL WORK HISTORY ===")
+	fmt.Println()
+
+	rewardsByProof, err := usefulWorkRewardsByProof(chain)
+	if err != nil {
+		fmt.Println(
+			"Cannot calculate useful work rewards:",
+			err,
+		)
+		return
+	}
+
+	found := false
+
+	for blockIndex := len(chain.Blocks) - 1; blockIndex >= 0; blockIndex-- {
+		block := chain.Blocks[blockIndex]
+
+		for proofIndex := len(block.UsefulWork) - 1; proofIndex >= 0; proofIndex-- {
+			proof := block.UsefulWork[proofIndex]
+			found = true
+
+			fmt.Printf(
+				"Block:       %d\n",
+				block.Height,
+			)
+
+			fmt.Println(
+				"Worker:",
+				walletNameForAddress(
+					proof.Worker,
+					wallets,
+				),
+			)
+
+			fmt.Println(
+				"Address:",
+				shortAddress(proof.Worker),
+			)
+
+			fmt.Println(
+				"Task:",
+				proof.Task.Type,
+			)
+
+			fmt.Println(
+				"Task ID:",
+				proof.Task.ID,
+			)
+
+			fmt.Printf(
+				"Result:      %d\n",
+				proof.Result,
+			)
+			if len(proof.ResultValues) != 0 {
+				fmt.Printf(
+					"Result values: %v\n",
+					proof.ResultValues,
+				)
+			}
+
+			fmt.Printf(
+				"Score:       %d\n",
+				proof.Score,
+			)
+
+			fmt.Printf(
+				"Reward:      %d PRISM\n",
+				rewardsByProof[proof.ID],
+			)
+
+			if err := usefulwork.VerifyProof(
+				proof,
+			); err != nil {
+				fmt.Println(
+					"Proof:       INVALID",
+				)
+
+				fmt.Println(
+					"Error:",
+					err,
+				)
+			} else {
+				fmt.Println(
+					"Proof:       VERIFIED",
+				)
+			}
+
+			fmt.Println(
+				"Output hash:",
+				proof.OutputHash,
+			)
+
+			fmt.Println(
+				"Proof ID:",
+				proof.ID,
+			)
+
+			fmt.Println(
+				"Block hash:",
+				block.Hash,
+			)
+
+			fmt.Println()
+		}
+	}
+
+	if !found {
+		fmt.Println(
+			"No useful work recorded yet.",
+		)
+	}
+}
+
+func runWorkLogJSON(
+	chain *blockchain.Blockchain,
+	wallets map[string]*wallet.Wallet,
+) error {
+	entries := make(
+		[]map[string]any,
+		0,
+	)
+
+	rewardsByProof, err := usefulWorkRewardsByProof(chain)
+	if err != nil {
+		return err
+	}
+
+	for blockIndex := len(chain.Blocks) - 1; blockIndex >= 0; blockIndex-- {
+		block := chain.Blocks[blockIndex]
+
+		for proofIndex := len(block.UsefulWork) - 1; proofIndex >= 0; proofIndex-- {
+			proof := block.UsefulWork[proofIndex]
+
+			verifyErr := usefulwork.VerifyProof(
+				proof,
+			)
+
+			entry := map[string]any{
+				"block": block.Height,
+				"worker": walletNameForAddress(
+					proof.Worker,
+					wallets,
+				),
+				"worker_address": proof.Worker,
+				"task":           proof.Task.Type,
+				"task_id":        proof.Task.ID,
+				"result":         proof.Result,
+				"result_values":  proof.ResultValues,
+				"score":          proof.Score,
+				"reward":         rewardsByProof[proof.ID],
+				"verified":       verifyErr == nil,
+				"output_hash":    proof.OutputHash,
+				"proof_id":       proof.ID,
+				"block_hash":     block.Hash,
+			}
+
+			if verifyErr != nil {
+				entry["verification_error"] =
+					verifyErr.Error()
+			}
+
+			entries = append(
+				entries,
+				entry,
+			)
+		}
+	}
+
+	encoder := json.NewEncoder(
+		os.Stdout,
+	)
+
+	encoder.SetIndent(
+		"",
+		"  ",
+	)
+
+	return encoder.Encode(entries)
+}
+
 func loadOrCreateNode() (
 	*blockchain.Blockchain,
 	*consensus.ProofOfStake,
@@ -681,6 +1235,13 @@ func loadOrCreateNode() (
 
 	chain, pos, wallets, err := createNode()
 	if err != nil {
+		return nil, nil, nil, false, err
+	}
+
+	if err := configureDevReservedAuthorities(
+		chain,
+		wallets,
+	); err != nil {
 		return nil, nil, nil, false, err
 	}
 
@@ -964,11 +1525,35 @@ func printUsage() {
 	)
 
 	fmt.Println(
+		`  .\prism.exe reserved pools`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe human Alice proof_001 nullifier_001`,
+	)
+
+	fmt.Println(
 		`  .\prism.exe send Alice Bob 25`,
 	)
 
 	fmt.Println(
 		`  .\prism.exe work Charlie 3 4 5`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe worklog`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe worklog --json`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe api --data data/node-7001 --port 8080`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe mine-api -data .\data Alice`,
 	)
 
 	fmt.Println(
@@ -981,6 +1566,26 @@ func printUsage() {
 
 	fmt.Println(
 		`  .\prism.exe node-produce --port 7001`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe node-governance-propose --port 7001 treasury add <authority> 1`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe node-governance-execute --port 7001 <proposal-id>`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe node-transfer-propose --port 7001 treasury Bob 100 1`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe node-transfer-execute --port 7001 <proposal-id>`,
+	)
+
+	fmt.Println(
+		`  .\prism.exe node-human --data data/node-7001 Alice proof_001 nullifier_001`,
 	)
 
 	fmt.Println(

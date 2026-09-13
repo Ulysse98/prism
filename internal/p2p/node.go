@@ -12,27 +12,36 @@ import (
 
 	"prism/internal/blockchain"
 	"prism/internal/consensus"
+	"prism/internal/mempool"
 	"prism/internal/storage"
+	"prism/internal/transaction"
 	"prism/internal/wallet"
 )
 
-const ProtocolVersion = "0.16"
+const ProtocolVersion = "0.35"
 
 const (
-	MessageHello    = "hello"
-	MessageGetState = "get_state"
-	MessageState    = "state"
+	MessageHello          = "hello"
+	MessageGetState       = "get_state"
+	MessageState          = "state"
+	MessageGetPeers       = "get_peers"
+	MessagePeers          = "peers"
+	MessageTransaction    = "transaction"
+	MessageTransactionAck = "transaction_ack"
+	MessageBlock          = "block"
+	MessageBlockAck       = "block_ack"
 )
 
 type HelloMessage struct {
-	Type        string `json:"type"`
-	Version     string `json:"version"`
-	NodeID      string `json:"node_id"`
-	ListenAddr  string `json:"listen_addr"`
-	ChainID     string `json:"chain_id"`
-	GenesisHash string `json:"genesis_hash"`
-	Height      uint64 `json:"height"`
-	LastHash    string `json:"last_hash"`
+	Type             string `json:"type"`
+	Version          string `json:"version"`
+	NodeID           string `json:"node_id"`
+	ListenAddr       string `json:"listen_addr"`
+	ChainID          string `json:"chain_id"`
+	ConfigCommitment string `json:"config_commitment,omitempty"`
+	GenesisHash      string `json:"genesis_hash"`
+	Height           uint64 `json:"height"`
+	LastHash         string `json:"last_hash"`
 }
 
 type StateRequest struct {
@@ -40,10 +49,43 @@ type StateRequest struct {
 }
 
 type StateResponse struct {
-	Type       string                 `json:"type"`
-	ChainID    string                 `json:"chain_id"`
-	Blockchain *blockchain.Blockchain `json:"blockchain"`
-	Validators []consensus.Validator  `json:"validators"`
+	Type             string                 `json:"type"`
+	ChainID          string                 `json:"chain_id"`
+	ConfigCommitment string                 `json:"config_commitment,omitempty"`
+	Blockchain       *blockchain.Blockchain `json:"blockchain"`
+	Validators       []consensus.Validator  `json:"validators"`
+}
+
+type PeersResponse struct {
+	Type    string              `json:"type"`
+	ChainID string              `json:"chain_id"`
+	Peers   []PeerAdvertisement `json:"peers"`
+}
+
+type TransactionMessage struct {
+	Type        string                  `json:"type"`
+	ChainID     string                  `json:"chain_id"`
+	Transaction transaction.Transaction `json:"transaction"`
+}
+
+type TransactionAck struct {
+	Type          string `json:"type"`
+	TransactionID string `json:"transaction_id"`
+	Accepted      bool   `json:"accepted"`
+	Error         string `json:"error,omitempty"`
+}
+
+type BlockMessage struct {
+	Type    string           `json:"type"`
+	ChainID string           `json:"chain_id"`
+	Block   blockchain.Block `json:"block"`
+}
+
+type BlockAck struct {
+	Type      string `json:"type"`
+	BlockHash string `json:"block_hash"`
+	Accepted  bool   `json:"accepted"`
+	Error     string `json:"error,omitempty"`
 }
 
 type Server struct {
@@ -54,6 +96,13 @@ type Server struct {
 	Chain   *blockchain.Blockchain
 	PoS     *consensus.ProofOfStake
 	Wallets map[string]*wallet.Wallet
+	Peers   *PeerBook
+	Pool    *mempool.Mempool
+
+	poolMu sync.Mutex
+
+	dialMu  sync.Mutex
+	dialing map[string]struct{}
 
 	mu sync.RWMutex
 }
@@ -73,6 +122,9 @@ func NewServer(
 		Chain:      chain,
 		PoS:        pos,
 		Wallets:    wallets,
+		Peers:      NewPeerBook(),
+		Pool:       mempool.New(),
+		dialing:    make(map[string]struct{}),
 	}
 }
 
@@ -81,12 +133,70 @@ func MakeNodeID(seed string) string {
 	return hex.EncodeToString(hash[:8])
 }
 
-func MakeChainID(genesisHash string) string {
-	hash := sha256.Sum256(
-		[]byte("prism-chain|" + genesisHash),
+func MakeChainID(
+	genesisHash string,
+) string {
+	return blockchain.MakeChainID(
+		genesisHash,
 	)
+}
 
-	return "prism-" + hex.EncodeToString(hash[:8])
+func networkIdentity(
+	chain *blockchain.Blockchain,
+) (
+	string,
+	string,
+	error,
+) {
+	if chain == nil {
+		return "", "",
+			fmt.Errorf(
+				"blockchain cannot be nil",
+			)
+	}
+
+	if len(chain.Blocks) == 0 {
+		return "", "",
+			fmt.Errorf(
+				"blockchain has no genesis block",
+			)
+	}
+
+	configCommitment := ""
+
+	if !chain.Config.IsLegacy() {
+		commitment, err :=
+			chain.Config.Commitment()
+
+		if err != nil {
+			return "", "",
+				fmt.Errorf(
+					"invalid chain config: %w",
+					err,
+				)
+		}
+
+		configCommitment =
+			commitment
+	}
+
+	chainID, err :=
+		blockchain.MakeChainIDFromConfigCommitment(
+			chain.Blocks[0].Hash,
+			configCommitment,
+		)
+
+	if err != nil {
+		return "", "",
+			fmt.Errorf(
+				"cannot derive chain identity: %w",
+				err,
+			)
+	}
+
+	return chainID,
+		configCommitment,
+		nil
 }
 
 func (s *Server) Run(peer string) error {
@@ -166,6 +276,8 @@ func (s *Server) Run(peer string) error {
 				err,
 			)
 		}
+
+		go s.syncPeerLoop(peer)
 	}
 
 	fmt.Println()
@@ -176,7 +288,38 @@ func (s *Server) Run(peer string) error {
 	return <-errCh
 }
 
-func (s *Server) Connect(address string) error {
+func (s *Server) syncPeerLoop(
+	peer string,
+) {
+	ticker := time.NewTicker(
+		5 * time.Second,
+	)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if err := s.Connect(peer); err != nil {
+			fmt.Println()
+			fmt.Println(
+				"Background peer sync failed:",
+				err,
+			)
+		}
+	}
+}
+
+func (s *Server) Connect(
+	address string,
+) error {
+	return s.connect(
+		address,
+		"",
+	)
+}
+
+func (s *Server) connect(
+	address string,
+	expectedNodeID string,
+) error {
 	conn, err := net.DialTimeout(
 		"tcp",
 		address,
@@ -213,6 +356,37 @@ func (s *Server) Connect(address string) error {
 		return err
 	}
 
+	if remote.NodeID == s.NodeID {
+		return fmt.Errorf(
+			"refusing self connection",
+		)
+	}
+
+	if expectedNodeID != "" &&
+		remote.NodeID != expectedNodeID {
+
+		return fmt.Errorf(
+			"discovered peer identity mismatch: expected=%s received=%s",
+			expectedNodeID,
+			remote.NodeID,
+		)
+	}
+
+	if expectedNodeID != "" &&
+		remote.ChainID != localBefore.ChainID {
+
+		return fmt.Errorf(
+			"discovered peer network mismatch: local=%s remote=%s",
+			localBefore.ChainID,
+			remote.ChainID,
+		)
+	}
+
+	s.Peers.UpsertAt(
+		remote,
+		address,
+	)
+
 	fmt.Println("Handshake accepted.")
 	s.printPeer(remote)
 
@@ -229,24 +403,23 @@ func (s *Server) Connect(address string) error {
 		fmt.Println(
 			"Different network genesis detected.",
 		)
-
 		fmt.Println(
 			"Local node only has its bootstrap Genesis.",
 		)
-
 		fmt.Println(
 			"Requesting authoritative peer state...",
 		)
 
-		return s.requestAndAdoptState(
+		if err := s.requestAndAdoptState(
 			encoder,
 			decoder,
 			remote,
 			true,
-		)
-	}
+		); err != nil {
+			return err
+		}
 
-	if remote.Height > localBefore.Height {
+	} else if remote.Height > localBefore.Height {
 		fmt.Println()
 
 		fmt.Printf(
@@ -259,15 +432,16 @@ func (s *Server) Connect(address string) error {
 			"Requesting synchronization...",
 		)
 
-		return s.requestAndAdoptState(
+		if err := s.requestAndAdoptState(
 			encoder,
 			decoder,
 			remote,
 			false,
-		)
-	}
+		); err != nil {
+			return err
+		}
 
-	if remote.Height == localBefore.Height &&
+	} else if remote.Height == localBefore.Height &&
 		remote.LastHash != localBefore.LastHash {
 
 		return fmt.Errorf(
@@ -278,7 +452,378 @@ func (s *Server) Connect(address string) error {
 		)
 	}
 
+	return s.requestPeers(
+		encoder,
+		decoder,
+		remote,
+	)
+}
+
+func (s *Server) SendTransaction(
+	address string,
+	tx transaction.Transaction,
+) error {
+	if err := transaction.ValidateSigned(tx); err != nil {
+		return fmt.Errorf(
+			"invalid outgoing transaction: %w",
+			err,
+		)
+	}
+
+	conn, err := net.DialTimeout(
+		"tcp",
+		address,
+		5*time.Second,
+	)
+	if err != nil {
+		return err
+	}
+
+	defer conn.Close()
+
+	if err := conn.SetDeadline(
+		time.Now().Add(10 * time.Second),
+	); err != nil {
+		return err
+	}
+
+	encoder := json.NewEncoder(conn)
+	decoder := json.NewDecoder(conn)
+
+	local := s.hello()
+
+	if err := encoder.Encode(local); err != nil {
+		return err
+	}
+
+	var remote HelloMessage
+
+	if err := decoder.Decode(&remote); err != nil {
+		return err
+	}
+
+	if err := validateHello(remote); err != nil {
+		return err
+	}
+
+	if remote.NodeID == s.NodeID {
+		return fmt.Errorf(
+			"refusing self transaction submission",
+		)
+	}
+
+	if remote.ChainID != local.ChainID {
+		return fmt.Errorf(
+			"transaction peer network mismatch: local=%s remote=%s",
+			local.ChainID,
+			remote.ChainID,
+		)
+	}
+
+	message := TransactionMessage{
+		Type:        MessageTransaction,
+		ChainID:     local.ChainID,
+		Transaction: tx,
+	}
+
+	if err := encoder.Encode(message); err != nil {
+		return err
+	}
+
+	var ack TransactionAck
+
+	if err := decoder.Decode(&ack); err != nil {
+		return err
+	}
+
+	if ack.Type != MessageTransactionAck {
+		return fmt.Errorf(
+			"unexpected transaction response: %s",
+			ack.Type,
+		)
+	}
+
+	if ack.TransactionID != tx.ID {
+		return fmt.Errorf(
+			"transaction acknowledgement ID mismatch",
+		)
+	}
+
+	if !ack.Accepted {
+		if ack.Error == "" {
+			ack.Error = "transaction rejected"
+		}
+
+		return fmt.Errorf(
+			"%s",
+			ack.Error,
+		)
+	}
+
 	return nil
+}
+
+func (s *Server) SendBlock(
+	address string,
+	block blockchain.Block,
+) error {
+	if block.Hash == "" {
+		return fmt.Errorf(
+			"outgoing block hash cannot be empty",
+		)
+	}
+
+	if blockchain.CalculateHash(block) != block.Hash {
+		return fmt.Errorf(
+			"invalid outgoing block hash",
+		)
+	}
+
+	conn, err := net.DialTimeout(
+		"tcp",
+		address,
+		5*time.Second,
+	)
+	if err != nil {
+		return err
+	}
+
+	defer conn.Close()
+
+	if err := conn.SetDeadline(
+		time.Now().Add(10 * time.Second),
+	); err != nil {
+		return err
+	}
+
+	encoder := json.NewEncoder(conn)
+	decoder := json.NewDecoder(conn)
+
+	local := s.hello()
+
+	if err := encoder.Encode(local); err != nil {
+		return err
+	}
+
+	var remote HelloMessage
+
+	if err := decoder.Decode(&remote); err != nil {
+		return err
+	}
+
+	if err := validateHello(remote); err != nil {
+		return err
+	}
+
+	if remote.NodeID == s.NodeID {
+		return fmt.Errorf(
+			"refusing self block submission",
+		)
+	}
+
+	if remote.ChainID != local.ChainID {
+		return fmt.Errorf(
+			"block peer network mismatch: local=%s remote=%s",
+			local.ChainID,
+			remote.ChainID,
+		)
+	}
+
+	message := BlockMessage{
+		Type:    MessageBlock,
+		ChainID: local.ChainID,
+		Block:   block,
+	}
+
+	if err := encoder.Encode(message); err != nil {
+		return err
+	}
+
+	var ack BlockAck
+
+	if err := decoder.Decode(&ack); err != nil {
+		return err
+	}
+
+	if ack.Type != MessageBlockAck {
+		return fmt.Errorf(
+			"unexpected block response: %s",
+			ack.Type,
+		)
+	}
+
+	if ack.BlockHash != block.Hash {
+		return fmt.Errorf(
+			"block acknowledgement hash mismatch",
+		)
+	}
+
+	if !ack.Accepted {
+		if ack.Error == "" {
+			ack.Error = "block rejected"
+		}
+
+		return fmt.Errorf(
+			"%s",
+			ack.Error,
+		)
+	}
+
+	return nil
+}
+
+func (s *Server) requestPeers(
+	encoder *json.Encoder,
+	decoder *json.Decoder,
+	remote HelloMessage,
+) error {
+	request := StateRequest{
+		Type: MessageGetPeers,
+	}
+
+	if err := encoder.Encode(request); err != nil {
+		return err
+	}
+
+	var response PeersResponse
+
+	if err := decoder.Decode(&response); err != nil {
+		return err
+	}
+
+	if response.Type != MessagePeers {
+		return fmt.Errorf(
+			"unexpected peer discovery response: %s",
+			response.Type,
+		)
+	}
+
+	local := s.hello()
+
+	if response.ChainID != remote.ChainID ||
+		response.ChainID != local.ChainID {
+
+		return fmt.Errorf(
+			"peer discovery Chain ID mismatch",
+		)
+	}
+
+	fmt.Println()
+
+	seen := make(map[string]struct{})
+	discovered := 0
+
+	for _, peer := range response.Peers {
+		if peer.NodeID == "" ||
+			peer.Address == "" ||
+			peer.NodeID == s.NodeID ||
+			peer.NodeID == remote.NodeID {
+
+			continue
+		}
+
+		if _, ok := seen[peer.NodeID]; ok {
+			continue
+		}
+
+		seen[peer.NodeID] = struct{}{}
+
+		if s.Peers.Has(peer.NodeID) {
+			continue
+		}
+
+		if _, _, err := net.SplitHostPort(
+			peer.Address,
+		); err != nil {
+
+			fmt.Println(
+				"Ignoring malformed discovered peer:",
+				peer.Address,
+			)
+			continue
+		}
+
+		discovered++
+
+		fmt.Printf(
+			"Discovered peer: %s at %s height=%d\n",
+			peer.NodeID,
+			peer.Address,
+			peer.Height,
+		)
+
+		go s.connectDiscoveredPeer(
+			peer,
+		)
+	}
+
+	fmt.Printf(
+		"Peer discovery: %d new peer(s).\n",
+		discovered,
+	)
+
+	return nil
+}
+
+func (s *Server) connectDiscoveredPeer(
+	peer PeerAdvertisement,
+) {
+	if peer.NodeID == "" ||
+		peer.Address == "" ||
+		s.Peers.Has(peer.NodeID) {
+
+		return
+	}
+
+	s.dialMu.Lock()
+
+	if s.dialing == nil {
+		s.dialing = make(
+			map[string]struct{},
+		)
+	}
+
+	if _, exists := s.dialing[peer.NodeID]; exists {
+		s.dialMu.Unlock()
+		return
+	}
+
+	s.dialing[peer.NodeID] = struct{}{}
+	s.dialMu.Unlock()
+
+	defer func() {
+		s.dialMu.Lock()
+		delete(
+			s.dialing,
+			peer.NodeID,
+		)
+		s.dialMu.Unlock()
+	}()
+
+	fmt.Printf(
+		"Connecting to discovered peer: %s at %s\n",
+		peer.NodeID,
+		peer.Address,
+	)
+
+	if err := s.connect(
+		peer.Address,
+		peer.NodeID,
+	); err != nil {
+
+		fmt.Printf(
+			"Discovered peer connection failed: %s: %v\n",
+			peer.NodeID,
+			err,
+		)
+		return
+	}
+
+	fmt.Printf(
+		"Discovered peer connected: %s at %s\n",
+		peer.NodeID,
+		peer.Address,
+	)
 }
 
 func (s *Server) requestAndAdoptState(
@@ -316,6 +861,14 @@ func (s *Server) requestAndAdoptState(
 		)
 	}
 
+	if response.ConfigCommitment !=
+		expectedRemote.ConfigCommitment {
+
+		return fmt.Errorf(
+			"state config commitment mismatch",
+		)
+	}
+
 	if response.Blockchain == nil {
 		return fmt.Errorf(
 			"peer returned an empty blockchain",
@@ -328,11 +881,27 @@ func (s *Server) requestAndAdoptState(
 		)
 	}
 
-	genesisHash := response.Blockchain.Blocks[0].Hash
+	calculatedChainID,
+		calculatedConfigCommitment,
+		identityErr :=
+		networkIdentity(
+			response.Blockchain,
+		)
 
-	calculatedChainID := MakeChainID(
-		genesisHash,
-	)
+	if identityErr != nil {
+		return fmt.Errorf(
+			"peer state has invalid network identity: %w",
+			identityErr,
+		)
+	}
+
+	if calculatedConfigCommitment !=
+		response.ConfigCommitment {
+
+		return fmt.Errorf(
+			"peer state config does not match advertised commitment",
+		)
+	}
 
 	if calculatedChainID != response.ChainID {
 		return fmt.Errorf(
@@ -525,11 +1094,25 @@ func (s *Server) handleIncoming(
 		return
 	}
 
-	fmt.Println()
-	fmt.Println(
-		"Incoming peer connected.",
+	if hello.NodeID == s.NodeID {
+		fmt.Println(
+			"Handshake rejected: self connection",
+		)
+		return
+	}
+
+	peerAddress := reachablePeerAddress(
+		hello.ListenAddr,
+		conn.RemoteAddr(),
 	)
 
+	s.Peers.UpsertAt(
+		hello,
+		peerAddress,
+	)
+
+	fmt.Println()
+	fmt.Println("Incoming peer connected.")
 	s.printPeer(hello)
 
 	if err := encoder.Encode(
@@ -542,43 +1125,502 @@ func (s *Server) handleIncoming(
 		return
 	}
 
-	var request StateRequest
+	for {
+		var raw json.RawMessage
 
-	if err := decoder.Decode(&request); err != nil {
-		var netErr net.Error
+		if err := decoder.Decode(&raw); err != nil {
+			var netErr net.Error
 
-		if errors.As(err, &netErr) &&
-			netErr.Timeout() {
+			if errors.As(err, &netErr) &&
+				netErr.Timeout() {
+
+				return
+			}
 
 			return
 		}
 
-		return
-	}
+		var request StateRequest
 
-	if request.Type != MessageGetState {
-		fmt.Println(
-			"Unsupported P2P request:",
-			request.Type,
+		if err := json.Unmarshal(
+			raw,
+			&request,
+		); err != nil {
+			fmt.Println(
+				"Invalid P2P request:",
+				err,
+			)
+			return
+		}
+
+		switch request.Type {
+
+		case MessageGetState:
+			response := s.stateResponse()
+
+			if err := encoder.Encode(response); err != nil {
+				fmt.Println(
+					"Unable to send state snapshot:",
+					err,
+				)
+				return
+			}
+
+			fmt.Println(
+				"State snapshot sent to peer.",
+			)
+
+		case MessageGetPeers:
+			local := s.hello()
+
+			if hello.ChainID != local.ChainID {
+				fmt.Println(
+					"Peer discovery refused: different network.",
+				)
+				return
+			}
+
+			response := s.peersResponse(
+				hello.NodeID,
+			)
+
+			if err := encoder.Encode(response); err != nil {
+				fmt.Println(
+					"Unable to send peer list:",
+					err,
+				)
+				return
+			}
+
+			fmt.Printf(
+				"Peer list sent: %d peer(s).\n",
+				len(response.Peers),
+			)
+
+		case MessageTransaction:
+			var message TransactionMessage
+
+			if err := json.Unmarshal(
+				raw,
+				&message,
+			); err != nil {
+				_ = encoder.Encode(
+					TransactionAck{
+						Type:     MessageTransactionAck,
+						Accepted: false,
+						Error:    "invalid transaction message",
+					},
+				)
+				continue
+			}
+
+			local := s.hello()
+
+			ack := TransactionAck{
+				Type:          MessageTransactionAck,
+				TransactionID: message.Transaction.ID,
+			}
+
+			if hello.ChainID != local.ChainID ||
+				message.ChainID != local.ChainID {
+
+				ack.Error = "transaction network mismatch"
+
+				if err := encoder.Encode(ack); err != nil {
+					return
+				}
+
+				fmt.Println(
+					"Transaction rejected: network mismatch",
+				)
+
+				continue
+			}
+
+			if err := s.acceptTransaction(
+				message.Transaction,
+			); err != nil {
+
+				if s.HasTransaction(
+					message.Transaction.ID,
+				) {
+					ack.Accepted = true
+
+					if err := encoder.Encode(ack); err != nil {
+						return
+					}
+
+					fmt.Printf(
+						"Transaction already known: %s mempool=%d\n",
+						message.Transaction.ID,
+						s.MempoolCount(),
+					)
+
+					continue
+				}
+
+				ack.Error = err.Error()
+
+				if err := encoder.Encode(ack); err != nil {
+					return
+				}
+
+				fmt.Printf(
+					"Transaction rejected: %s: %v\n",
+					message.Transaction.ID,
+					err,
+				)
+
+				continue
+			}
+
+			ack.Accepted = true
+
+			if err := encoder.Encode(ack); err != nil {
+				return
+			}
+
+			fmt.Printf(
+				"Transaction accepted: %s mempool=%d\n",
+				message.Transaction.ID,
+				s.MempoolCount(),
+			)
+
+			go s.broadcastTransaction(
+				message.Transaction,
+				hello.NodeID,
+			)
+
+		case MessageBlock:
+			var message BlockMessage
+
+			if err := json.Unmarshal(
+				raw,
+				&message,
+			); err != nil {
+				_ = encoder.Encode(
+					BlockAck{
+						Type:     MessageBlockAck,
+						Accepted: false,
+						Error:    "invalid block message",
+					},
+				)
+				continue
+			}
+
+			local := s.hello()
+
+			ack := BlockAck{
+				Type:      MessageBlockAck,
+				BlockHash: message.Block.Hash,
+			}
+
+			if hello.ChainID != local.ChainID ||
+				message.ChainID != local.ChainID {
+
+				ack.Error = "block network mismatch"
+
+				if err := encoder.Encode(ack); err != nil {
+					return
+				}
+
+				fmt.Println(
+					"Block rejected: network mismatch",
+				)
+
+				continue
+			}
+
+			appended, err := s.acceptBlock(
+				message.Block,
+			)
+
+			if err != nil {
+				ack.Error = err.Error()
+
+				if err := encoder.Encode(ack); err != nil {
+					return
+				}
+
+				fmt.Printf(
+					"Block rejected: height=%d hash=%s: %v\n",
+					message.Block.Height,
+					shortHash(message.Block.Hash),
+					err,
+				)
+
+				continue
+			}
+
+			ack.Accepted = true
+
+			if err := encoder.Encode(ack); err != nil {
+				return
+			}
+
+			if !appended {
+				fmt.Printf(
+					"Block already known: height=%d hash=%s\n",
+					message.Block.Height,
+					shortHash(message.Block.Hash),
+				)
+
+				continue
+			}
+
+			fmt.Printf(
+				"Block accepted: height=%d hash=%s\n",
+				message.Block.Height,
+				shortHash(message.Block.Hash),
+			)
+
+			go s.broadcastBlock(
+				message.Block,
+				hello.NodeID,
+			)
+
+		default:
+			fmt.Println(
+				"Unsupported P2P request:",
+				request.Type,
+			)
+			return
+		}
+	}
+}
+
+func (s *Server) acceptTransaction(
+	tx transaction.Transaction,
+) error {
+	s.mu.RLock()
+	chain := s.Chain
+	s.mu.RUnlock()
+
+	if chain == nil {
+		return fmt.Errorf(
+			"blockchain cannot be nil",
 		)
-		return
 	}
 
-	response := s.stateResponse()
+	s.poolMu.Lock()
+	defer s.poolMu.Unlock()
 
-	if err := encoder.Encode(
-		response,
+	if s.Pool == nil {
+		s.Pool = mempool.New()
+	}
+
+	return s.Pool.Add(
+		tx,
+		chain,
+	)
+}
+
+func (s *Server) HasTransaction(
+	transactionID string,
+) bool {
+	s.poolMu.Lock()
+	defer s.poolMu.Unlock()
+
+	if s.Pool == nil {
+		return false
+	}
+
+	return s.Pool.Has(
+		transactionID,
+	)
+}
+
+func (s *Server) broadcastTransaction(
+	tx transaction.Transaction,
+	excludeNodeID string,
+) {
+	local := s.hello()
+
+	for _, peer := range s.Peers.List() {
+		if peer.NodeID == "" ||
+			peer.Address == "" ||
+			peer.NodeID == s.NodeID ||
+			peer.NodeID == excludeNodeID ||
+			peer.ChainID != local.ChainID {
+
+			continue
+		}
+
+		currentPeer := peer
+
+		go func() {
+			if err := s.SendTransaction(
+				currentPeer.Address,
+				tx,
+			); err != nil {
+
+				fmt.Printf(
+					"Transaction broadcast failed: %s -> %s: %v\n",
+					tx.ID,
+					currentPeer.NodeID,
+					err,
+				)
+
+				return
+			}
+
+			fmt.Printf(
+				"Transaction broadcast accepted: %s -> %s\n",
+				tx.ID,
+				currentPeer.NodeID,
+			)
+		}()
+	}
+}
+
+func (s *Server) acceptBlock(
+	block blockchain.Block,
+) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.Chain == nil {
+		return false, fmt.Errorf(
+			"blockchain cannot be nil",
+		)
+	}
+
+	if s.PoS == nil {
+		return false, fmt.Errorf(
+			"proof of stake engine cannot be nil",
+		)
+	}
+
+	if len(s.Chain.Blocks) == 0 {
+		return false, fmt.Errorf(
+			"blockchain has no genesis block",
+		)
+	}
+
+	localTip := s.Chain.Blocks[len(s.Chain.Blocks)-1]
+
+	if block.Height <= localTip.Height {
+		if block.Height < uint64(len(s.Chain.Blocks)) {
+			existing := s.Chain.Blocks[int(block.Height)]
+
+			if existing.Hash == block.Hash {
+				return false, nil
+			}
+		}
+
+		return false, fmt.Errorf(
+			"conflicting or stale block at height %d",
+			block.Height,
+		)
+	}
+
+	oldLength := len(s.Chain.Blocks)
+
+	if err := s.Chain.AppendValidatedBlock(
+		block,
+		s.PoS,
 	); err != nil {
-		fmt.Println(
-			"Unable to send state snapshot:",
+		return false, err
+	}
+
+	if err := storage.Save(
+		s.DataDir,
+		s.Chain,
+		s.PoS,
+		s.Wallets,
+	); err != nil {
+
+		s.Chain.Blocks =
+			s.Chain.Blocks[:oldLength]
+
+		return false, fmt.Errorf(
+			"unable to persist received block: %w",
 			err,
 		)
-		return
 	}
 
-	fmt.Println(
-		"State snapshot sent to peer.",
-	)
+	s.poolMu.Lock()
+
+	if s.Pool != nil {
+		s.Pool.RemoveCommitted(
+			block.Transactions,
+		)
+	}
+
+	s.poolMu.Unlock()
+
+	return true, nil
+}
+
+func (s *Server) broadcastBlock(
+	block blockchain.Block,
+	excludeNodeID string,
+) {
+	local := s.hello()
+
+	for _, peer := range s.Peers.List() {
+		if peer.NodeID == "" ||
+			peer.Address == "" ||
+			peer.NodeID == s.NodeID ||
+			peer.NodeID == excludeNodeID ||
+			peer.ChainID != local.ChainID {
+
+			continue
+		}
+
+		currentPeer := peer
+
+		go func() {
+			if err := s.SendBlock(
+				currentPeer.Address,
+				block,
+			); err != nil {
+
+				fmt.Printf(
+					"Block broadcast failed: height=%d -> %s: %v\n",
+					block.Height,
+					currentPeer.NodeID,
+					err,
+				)
+
+				return
+			}
+
+			fmt.Printf(
+				"Block broadcast accepted: height=%d -> %s\n",
+				block.Height,
+				currentPeer.NodeID,
+			)
+		}()
+	}
+}
+
+func (s *Server) MempoolCount() int {
+	s.poolMu.Lock()
+	defer s.poolMu.Unlock()
+
+	if s.Pool == nil {
+		return 0
+	}
+
+	return s.Pool.Count()
+}
+
+func (s *Server) peersResponse(
+	requesterNodeID string,
+) PeersResponse {
+	local := s.hello()
+
+	return PeersResponse{
+		Type:    MessagePeers,
+		ChainID: local.ChainID,
+		Peers: peerAdvertisements(
+			s.Peers.List(),
+			local.ChainID,
+			s.NodeID,
+			requesterNodeID,
+		),
+	}
 }
 
 func (s *Server) stateResponse() StateResponse {
@@ -590,13 +1632,27 @@ func (s *Server) stateResponse() StateResponse {
 		s.PoS.Validators...,
 	)
 
-	genesisHash := s.Chain.Blocks[0].Hash
+	chainID,
+		configCommitment,
+		err :=
+		networkIdentity(
+			s.Chain,
+		)
+
+	if err != nil {
+		return StateResponse{
+			Type:       MessageState,
+			Blockchain: s.Chain,
+			Validators: validators,
+		}
+	}
 
 	return StateResponse{
-		Type:       MessageState,
-		ChainID:    MakeChainID(genesisHash),
-		Blockchain: s.Chain,
-		Validators: validators,
+		Type:             MessageState,
+		ChainID:          chainID,
+		ConfigCommitment: configCommitment,
+		Blockchain:       s.Chain,
+		Validators:       validators,
 	}
 }
 
@@ -615,19 +1671,41 @@ func (s *Server) hello() HelloMessage {
 		}
 	}
 
-	genesis := s.Chain.Blocks[0]
+	genesis :=
+		s.Chain.Blocks[0]
 
-	last := s.Chain.Blocks[len(s.Chain.Blocks)-1]
+	last :=
+		s.Chain.Blocks[len(s.Chain.Blocks)-1]
+
+	chainID,
+		configCommitment,
+		err :=
+		networkIdentity(
+			s.Chain,
+		)
+
+	if err != nil {
+		return HelloMessage{
+			Type:        MessageHello,
+			Version:     ProtocolVersion,
+			NodeID:      s.NodeID,
+			ListenAddr:  s.ListenAddr,
+			GenesisHash: genesis.Hash,
+			Height:      last.Height,
+			LastHash:    last.Hash,
+		}
+	}
 
 	return HelloMessage{
-		Type:        MessageHello,
-		Version:     ProtocolVersion,
-		NodeID:      s.NodeID,
-		ListenAddr:  s.ListenAddr,
-		ChainID:     MakeChainID(genesis.Hash),
-		GenesisHash: genesis.Hash,
-		Height:      last.Height,
-		LastHash:    last.Hash,
+		Type:             MessageHello,
+		Version:          ProtocolVersion,
+		NodeID:           s.NodeID,
+		ListenAddr:       s.ListenAddr,
+		ChainID:          chainID,
+		ConfigCommitment: configCommitment,
+		GenesisHash:      genesis.Hash,
+		Height:           last.Height,
+		LastHash:         last.Hash,
 	}
 }
 
@@ -679,13 +1757,40 @@ func validateHello(
 		)
 	}
 
-	expectedChainID := MakeChainID(
-		message.GenesisHash,
-	)
+	if message.ConfigCommitment != "" {
+		decodedCommitment, err :=
+			hex.DecodeString(
+				message.ConfigCommitment,
+			)
 
-	if message.ChainID != expectedChainID {
+		if err != nil ||
+			len(decodedCommitment) !=
+				sha256.Size {
+
+			return fmt.Errorf(
+				"peer config commitment is invalid",
+			)
+		}
+	}
+
+	expectedChainID, err :=
+		blockchain.MakeChainIDFromConfigCommitment(
+			message.GenesisHash,
+			message.ConfigCommitment,
+		)
+
+	if err != nil {
 		return fmt.Errorf(
-			"peer Chain ID does not match its Genesis",
+			"cannot validate peer Chain ID: %w",
+			err,
+		)
+	}
+
+	if message.ChainID !=
+		expectedChainID {
+
+		return fmt.Errorf(
+			"peer Chain ID does not match its Genesis and config",
 		)
 	}
 
@@ -759,6 +1864,39 @@ func (s *Server) printPeer(
 
 	fmt.Println(
 		"Chain state: FORK",
+	)
+}
+
+func reachablePeerAddress(
+	listenAddr string,
+	remoteAddr net.Addr,
+) string {
+	host, port, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		return listenAddr
+	}
+
+	if host != "" &&
+		host != "0.0.0.0" &&
+		host != "::" {
+
+		return listenAddr
+	}
+
+	if remoteAddr == nil {
+		return listenAddr
+	}
+
+	remoteHost, _, err := net.SplitHostPort(
+		remoteAddr.String(),
+	)
+	if err != nil {
+		return listenAddr
+	}
+
+	return net.JoinHostPort(
+		remoteHost,
+		port,
 	)
 }
 

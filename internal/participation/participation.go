@@ -7,12 +7,20 @@ import (
 
 	"prism/internal/blockchain"
 	"prism/internal/consensus"
+	"prism/internal/poup"
 )
 
 const (
-	ProposerPoints          uint64 = 10
-	UsefulWorkPointMultiple uint64 = 2
+	ProposerPoints uint64 = poup.ProposerPoints
+
+	UsefulWorkPointMultiple uint64 = poup.UsefulWorkPointMultiple
 )
+
+// EligibilityChecker represents a source capable of determining
+// whether a Prism address is eligible for Proof of Useful Participation.
+type EligibilityChecker interface {
+	IsVerifiedAtHeight(address string, height uint64) bool
+}
 
 type Score struct {
 	Address            string `json:"address"`
@@ -26,6 +34,23 @@ type Score struct {
 func Calculate(
 	chain *blockchain.Blockchain,
 	pos *consensus.ProofOfStake,
+	eligibility EligibilityChecker,
+) ([]Score, error) {
+	return calculateRange(
+		chain,
+		pos,
+		eligibility,
+		1,
+		math.MaxUint64,
+	)
+}
+
+func calculateRange(
+	chain *blockchain.Blockchain,
+	pos *consensus.ProofOfStake,
+	eligibility EligibilityChecker,
+	startHeight uint64,
+	endHeight uint64,
 ) ([]Score, error) {
 
 	if chain == nil {
@@ -37,6 +62,12 @@ func Calculate(
 	if pos == nil {
 		return nil, fmt.Errorf(
 			"proof of stake engine cannot be nil",
+		)
+	}
+
+	if eligibility == nil {
+		return nil, fmt.Errorf(
+			"participation eligibility checker cannot be nil",
 		)
 	}
 
@@ -55,30 +86,46 @@ func Calculate(
 			continue
 		}
 
-		proposerScore := getOrCreate(
-			scores,
-			block.Proposer,
-		)
+		if block.Height < startHeight ||
+			block.Height > endHeight {
 
-		if proposerScore.BlocksProposed == math.MaxUint64 {
-			return nil, fmt.Errorf(
-				"blocks proposed counter overflow",
-			)
+			continue
 		}
 
-		proposerScore.BlocksProposed++
-
-		if proposerScore.ProposerScore >
-			math.MaxUint64-ProposerPoints {
-
-			return nil, fmt.Errorf(
-				"proposer score overflow",
+		// PoUP proposer points only count for humanity-verified addresses.
+		if eligibility.IsVerifiedAtHeight(block.Proposer, block.Height) {
+			proposerScore := getOrCreate(
+				scores,
+				block.Proposer,
 			)
-		}
 
-		proposerScore.ProposerScore += ProposerPoints
+			if proposerScore.BlocksProposed == math.MaxUint64 {
+				return nil, fmt.Errorf(
+					"blocks proposed counter overflow",
+				)
+			}
+
+			proposerScore.BlocksProposed++
+
+			if proposerScore.ProposerScore >
+				math.MaxUint64-ProposerPoints {
+
+				return nil, fmt.Errorf(
+					"proposer score overflow",
+				)
+			}
+
+			proposerScore.ProposerScore += ProposerPoints
+		}
 
 		for _, proof := range block.UsefulWork {
+			// Useful Work remains permissionless.
+			// It contributes to PoUP only when the worker
+			// has completed humanity verification.
+			if !eligibility.IsVerifiedAtHeight(proof.Worker, block.Height) {
+				continue
+			}
+
 			workerScore := getOrCreate(
 				scores,
 				proof.Worker,

@@ -1,2 +1,9 @@
 ﻿data/
 prism.exe
+
+integrations/world-agentkit/.env
+node_modules/
+
+data-backup*/
+
+*.exe~

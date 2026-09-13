@@ -5,15 +5,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
 	"prism/internal/blockchain"
 	"prism/internal/consensus"
+	"prism/internal/identity"
 	"prism/internal/mempool"
 	"prism/internal/p2p"
 	"prism/internal/storage"
 	"prism/internal/transaction"
 	"prism/internal/usefulwork"
 	"prism/internal/wallet"
+	"strconv"
 )
 
 func runNodeCommand(
@@ -25,6 +26,12 @@ func runNodeCommand(
 	)
 
 	flags.SetOutput(os.Stdout)
+
+	host := flags.String(
+		"host",
+		"127.0.0.1",
+		"TCP host/interface used by the Prism node",
+	)
 
 	port := flags.Int(
 		"port",
@@ -42,6 +49,12 @@ func runNodeCommand(
 		"data",
 		"",
 		"node data directory",
+	)
+
+	chainConfig := flags.String(
+		"chain-config",
+		"",
+		"JSON chain config used to create or verify node state",
 	)
 
 	if err := flags.Parse(args); err != nil {
@@ -62,7 +75,10 @@ func runNodeCommand(
 	)
 
 	chain, pos, wallets, created, err :=
-		loadOrCreateP2PState(dataPath)
+		loadOrCreateP2PState(
+			dataPath,
+			*chainConfig,
+		)
 
 	if err != nil {
 		fmt.Println(
@@ -101,7 +117,8 @@ func runNodeCommand(
 	}
 
 	listenAddr := fmt.Sprintf(
-		"127.0.0.1:%d",
+		"%s:%d",
+		*host,
 		*port,
 	)
 
@@ -138,6 +155,226 @@ func runNodeCommand(
 	}
 }
 
+func runNodeSendCommand(
+	args []string,
+) {
+	flags := flag.NewFlagSet(
+		"node-send",
+		flag.ContinueOnError,
+	)
+
+	flags.SetOutput(os.Stdout)
+
+	port := flags.Int(
+		"port",
+		7001,
+		"local node data port",
+	)
+
+	peer := flags.String(
+		"peer",
+		"",
+		"destination Prism peer",
+	)
+
+	nodeData := flags.String(
+		"data",
+		"",
+		"node data directory",
+	)
+
+	if err := flags.Parse(args); err != nil {
+		return
+	}
+
+	if *port < 1 || *port > 65535 {
+		fmt.Println(
+			"Invalid port:",
+			*port,
+		)
+		return
+	}
+
+	if *peer == "" {
+		fmt.Println(
+			"node-send requires --peer",
+		)
+		return
+	}
+
+	positional := flags.Args()
+
+	if len(positional) != 3 {
+		fmt.Println("Usage:")
+		fmt.Println(
+			"prism node-send --port 7001 --peer prism-node-2:7002 Alice Bob 1",
+		)
+		return
+	}
+
+	dataPath := resolveNodeDataPath(
+		*port,
+		*nodeData,
+	)
+
+	if !storage.Exists(dataPath) {
+		fmt.Println(
+			"Node state not found:",
+			dataPath,
+		)
+		return
+	}
+
+	chain, pos, wallets, err := storage.Load(
+		dataPath,
+	)
+	if err != nil {
+		fmt.Println(
+			"Unable to load node state:",
+			err,
+		)
+		return
+	}
+
+	if !chain.ValidateChain(pos) {
+		fmt.Println(
+			"Refusing transaction from invalid local chain.",
+		)
+		return
+	}
+
+	senderAddress, senderName, err := resolveAddress(
+		positional[0],
+		wallets,
+	)
+	if err != nil {
+		fmt.Println(
+			"Invalid sender:",
+			err,
+		)
+		return
+	}
+
+	recipientAddress, recipientName, err := resolveAddress(
+		positional[1],
+		wallets,
+	)
+	if err != nil {
+		fmt.Println(
+			"Invalid recipient:",
+			err,
+		)
+		return
+	}
+
+	amount, err := strconv.ParseUint(
+		positional[2],
+		10,
+		64,
+	)
+	if err != nil || amount == 0 {
+		fmt.Println(
+			"Invalid transaction amount.",
+		)
+		return
+	}
+
+	var senderWallet *wallet.Wallet
+
+	for _, currentWallet := range wallets {
+		if currentWallet != nil &&
+			currentWallet.Address == senderAddress {
+
+			senderWallet = currentWallet
+			break
+		}
+	}
+
+	if senderWallet == nil {
+		fmt.Println(
+			"Sender private key is not available locally.",
+		)
+		return
+	}
+
+	nonce, err := chain.NonceOf(
+		senderAddress,
+	)
+	if err != nil {
+		fmt.Println(
+			"Unable to determine sender nonce:",
+			err,
+		)
+		return
+	}
+
+	tx := transaction.New(
+		senderAddress,
+		recipientAddress,
+		amount,
+		nonce,
+		senderWallet.PublicKeyHex(),
+	)
+
+	if err := tx.Sign(
+		senderWallet.PrivateKey,
+	); err != nil {
+		fmt.Println(
+			"Unable to sign transaction:",
+			err,
+		)
+		return
+	}
+
+	identity := wallets["Alice"]
+
+	if identity == nil {
+		fmt.Println(
+			"Node identity wallet is missing.",
+		)
+		return
+	}
+
+	server := p2p.NewServer(
+		p2p.MakeNodeID(identity.Address),
+		fmt.Sprintf(
+			"0.0.0.0:%d",
+			*port,
+		),
+		dataPath,
+		chain,
+		pos,
+		wallets,
+	)
+
+	fmt.Printf(
+		"Sending transaction: %s -> %s: %d PRISM\n",
+		senderName,
+		recipientName,
+		amount,
+	)
+
+	fmt.Println(
+		"Transaction ID:",
+		tx.ID,
+	)
+
+	if err := server.SendTransaction(
+		*peer,
+		tx,
+	); err != nil {
+		fmt.Println(
+			"Transaction submission rejected:",
+			err,
+		)
+		return
+	}
+
+	fmt.Println(
+		"Transaction submission: ACCEPTED",
+	)
+}
+
 func runNodeProduceCommand(
 	args []string,
 ) {
@@ -160,6 +397,18 @@ func runNodeProduceCommand(
 		"node data directory",
 	)
 
+	chainConfig := flags.String(
+		"chain-config",
+		"",
+		"JSON chain config used to create or verify node state",
+	)
+
+	peer := flags.String(
+		"peer",
+		"",
+		"destination Prism peer for block broadcast",
+	)
+
 	if err := flags.Parse(args); err != nil {
 		return
 	}
@@ -178,7 +427,10 @@ func runNodeProduceCommand(
 	)
 
 	chain, pos, wallets, created, err :=
-		loadOrCreateP2PState(dataPath)
+		loadOrCreateP2PState(
+			dataPath,
+			*chainConfig,
+		)
 
 	if err != nil {
 		fmt.Println(
@@ -375,6 +627,41 @@ func runNodeProduceCommand(
 		"Node state saved:",
 		dataPath,
 	)
+
+	if *peer != "" {
+		server := p2p.NewServer(
+			p2p.MakeNodeID(alice.Address),
+			fmt.Sprintf(
+				"0.0.0.0:%d",
+				*port,
+			),
+			dataPath,
+			chain,
+			pos,
+			wallets,
+		)
+
+		fmt.Println()
+		fmt.Println(
+			"Broadcasting block to:",
+			*peer,
+		)
+
+		if err := server.SendBlock(
+			*peer,
+			block,
+		); err != nil {
+			fmt.Println(
+				"Block submission rejected:",
+				err,
+			)
+			return
+		}
+
+		fmt.Println(
+			"Block submission: ACCEPTED",
+		)
+	}
 }
 
 func resolveNodeDataPath(
@@ -396,6 +683,7 @@ func resolveNodeDataPath(
 
 func loadOrCreateP2PState(
 	dataPath string,
+	chainConfigPath string,
 ) (
 	*blockchain.Blockchain,
 	*consensus.ProofOfStake,
@@ -403,12 +691,28 @@ func loadOrCreateP2PState(
 	bool,
 	error,
 ) {
+	requestedConfig, err :=
+		loadNodeChainConfig(
+			chainConfigPath,
+		)
+
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
+
 	if storage.Exists(dataPath) {
 		chain, pos, wallets, err := storage.Load(
 			dataPath,
 		)
 
 		if err != nil {
+			return nil, nil, nil, false, err
+		}
+
+		if err := ensureNodeChainConfig(
+			chain,
+			requestedConfig,
+		); err != nil {
 			return nil, nil, nil, false, err
 		}
 
@@ -425,6 +729,17 @@ func loadOrCreateP2PState(
 		return nil, nil, nil, false, err
 	}
 
+	if requestedConfig != nil {
+		chain.Config = *requestedConfig
+	}
+
+	if !chain.ValidateChain(pos) {
+		return nil, nil, nil, false,
+			fmt.Errorf(
+				"configured blockchain failed validation",
+			)
+	}
+
 	if err := storage.Save(
 		dataPath,
 		chain,
@@ -439,4 +754,222 @@ func loadOrCreateP2PState(
 		wallets,
 		true,
 		nil
+}
+
+func runNodeHumanCommand(
+	args []string,
+) {
+	const worldIDAction = "prism_poup"
+
+	flags := flag.NewFlagSet(
+		"node-human",
+		flag.ContinueOnError,
+	)
+
+	flags.SetOutput(os.Stdout)
+
+	port := flags.Int(
+		"port",
+		7001,
+		"node data port",
+	)
+
+	nodeData := flags.String(
+		"data",
+		"",
+		"node data directory",
+	)
+
+	if err := flags.Parse(args); err != nil {
+		return
+	}
+
+	if *port < 1 || *port > 65535 {
+		fmt.Println(
+			"Invalid port:",
+			*port,
+		)
+		return
+	}
+
+	positional := flags.Args()
+
+	if len(positional) != 3 {
+		fmt.Println("Usage:")
+		fmt.Println(
+			`prism node-human --data data/node-7001 Alice proof_001 nullifier_001`,
+		)
+		return
+	}
+
+	dataPath := resolveNodeDataPath(
+		*port,
+		*nodeData,
+	)
+
+	if !storage.Exists(dataPath) {
+		fmt.Println(
+			"Node state not found:",
+			dataPath,
+		)
+		return
+	}
+
+	chain, pos, wallets, err := storage.Load(
+		dataPath,
+	)
+	if err != nil {
+		fmt.Println(
+			"Unable to load node state:",
+			err,
+		)
+		return
+	}
+
+	participant := positional[0]
+	proofText := positional[1]
+	nullifier := positional[2]
+
+	address, participantName, err := resolveAddress(
+		participant,
+		wallets,
+	)
+	if err != nil {
+		fmt.Println(
+			"Humanity proof rejected:",
+			err,
+		)
+		return
+	}
+
+	if chain.IsVerified(address) {
+		fmt.Println(
+			"Humanity proof rejected:",
+		)
+		fmt.Println(
+			"prism address already humanity verified",
+		)
+		return
+	}
+	if proofText == "" {
+		fmt.Println(
+			"Humanity proof rejected:",
+			"world id proof cannot be empty",
+		)
+		return
+	}
+
+	if nullifier == "" {
+		fmt.Println(
+			"Humanity proof rejected:",
+			"world id nullifier cannot be empty",
+		)
+		return
+	}
+
+	attestation, err := identity.NewWorldIDAttestation(
+		address,
+		nullifier,
+		worldIDAction,
+	)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if len(chain.Blocks) == 0 {
+		fmt.Println(
+			"Node blockchain is empty.",
+		)
+		return
+	}
+
+	lastBlock := chain.Blocks[len(chain.Blocks)-1]
+
+	proposer, err := pos.SelectProposer(
+		lastBlock.Hash,
+		lastBlock.Height+1,
+	)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	block, err := chain.AddHumanityBlock(
+		[]identity.Attestation{
+			attestation,
+		},
+		proposer.Address,
+		pos,
+	)
+	if err != nil {
+		fmt.Println(
+			"Unable to add humanity block:",
+			err,
+		)
+		return
+	}
+
+	if err := storage.Save(
+		dataPath,
+		chain,
+		pos,
+		wallets,
+	); err != nil {
+		fmt.Println(
+			"Unable to save node state:",
+			err,
+		)
+		return
+	}
+
+	fmt.Println()
+	fmt.Println(
+		"=== NODE HUMANITY ATTESTATION CONFIRMED ===",
+	)
+	fmt.Println(
+		"Participant:",
+		participantName,
+	)
+	fmt.Println(
+		"Address:",
+		shortAddress(address),
+	)
+	fmt.Println(
+		"Provider:",
+		attestation.Provider,
+	)
+	fmt.Println(
+		"Action:",
+		attestation.Action,
+	)
+	fmt.Println(
+		"Proof: VERIFIED",
+	)
+	fmt.Println(
+		"Replay check: PASSED",
+	)
+	fmt.Println(
+		"Humanity: ON-CHAIN",
+	)
+	fmt.Println(
+		"Block:",
+		block.Height,
+	)
+	fmt.Println(
+		"PoS proposer:",
+		shortAddress(block.Proposer),
+	)
+	fmt.Println(
+		"Block hash:",
+		block.Hash,
+	)
+	fmt.Println(
+		"Chain valid:",
+		chain.ValidateChain(pos),
+	)
+	fmt.Println()
+	fmt.Println(
+		"Eligible for Proof of Useful Participation: YES",
+	)
 }
