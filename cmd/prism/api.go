@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"prism/internal/blockchain"
 	"prism/internal/p2p"
 	"prism/internal/participation"
 	"prism/internal/storage"
@@ -199,7 +198,7 @@ func runAPICommand(args []string) {
 	}
 
 	fmt.Println("=== PRISM HTTP API ===")
-	fmt.Println("Version: 0.35")
+	fmt.Println("Version: 0.35.1")
 	fmt.Println("P2P protocol:", p2p.ProtocolVersion)
 	fmt.Println("Node data:", *nodeData)
 	fmt.Println("Listening:", listenAddress)
@@ -263,7 +262,7 @@ func (api *apiServer) handleHealth(
 	response := apiHealthResponse{
 		Status:     "ok",
 		Network:    "Prism",
-		Version:    "0.32",
+		Version:    "0.35.1",
 		Protocol:   p2p.ProtocolVersion,
 		ChainID:    p2p.MakeChainID(genesis.Hash),
 		Height:     last.Height,
@@ -319,7 +318,7 @@ func (api *apiServer) handleStatus(
 
 	response := apiStatusResponse{
 		Network:     "Prism",
-		Version:     "0.32",
+		Version:     "0.35.1",
 		Protocol:    p2p.ProtocolVersion,
 		ChainID:     p2p.MakeChainID(genesis.Hash),
 		Height:      last.Height,
@@ -501,6 +500,16 @@ func (api *apiServer) handleWork(
 		return
 	}
 
+	rewardsByProof, err := usefulWorkRewardsByProof(chain)
+	if err != nil {
+		apiWriteError(
+			writer,
+			http.StatusInternalServerError,
+			err,
+		)
+		return
+	}
+
 	results := make(
 		[]apiWorkResponse,
 		0,
@@ -529,7 +538,7 @@ func (api *apiServer) handleWork(
 					TaskID:        proof.Task.ID,
 					Result:        proof.Result,
 					Score:         proof.Score,
-					Reward:        blockchain.UsefulWorkReward,
+					Reward:        rewardsByProof[proof.ID],
 					Verified:      verifyErr == nil,
 					OutputHash:    proof.OutputHash,
 					ProofID:       proof.ID,

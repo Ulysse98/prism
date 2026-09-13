@@ -29,7 +29,7 @@ func main() {
 
 	if !jsonWorkLog {
 		fmt.Println("====================================")
-		fmt.Println("         PRISM NODE v0.35")
+		fmt.Println("         PRISM NODE v0.35.1")
 		fmt.Println("====================================")
 		fmt.Println()
 	}
@@ -924,6 +924,20 @@ func runUsefulWork(
 
 	lastBlock := chain.Blocks[len(chain.Blocks)-1]
 
+	emission, err := chain.GetEmissionState()
+	if err != nil {
+		return err
+	}
+
+	workerReward, err := mineRewardForWork(
+		lastBlock.Height+1,
+		proof.Score,
+		emission.UsefulWorkEmission,
+	)
+	if err != nil {
+		return err
+	}
+
 	proposer, err := pos.SelectProposer(
 		lastBlock.Hash,
 		lastBlock.Height+1,
@@ -984,7 +998,7 @@ func runUsefulWork(
 
 	fmt.Printf(
 		"Worker reward: %d PRISM\n",
-		blockchain.UsefulWorkReward,
+		workerReward,
 	)
 
 	fmt.Printf(
@@ -1019,6 +1033,15 @@ func runWorkLog(
 ) {
 	fmt.Println("=== USEFUL WORK HISTORY ===")
 	fmt.Println()
+
+	rewardsByProof, err := usefulWorkRewardsByProof(chain)
+	if err != nil {
+		fmt.Println(
+			"Cannot calculate useful work rewards:",
+			err,
+		)
+		return
+	}
 
 	found := false
 
@@ -1069,7 +1092,7 @@ func runWorkLog(
 
 			fmt.Printf(
 				"Reward:      %d PRISM\n",
-				blockchain.UsefulWorkReward,
+				rewardsByProof[proof.ID],
 			)
 
 			if err := usefulwork.VerifyProof(
@@ -1124,6 +1147,11 @@ func runWorkLogJSON(
 		0,
 	)
 
+	rewardsByProof, err := usefulWorkRewardsByProof(chain)
+	if err != nil {
+		return err
+	}
+
 	for blockIndex := len(chain.Blocks) - 1; blockIndex >= 0; blockIndex-- {
 		block := chain.Blocks[blockIndex]
 
@@ -1145,7 +1173,7 @@ func runWorkLogJSON(
 				"task_id":        proof.Task.ID,
 				"result":         proof.Result,
 				"score":          proof.Score,
-				"reward":         blockchain.UsefulWorkReward,
+				"reward":         rewardsByProof[proof.ID],
 				"verified":       verifyErr == nil,
 				"output_hash":    proof.OutputHash,
 				"proof_id":       proof.ID,
