@@ -537,6 +537,7 @@ func (api *apiServer) handleWork(
 					Task:          proof.Task.Type,
 					TaskID:        proof.Task.ID,
 					Result:        proof.Result,
+					ResultValues:  proof.ResultValues,
 					Score:         proof.Score,
 					Reward:        rewardsByProof[proof.ID],
 					Verified:      verifyErr == nil,

@@ -1084,6 +1084,12 @@ func runWorkLog(
 				"Result:      %d\n",
 				proof.Result,
 			)
+			if len(proof.ResultValues) != 0 {
+				fmt.Printf(
+					"Result values: %v\n",
+					proof.ResultValues,
+				)
+			}
 
 			fmt.Printf(
 				"Score:       %d\n",
@@ -1172,6 +1178,7 @@ func runWorkLogJSON(
 				"task":           proof.Task.Type,
 				"task_id":        proof.Task.ID,
 				"result":         proof.Result,
+				"result_values":  proof.ResultValues,
 				"score":          proof.Score,
 				"reward":         rewardsByProof[proof.ID],
 				"verified":       verifyErr == nil,
