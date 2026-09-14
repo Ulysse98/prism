@@ -20,7 +20,10 @@ import (
 	"prism/internal/wallet"
 )
 
-const dataDir = "data"
+const (
+	dataDir      = "data"
+	prismVersion = "0.35.3"
+)
 
 func main() {
 	jsonWorkLog := len(os.Args) == 3 &&
@@ -29,7 +32,7 @@ func main() {
 
 	if !jsonWorkLog {
 		fmt.Println("====================================")
-		fmt.Println("         PRISM NODE v0.35.2")
+		fmt.Println("         PRISM NODE v" + prismVersion)
 		fmt.Println("====================================")
 		fmt.Println()
 	}
