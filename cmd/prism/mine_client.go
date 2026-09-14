@@ -50,7 +50,7 @@ func runMineAPICommand(args []string) {
 	taskType := flags.String(
 		"task",
 		"",
-		"useful work task type (sum_squares, dot_product, prime_count, matrix_multiply)",
+		"useful work task type (sum_squares, dot_product, prime_count, matrix_multiply, image_convolution)",
 	)
 
 	if err := flags.Parse(args); err != nil {
@@ -135,15 +135,25 @@ func runMineAPICommand(args []string) {
 		fmt.Println("Input B:", job.InputB)
 	}
 
-	if job.RowsA != 0 ||
-		job.ColsA != 0 ||
-		job.ColsB != 0 {
-
+	switch job.Task {
+	case usefulwork.TaskTypeMatrixMultiply:
 		fmt.Printf(
 			"Matrix dimensions: A=%dx%d B=%dx%d\n",
 			job.RowsA,
 			job.ColsA,
 			job.ColsA,
+			job.ColsB,
+		)
+
+	case usefulwork.TaskTypeImageConvolution:
+		fmt.Printf(
+			"Image dimensions: %dx%d\n",
+			job.RowsA,
+			job.ColsA,
+		)
+		fmt.Printf(
+			"Kernel dimensions: %dx%d\n",
+			job.ColsB,
 			job.ColsB,
 		)
 	}
