@@ -8,6 +8,8 @@ import (
 	"math"
 )
 
+const maxConvolutionWorkUnits uint64 = 1 << 20
+
 func NewImageConvolutionTask(
 	rows uint64,
 	cols uint64,
@@ -125,9 +127,21 @@ func validateImageConvolutionTask(
 		)
 	}
 
-	_, err = convolutionWorkUnitsChecked(task)
+	workUnits, err :=
+		convolutionWorkUnitsChecked(task)
+	if err != nil {
+		return err
+	}
 
-	return err
+	if workUnits > maxConvolutionWorkUnits {
+		return fmt.Errorf(
+			"image convolution task exceeds maximum work units: %d > %d",
+			workUnits,
+			maxConvolutionWorkUnits,
+		)
+	}
+
+	return nil
 }
 
 func calculateImageConvolutionInputHash(

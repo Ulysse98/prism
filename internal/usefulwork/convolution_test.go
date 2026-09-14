@@ -185,3 +185,32 @@ func TestImageConvolutionHashCommitsKernel(t *testing.T) {
 		)
 	}
 }
+
+func TestImageConvolutionRejectsExcessiveWorkUnits(
+	t *testing.T,
+) {
+	image := make(
+		[]uint64,
+		64*64,
+	)
+
+	kernel := make(
+		[]uint64,
+		32*32,
+	)
+
+	_, err :=
+		NewImageConvolutionTask(
+			64,
+			64,
+			32,
+			image,
+			kernel,
+		)
+
+	if err == nil {
+		t.Fatal(
+			"expected excessive convolution work units to be rejected",
+		)
+	}
+}
