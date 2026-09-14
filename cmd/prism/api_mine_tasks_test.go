@@ -72,30 +72,37 @@ func TestMineTaskCatalogHasFourWorkloads(
 	}
 }
 
-func TestMineTaskDefaultRemainsSumSquares(
+func TestMineTaskDefaultRotatesByHeight(
 	t *testing.T,
 ) {
-
-	option, err :=
-		mineTaskForHeightAndType(
-			42,
-			"",
-		)
-	if err != nil {
-		t.Fatal(err)
+	expected := []string{
+		usefulwork.TaskTypeSumSquares,
+		usefulwork.TaskTypeDotProduct,
+		usefulwork.TaskTypePrimeCount,
+		usefulwork.TaskTypeMatrixMultiply,
+		usefulwork.TaskTypeSumSquares,
 	}
 
-	if option.Task.Type !=
-		usefulwork.TaskTypeSumSquares {
+	for height, expectedType := range expected {
+		option, err :=
+			mineTaskForHeightAndType(
+				uint64(height),
+				"",
+			)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		t.Fatalf(
-			"expected default %s, got %s",
-			usefulwork.TaskTypeSumSquares,
-			option.Task.Type,
-		)
+		if option.Task.Type != expectedType {
+			t.Fatalf(
+				"height %d: expected %s, got %s",
+				height,
+				expectedType,
+				option.Task.Type,
+			)
+		}
 	}
 }
-
 func TestMineTaskSelectionByType(
 	t *testing.T,
 ) {

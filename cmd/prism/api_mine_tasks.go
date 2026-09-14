@@ -116,17 +116,21 @@ func mineTaskForHeightAndType(
 		taskType,
 	)
 
-	// Backwards compatibility:
-	// old clients send no task selector.
-	if taskType == "" {
-		taskType =
-			usefulwork.TaskTypeSumSquares
-	}
-
 	options, err :=
 		mineTaskCatalogForHeight(height)
 	if err != nil {
 		return mineTaskOption{}, err
+	}
+
+	// Automatic deterministic PoUW scheduler.
+	//
+	// When no explicit workload is requested, the source
+	// chain height selects one entry from the deterministic
+	// workload catalog.
+	if taskType == "" {
+		index := height % uint64(len(options))
+
+		return options[index], nil
 	}
 
 	for _, option := range options {
@@ -140,7 +144,6 @@ func mineTaskForHeightAndType(
 		taskType,
 	)
 }
-
 func mineTaskForJobID(
 	height uint64,
 	jobID string,
