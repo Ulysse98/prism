@@ -214,3 +214,46 @@ func TestImageConvolutionRejectsExcessiveWorkUnits(
 		)
 	}
 }
+
+func TestImageConvolutionWrongScoreRejected(
+	t *testing.T,
+) {
+	task, err := NewImageConvolutionTask(
+		3,
+		3,
+		2,
+		[]uint64{
+			1, 2, 3,
+			4, 5, 6,
+			7, 8, 9,
+		},
+		[]uint64{
+			1, 0,
+			0, 1,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	worker, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	proof, err := Execute(
+		task,
+		worker,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	proof.Score++
+
+	if err := VerifyProof(proof); err == nil {
+		t.Fatal(
+			"proof with tampered score accepted",
+		)
+	}
+}
