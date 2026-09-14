@@ -2,14 +2,14 @@
 pragma solidity ^0.8.34;
 
 /// @title PrismWorkRegistry
-/// @notice Anchors Prism Proof-of-Useful-Work results onchain.
+/// @notice Anchors verified Prism Proof-of-Useful-Work proofs on an EVM chain.
 contract PrismWorkRegistry {
     struct UsefulWorkProof {
-        address worker;
-        bytes32 proofHash;
+        bytes32 proofId;
+        string prismWorker;
         string workType;
         uint256 score;
-        uint64 timestamp;
+        uint64 anchoredAt;
     }
 
     address public owner;
@@ -21,9 +21,9 @@ contract PrismWorkRegistry {
 
     error Unauthorized();
     error InvalidWorker();
-    error InvalidProofHash();
+    error InvalidProofId();
     error InvalidWorkType();
-    error ProofAlreadyExists(bytes32 proofHash);
+    error ProofAlreadyExists(bytes32 proofId);
 
     event RecorderUpdated(
         address indexed recorder,
@@ -31,11 +31,11 @@ contract PrismWorkRegistry {
     );
 
     event UsefulWorkRecorded(
-        bytes32 indexed proofHash,
-        address indexed worker,
+        bytes32 indexed proofId,
+        string prismWorker,
         string workType,
         uint256 score,
-        uint64 timestamp
+        uint64 anchoredAt
     );
 
     constructor() {
@@ -71,57 +71,57 @@ contract PrismWorkRegistry {
     }
 
     function recordUsefulWork(
-        address worker,
-        bytes32 proofHash,
+        string calldata prismWorker,
+        bytes32 proofId,
         string calldata workType,
         uint256 score
     ) external onlyRecorder {
-        if (worker == address(0)) {
+        if (bytes(prismWorker).length == 0) {
             revert InvalidWorker();
         }
 
-        if (proofHash == bytes32(0)) {
-            revert InvalidProofHash();
+        if (proofId == bytes32(0)) {
+            revert InvalidProofId();
         }
 
         if (bytes(workType).length == 0) {
             revert InvalidWorkType();
         }
 
-        if (proofs[proofHash].timestamp != 0) {
-            revert ProofAlreadyExists(proofHash);
+        if (proofs[proofId].anchoredAt != 0) {
+            revert ProofAlreadyExists(proofId);
         }
 
-        uint64 recordedAt = uint64(block.timestamp);
+        uint64 anchoredAt = uint64(block.timestamp);
 
-        proofs[proofHash] = UsefulWorkProof({
-            worker: worker,
-            proofHash: proofHash,
+        proofs[proofId] = UsefulWorkProof({
+            proofId: proofId,
+            prismWorker: prismWorker,
             workType: workType,
             score: score,
-            timestamp: recordedAt
+            anchoredAt: anchoredAt
         });
 
         proofCount++;
 
         emit UsefulWorkRecorded(
-            proofHash,
-            worker,
+            proofId,
+            prismWorker,
             workType,
             score,
-            recordedAt
+            anchoredAt
         );
     }
 
     function getProof(
-        bytes32 proofHash
+        bytes32 proofId
     ) external view returns (UsefulWorkProof memory) {
-        return proofs[proofHash];
+        return proofs[proofId];
     }
 
     function proofExists(
-        bytes32 proofHash
+        bytes32 proofId
     ) external view returns (bool) {
-        return proofs[proofHash].timestamp != 0;
+        return proofs[proofId].anchoredAt != 0;
     }
 }

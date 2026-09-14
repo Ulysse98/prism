@@ -7,8 +7,8 @@ import {PrismWorkRegistry} from "./PrismWorkRegistry.sol";
 contract PrismWorkRegistryTest is Test {
     PrismWorkRegistry internal registry;
 
-    address internal worker =
-        address(0xA11CE);
+    string internal prismWorker =
+        "prism_91e09dda8b18ca23de50770a03a1d32824802f2b";
 
     address internal unauthorized =
         address(0xB0B);
@@ -24,58 +24,58 @@ contract PrismWorkRegistryTest is Test {
     }
 
     function test_RecordUsefulWork() public {
-        bytes32 proofHash =
-            keccak256("prism-pouw-proof-001");
+        bytes32 proofId =
+            sha256(bytes("prism-pouw-proof-001"));
 
         registry.recordUsefulWork(
-            worker,
-            proofHash,
+            prismWorker,
+            proofId,
             "sum_squares",
             2
         );
 
         PrismWorkRegistry.UsefulWorkProof memory proof =
-            registry.getProof(proofHash);
+            registry.getProof(proofId);
 
-        assertEq(proof.worker, worker);
-        assertEq(proof.proofHash, proofHash);
+        assertEq(proof.prismWorker, prismWorker);
+        assertEq(proof.proofId, proofId);
         assertEq(proof.workType, "sum_squares");
         assertEq(proof.score, 2);
 
-        assertTrue(proof.timestamp > 0);
-        assertTrue(registry.proofExists(proofHash));
+        assertTrue(proof.anchoredAt > 0);
+        assertTrue(registry.proofExists(proofId));
         assertEq(registry.proofCount(), 1);
     }
 
     function test_CannotRecordDuplicateProof() public {
-        bytes32 proofHash =
-            keccak256("prism-pouw-proof-002");
+        bytes32 proofId =
+            sha256(bytes("prism-pouw-proof-002"));
 
         registry.recordUsefulWork(
-            worker,
-            proofHash,
-            "prime_search",
+            prismWorker,
+            proofId,
+            "prime_count",
             5
         );
 
         vm.expectRevert(
             abi.encodeWithSelector(
                 PrismWorkRegistry.ProofAlreadyExists.selector,
-                proofHash
+                proofId
             )
         );
 
         registry.recordUsefulWork(
-            worker,
-            proofHash,
-            "prime_search",
+            prismWorker,
+            proofId,
+            "prime_count",
             5
         );
     }
 
     function test_UnauthorizedCannotRecord() public {
-        bytes32 proofHash =
-            keccak256("prism-pouw-proof-003");
+        bytes32 proofId =
+            sha256(bytes("prism-pouw-proof-003"));
 
         vm.prank(unauthorized);
 
@@ -84,8 +84,8 @@ contract PrismWorkRegistryTest is Test {
         );
 
         registry.recordUsefulWork(
-            worker,
-            proofHash,
+            prismWorker,
+            proofId,
             "matrix_multiply",
             10
         );
@@ -101,20 +101,49 @@ contract PrismWorkRegistryTest is Test {
             registry.recorders(unauthorized)
         );
 
-        bytes32 proofHash =
-            keccak256("prism-pouw-proof-004");
+        bytes32 proofId =
+            sha256(bytes("prism-pouw-proof-004"));
 
         vm.prank(unauthorized);
 
         registry.recordUsefulWork(
-            worker,
-            proofHash,
-            "hash_search",
-            3
+            prismWorker,
+            proofId,
+            "dot_product",
+            6
         );
 
         assertTrue(
-            registry.proofExists(proofHash)
+            registry.proofExists(proofId)
+        );
+    }
+
+    function test_RejectsEmptyPrismWorker() public {
+        bytes32 proofId =
+            sha256(bytes("prism-pouw-proof-005"));
+
+        vm.expectRevert(
+            PrismWorkRegistry.InvalidWorker.selector
+        );
+
+        registry.recordUsefulWork(
+            "",
+            proofId,
+            "sum_squares",
+            2
+        );
+    }
+
+    function test_RejectsZeroProofId() public {
+        vm.expectRevert(
+            PrismWorkRegistry.InvalidProofId.selector
+        );
+
+        registry.recordUsefulWork(
+            prismWorker,
+            bytes32(0),
+            "sum_squares",
+            2
         );
     }
 }
