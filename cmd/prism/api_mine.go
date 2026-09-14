@@ -308,6 +308,21 @@ func (api *apiServer) handleMineStart(
 	)
 }
 
+func validateMineSourceHeight(
+	currentHeight uint64,
+	sourceHeight uint64,
+) error {
+	if sourceHeight != currentHeight {
+		return fmt.Errorf(
+			"stale PoUW job: expected source height %d, got %d",
+			currentHeight,
+			sourceHeight,
+		)
+	}
+
+	return nil
+}
+
 func (api *apiServer) handleMineSubmit(
 	writer http.ResponseWriter,
 	request *http.Request,
@@ -396,17 +411,14 @@ func (api *apiServer) handleMineSubmit(
 
 	lastBlock := chain.Blocks[len(chain.Blocks)-1]
 
-	if payload.SourceChainHeight !=
-		lastBlock.Height {
-
+	if err := validateMineSourceHeight(
+		lastBlock.Height,
+		payload.SourceChainHeight,
+	); err != nil {
 		apiWriteError(
 			writer,
 			http.StatusConflict,
-			fmt.Errorf(
-				"stale PoUW job: expected source height %d, got %d",
-				lastBlock.Height,
-				payload.SourceChainHeight,
-			),
+			err,
 		)
 		return
 	}

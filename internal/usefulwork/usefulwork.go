@@ -11,10 +11,11 @@ import (
 )
 
 const (
-	TaskTypeSumSquares     = "sum_squares"
-	TaskTypeDotProduct     = "dot_product"
-	TaskTypePrimeCount     = "prime_count"
-	TaskTypeMatrixMultiply = "matrix_multiply"
+	TaskTypeSumSquares       = "sum_squares"
+	TaskTypeDotProduct       = "dot_product"
+	TaskTypePrimeCount       = "prime_count"
+	TaskTypeMatrixMultiply   = "matrix_multiply"
+	TaskTypeImageConvolution = "image_convolution"
 )
 
 type Task struct {
@@ -153,6 +154,16 @@ func ValidateTask(
 				task,
 			)
 
+	case TaskTypeImageConvolution:
+		if err = validateImageConvolutionTask(task); err != nil {
+			return err
+		}
+
+		expectedInputHash, err =
+			calculateImageConvolutionInputHash(
+				task,
+			)
+
 	default:
 		return fmt.Errorf(
 			"unsupported useful work task type: %s",
@@ -209,6 +220,11 @@ func Compute(
 			"matrix_multiply returns matrix output; use ComputeMatrix",
 		)
 
+	case TaskTypeImageConvolution:
+		return 0, fmt.Errorf(
+			"image_convolution returns vector output; use ComputeImageConvolution",
+		)
+
 	default:
 		return 0, fmt.Errorf(
 			"unsupported useful work task type: %s",
@@ -244,6 +260,9 @@ func scoreForTask(
 
 	case TaskTypeMatrixMultiply:
 		return matrixWorkUnits(task)
+
+	case TaskTypeImageConvolution:
+		return convolutionWorkUnits(task)
 
 	default:
 		return uint64(len(task.Values))
@@ -310,11 +329,21 @@ func Execute(
 		Score:     scoreForTask(task),
 	}
 
-	if task.Type ==
-		TaskTypeMatrixMultiply {
+	if task.Type == TaskTypeMatrixMultiply ||
+		task.Type == TaskTypeImageConvolution {
 
-		resultValues, err :=
-			ComputeMatrix(task)
+		var resultValues []uint64
+		var err error
+
+		switch task.Type {
+		case TaskTypeMatrixMultiply:
+			resultValues, err =
+				ComputeMatrix(task)
+
+		case TaskTypeImageConvolution:
+			resultValues, err =
+				ComputeImageConvolution(task)
+		}
 		if err != nil {
 			return Proof{}, err
 		}
@@ -380,19 +409,31 @@ func VerifyProof(
 		)
 	}
 
-	if proof.Task.Type ==
-		TaskTypeMatrixMultiply {
+	if proof.Task.Type == TaskTypeMatrixMultiply ||
+		proof.Task.Type == TaskTypeImageConvolution {
 
 		if proof.Result != 0 {
 			return fmt.Errorf(
-				"matrix useful work must not contain scalar result",
+				"vector useful work must not contain scalar result",
 			)
 		}
 
-		expectedValues, err :=
-			ComputeMatrix(
-				proof.Task,
-			)
+		var expectedValues []uint64
+		var err error
+
+		switch proof.Task.Type {
+		case TaskTypeMatrixMultiply:
+			expectedValues, err =
+				ComputeMatrix(
+					proof.Task,
+				)
+
+		case TaskTypeImageConvolution:
+			expectedValues, err =
+				ComputeImageConvolution(
+					proof.Task,
+				)
+		}
 		if err != nil {
 			return err
 		}
@@ -402,7 +443,7 @@ func VerifyProof(
 			expectedValues,
 		) {
 			return fmt.Errorf(
-				"invalid useful work matrix result",
+				"invalid useful work vector result",
 			)
 		}
 
@@ -424,7 +465,7 @@ func VerifyProof(
 	} else {
 		if len(proof.ResultValues) != 0 {
 			return fmt.Errorf(
-				"scalar useful work must not contain matrix result",
+				"scalar useful work must not contain vector result",
 			)
 		}
 

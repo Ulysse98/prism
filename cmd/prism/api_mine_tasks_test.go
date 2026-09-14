@@ -6,7 +6,7 @@ import (
 	"prism/internal/usefulwork"
 )
 
-func TestMineTaskCatalogHasFourWorkloads(
+func TestMineTaskCatalogHasFiveWorkloads(
 	t *testing.T,
 ) {
 
@@ -16,9 +16,9 @@ func TestMineTaskCatalogHasFourWorkloads(
 		t.Fatal(err)
 	}
 
-	if len(options) != 4 {
+	if len(options) != 5 {
 		t.Fatalf(
-			"expected 4 workloads, got %d",
+			"expected 5 workloads, got %d",
 			len(options),
 		)
 	}
@@ -62,6 +62,7 @@ func TestMineTaskCatalogHasFourWorkloads(
 		usefulwork.TaskTypeDotProduct,
 		usefulwork.TaskTypePrimeCount,
 		usefulwork.TaskTypeMatrixMultiply,
+		usefulwork.TaskTypeImageConvolution,
 	} {
 		if !seenTypes[expected] {
 			t.Fatalf(
@@ -72,30 +73,38 @@ func TestMineTaskCatalogHasFourWorkloads(
 	}
 }
 
-func TestMineTaskDefaultRemainsSumSquares(
+func TestMineTaskDefaultRotatesByHeight(
 	t *testing.T,
 ) {
-
-	option, err :=
-		mineTaskForHeightAndType(
-			42,
-			"",
-		)
-	if err != nil {
-		t.Fatal(err)
+	expected := []string{
+		usefulwork.TaskTypeSumSquares,
+		usefulwork.TaskTypeDotProduct,
+		usefulwork.TaskTypePrimeCount,
+		usefulwork.TaskTypeMatrixMultiply,
+		usefulwork.TaskTypeImageConvolution,
+		usefulwork.TaskTypeSumSquares,
 	}
 
-	if option.Task.Type !=
-		usefulwork.TaskTypeSumSquares {
+	for height, expectedType := range expected {
+		option, err :=
+			mineTaskForHeightAndType(
+				uint64(height),
+				"",
+			)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		t.Fatalf(
-			"expected default %s, got %s",
-			usefulwork.TaskTypeSumSquares,
-			option.Task.Type,
-		)
+		if option.Task.Type != expectedType {
+			t.Fatalf(
+				"height %d: expected %s, got %s",
+				height,
+				expectedType,
+				option.Task.Type,
+			)
+		}
 	}
 }
-
 func TestMineTaskSelectionByType(
 	t *testing.T,
 ) {
@@ -104,6 +113,8 @@ func TestMineTaskSelectionByType(
 		usefulwork.TaskTypeSumSquares,
 		usefulwork.TaskTypeDotProduct,
 		usefulwork.TaskTypePrimeCount,
+		usefulwork.TaskTypeMatrixMultiply,
+		usefulwork.TaskTypeImageConvolution,
 	}
 
 	for _, taskType := range taskTypes {

@@ -175,6 +175,10 @@ func runAPICommand(args []string) {
 		"/api/v1/reserved",
 		api.handleReserved,
 	)
+	mux.HandleFunc(
+		"/api/v1/mine/tasks",
+		api.handleMineTasks,
+	)
 
 	mux.HandleFunc(
 		"/api/v1/mine/start",
@@ -212,6 +216,7 @@ func runAPICommand(args []string) {
 	fmt.Println("  GET /api/v1/work")
 	fmt.Println("  GET /api/v1/humanity")
 	fmt.Println("  GET /api/v1/reserved")
+	fmt.Println("  GET /api/v1/mine/tasks")
 	fmt.Println("  POST /api/v1/mine/start")
 	fmt.Println("  POST /api/v1/mine/submit")
 	fmt.Println()
