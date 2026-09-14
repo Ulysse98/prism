@@ -202,7 +202,7 @@ func runAPICommand(args []string) {
 	}
 
 	fmt.Println("=== PRISM HTTP API ===")
-	fmt.Println("Version: 0.35.2")
+	fmt.Println("Version:", prismVersion)
 	fmt.Println("P2P protocol:", p2p.ProtocolVersion)
 	fmt.Println("Node data:", *nodeData)
 	fmt.Println("Listening:", listenAddress)
@@ -267,7 +267,7 @@ func (api *apiServer) handleHealth(
 	response := apiHealthResponse{
 		Status:     "ok",
 		Network:    "Prism",
-		Version:    "0.35.2",
+		Version:    prismVersion,
 		Protocol:   p2p.ProtocolVersion,
 		ChainID:    p2p.MakeChainID(genesis.Hash),
 		Height:     last.Height,
@@ -323,7 +323,7 @@ func (api *apiServer) handleStatus(
 
 	response := apiStatusResponse{
 		Network:     "Prism",
-		Version:     "0.35.2",
+		Version:     prismVersion,
 		Protocol:    p2p.ProtocolVersion,
 		ChainID:     p2p.MakeChainID(genesis.Hash),
 		Height:      last.Height,
