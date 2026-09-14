@@ -137,9 +137,21 @@ func runAPICommand(args []string) {
 		return
 	}
 
+	computeMarket, err :=
+		compute.NewPersistentMarketplace(
+			*nodeData,
+		)
+	if err != nil {
+		fmt.Println(
+			"Unable to load Prism Compute marketplace:",
+			err,
+		)
+		return
+	}
+
 	api := &apiServer{
 		dataPath:      *nodeData,
-		computeMarket: compute.NewMarketplace(),
+		computeMarket: computeMarket,
 	}
 
 	mux := http.NewServeMux()

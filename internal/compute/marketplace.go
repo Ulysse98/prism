@@ -10,8 +10,9 @@ import (
 )
 
 type Marketplace struct {
-	mu   sync.RWMutex
-	jobs map[string]Job
+	mu      sync.RWMutex
+	jobs    map[string]Job
+	dataDir string
 }
 
 func NewMarketplace() *Marketplace {
@@ -54,6 +55,15 @@ func (market *Marketplace) Create(
 
 	market.jobs[job.ID] = job
 
+	if err := market.persistLocked(); err != nil {
+		delete(market.jobs, job.ID)
+
+		return Job{}, fmt.Errorf(
+			"cannot persist compute job: %w",
+			err,
+		)
+	}
+
 	return job, nil
 }
 
@@ -95,6 +105,10 @@ func (market *Marketplace) List() []Job {
 	market.mu.RLock()
 	defer market.mu.RUnlock()
 
+	return market.listLocked()
+}
+
+func (market *Marketplace) listLocked() []Job {
 	jobs := make(
 		[]Job,
 		0,
@@ -141,11 +155,22 @@ func (market *Marketplace) Claim(
 		)
 	}
 
+	previous := job
+
 	if err := job.Claim(worker); err != nil {
 		return Job{}, err
 	}
 
 	market.jobs[jobID] = job
+
+	if err := market.persistLocked(); err != nil {
+		market.jobs[jobID] = previous
+
+		return Job{}, fmt.Errorf(
+			"cannot persist compute job claim: %w",
+			err,
+		)
+	}
 
 	return job, nil
 }
@@ -173,11 +198,22 @@ func (market *Marketplace) Complete(
 		)
 	}
 
+	previous := job
+
 	if err := job.Complete(proof); err != nil {
 		return Job{}, err
 	}
 
 	market.jobs[jobID] = job
+
+	if err := market.persistLocked(); err != nil {
+		market.jobs[jobID] = previous
+
+		return Job{}, fmt.Errorf(
+			"cannot persist compute job completion: %w",
+			err,
+		)
+	}
 
 	return job, nil
 }
