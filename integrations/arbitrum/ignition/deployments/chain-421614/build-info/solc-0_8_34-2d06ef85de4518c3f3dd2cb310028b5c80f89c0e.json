@@ -1,0 +1,49 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_34-2d06ef85de4518c3f3dd2cb310028b5c80f89c0e",
+  "solcVersion": "0.8.34",
+  "solcLongVersion": "0.8.34+commit.80d5c536",
+  "compilerType": "solc",
+  "toolVersions": {
+    "hardhat": "3.16.0"
+  },
+  "userSourceNameMap": {
+    "contracts/PrismWorkRegistry.sol": "project/contracts/PrismWorkRegistry.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "prague",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode.linkReferences",
+            "evm.bytecode.object",
+            "evm.bytecode.opcodes",
+            "evm.bytecode.sourceMap",
+            "evm.deployedBytecode.immutableReferences",
+            "evm.deployedBytecode.linkReferences",
+            "evm.deployedBytecode.object",
+            "evm.deployedBytecode.opcodes",
+            "evm.deployedBytecode.sourceMap",
+            "evm.methodIdentifiers"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/PrismWorkRegistry.sol": {
+        "content": "// SPDX-License-Identifier: MIT\r\npragma solidity ^0.8.34;\r\n\r\n/// @title PrismWorkRegistry\r\n/// @notice Anchors verified Prism Proof-of-Useful-Work proofs on an EVM chain.\r\ncontract PrismWorkRegistry {\r\n    struct UsefulWorkProof {\r\n        bytes32 proofId;\r\n        string prismWorker;\r\n        string workType;\r\n        uint256 score;\r\n        uint64 anchoredAt;\r\n    }\r\n\r\n    address public owner;\r\n\r\n    mapping(address => bool) public recorders;\r\n    mapping(bytes32 => UsefulWorkProof) private proofs;\r\n\r\n    uint256 public proofCount;\r\n\r\n    error Unauthorized();\r\n    error InvalidWorker();\r\n    error InvalidProofId();\r\n    error InvalidWorkType();\r\n    error ProofAlreadyExists(bytes32 proofId);\r\n\r\n    event RecorderUpdated(\r\n        address indexed recorder,\r\n        bool allowed\r\n    );\r\n\r\n    event UsefulWorkRecorded(\r\n        bytes32 indexed proofId,\r\n        string prismWorker,\r\n        string workType,\r\n        uint256 score,\r\n        uint64 anchoredAt\r\n    );\r\n\r\n    constructor() {\r\n        owner = msg.sender;\r\n        recorders[msg.sender] = true;\r\n\r\n        emit RecorderUpdated(msg.sender, true);\r\n    }\r\n\r\n    modifier onlyOwner() {\r\n        if (msg.sender != owner) {\r\n            revert Unauthorized();\r\n        }\r\n\r\n        _;\r\n    }\r\n\r\n    modifier onlyRecorder() {\r\n        if (!recorders[msg.sender]) {\r\n            revert Unauthorized();\r\n        }\r\n\r\n        _;\r\n    }\r\n\r\n    function setRecorder(\r\n        address recorder,\r\n        bool allowed\r\n    ) external onlyOwner {\r\n        recorders[recorder] = allowed;\r\n\r\n        emit RecorderUpdated(recorder, allowed);\r\n    }\r\n\r\n    function recordUsefulWork(\r\n        string calldata prismWorker,\r\n        bytes32 proofId,\r\n        string calldata workType,\r\n        uint256 score\r\n    ) external onlyRecorder {\r\n        if (bytes(prismWorker).length == 0) {\r\n            revert InvalidWorker();\r\n        }\r\n\r\n        if (proofId == bytes32(0)) {\r\n            revert InvalidProofId();\r\n        }\r\n\r\n        if (bytes(workType).length == 0) {\r\n            revert InvalidWorkType();\r\n        }\r\n\r\n        if (proofs[proofId].anchoredAt != 0) {\r\n            revert ProofAlreadyExists(proofId);\r\n        }\r\n\r\n        uint64 anchoredAt = uint64(block.timestamp);\r\n\r\n        proofs[proofId] = UsefulWorkProof({\r\n            proofId: proofId,\r\n            prismWorker: prismWorker,\r\n            workType: workType,\r\n            score: score,\r\n            anchoredAt: anchoredAt\r\n        });\r\n\r\n        proofCount++;\r\n\r\n        emit UsefulWorkRecorded(\r\n            proofId,\r\n            prismWorker,\r\n            workType,\r\n            score,\r\n            anchoredAt\r\n        );\r\n    }\r\n\r\n    function getProof(\r\n        bytes32 proofId\r\n    ) external view returns (UsefulWorkProof memory) {\r\n        return proofs[proofId];\r\n    }\r\n\r\n    function proofExists(\r\n        bytes32 proofId\r\n    ) external view returns (bool) {\r\n        return proofs[proofId].anchoredAt != 0;\r\n    }\r\n}"
+      }
+    }
+  }
+}
