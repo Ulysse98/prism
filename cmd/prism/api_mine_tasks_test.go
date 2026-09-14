@@ -6,7 +6,7 @@ import (
 	"prism/internal/usefulwork"
 )
 
-func TestMineTaskCatalogHasFourWorkloads(
+func TestMineTaskCatalogHasFiveWorkloads(
 	t *testing.T,
 ) {
 
@@ -16,9 +16,9 @@ func TestMineTaskCatalogHasFourWorkloads(
 		t.Fatal(err)
 	}
 
-	if len(options) != 4 {
+	if len(options) != 5 {
 		t.Fatalf(
-			"expected 4 workloads, got %d",
+			"expected 5 workloads, got %d",
 			len(options),
 		)
 	}
@@ -62,6 +62,7 @@ func TestMineTaskCatalogHasFourWorkloads(
 		usefulwork.TaskTypeDotProduct,
 		usefulwork.TaskTypePrimeCount,
 		usefulwork.TaskTypeMatrixMultiply,
+		usefulwork.TaskTypeImageConvolution,
 	} {
 		if !seenTypes[expected] {
 			t.Fatalf(
@@ -80,6 +81,7 @@ func TestMineTaskDefaultRotatesByHeight(
 		usefulwork.TaskTypeDotProduct,
 		usefulwork.TaskTypePrimeCount,
 		usefulwork.TaskTypeMatrixMultiply,
+		usefulwork.TaskTypeImageConvolution,
 		usefulwork.TaskTypeSumSquares,
 	}
 
@@ -111,6 +113,8 @@ func TestMineTaskSelectionByType(
 		usefulwork.TaskTypeSumSquares,
 		usefulwork.TaskTypeDotProduct,
 		usefulwork.TaskTypePrimeCount,
+		usefulwork.TaskTypeMatrixMultiply,
+		usefulwork.TaskTypeImageConvolution,
 	}
 
 	for _, taskType := range taskTypes {
