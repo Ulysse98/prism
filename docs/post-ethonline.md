@@ -1,4 +1,4 @@
-# Prism — Post ETHOnline 2026
+# Prism â€” Post ETHOnline 2026
 
 ## What works
 - Functional Prism blockchain prototype in Go
