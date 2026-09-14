@@ -1,6 +1,6 @@
 {
   "_format": "hh3-sol-build-info-1",
-  "id": "solc-0_8_34-2c5079b084ad9d9cd411e8acd046b7daca2e09b5",
+  "id": "solc-0_8_34-2d06ef85de4518c3f3dd2cb310028b5c80f89c0e",
   "solcVersion": "0.8.34",
   "solcLongVersion": "0.8.34+commit.80d5c536",
   "compilerType": "solc",
@@ -13,7 +13,7 @@
   "input": {
     "language": "Solidity",
     "settings": {
-      "evmVersion": "osaka",
+      "evmVersion": "prague",
       "optimizer": {
         "enabled": true,
         "runs": 200
