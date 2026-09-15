@@ -369,7 +369,8 @@ func handleComputeComplete(
 		return
 	}
 
-	job, err := api.computeMarket.Complete(
+	settlement, err := settleComputeJob(
+		api,
 		jobID,
 		payload.Proof,
 	)
@@ -386,8 +387,13 @@ func handleComputeComplete(
 		writer,
 		http.StatusOK,
 		map[string]any{
-			"verified": true,
-			"job":      job,
+			"verified":       true,
+			"settled":        true,
+			"job":            settlement.Job,
+			"bountyReward":   settlement.BountyReward,
+			"settlementTxId": settlement.SettlementTxID,
+			"block":          settlement.Block,
+			"recovered":      settlement.Recovered,
 		},
 	)
 }

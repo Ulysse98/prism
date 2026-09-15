@@ -20,8 +20,13 @@ type apiComputeJobsResponse struct {
 }
 
 type apiComputeWorkerCompleteResponse struct {
-	Verified bool        `json:"verified"`
-	Job      compute.Job `json:"job"`
+	Verified       bool        `json:"verified"`
+	Settled        bool        `json:"settled"`
+	Job            compute.Job `json:"job"`
+	BountyReward   uint64      `json:"bountyReward"`
+	SettlementTxID string      `json:"settlementTxId"`
+	Block          uint64      `json:"block"`
+	Recovered      bool        `json:"recovered"`
 }
 
 func runComputeWorkerCommand(args []string) {
@@ -182,6 +187,10 @@ func runComputeWorkerCommand(args []string) {
 	fmt.Println("Job:", completed.Job.ID)
 	fmt.Println("Worker:", completed.Job.Worker)
 	fmt.Println("Proof ID:", completed.Job.ProofID)
+	fmt.Println("Bounty reward:", completed.BountyReward, "PRISM")
+	fmt.Println("Settlement TX:", completed.SettlementTxID)
+	fmt.Println("Block:", completed.Block)
+	fmt.Println("Recovered:", completed.Recovered)
 }
 
 func fetchComputeJobs(
