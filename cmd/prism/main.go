@@ -103,6 +103,11 @@ func main() {
 		return
 	}
 
+	if command == "compute-worker" {
+		runComputeWorkerCommand(os.Args[2:])
+		return
+	}
+
 	chain, pos, wallets, created, err := loadOrCreateNode()
 	if err != nil {
 		panic(err)
