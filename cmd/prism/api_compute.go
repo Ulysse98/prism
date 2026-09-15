@@ -10,10 +10,98 @@ import (
 )
 
 type apiComputeCreateJobRequest struct {
-	Task      usefulwork.Task `json:"task"`
-	Requester string          `json:"requester"`
-	Reward    uint64          `json:"reward"`
-	Nonce     uint64          `json:"nonce"`
+	Task       *usefulwork.Task `json:"task,omitempty"`
+	Type       string           `json:"type,omitempty"`
+	Values     []uint64         `json:"values,omitempty"`
+	ValuesB    []uint64         `json:"valuesB,omitempty"`
+	RowsA      uint64           `json:"rowsA,omitempty"`
+	ColsA      uint64           `json:"colsA,omitempty"`
+	ColsB      uint64           `json:"colsB,omitempty"`
+	Rows       uint64           `json:"rows,omitempty"`
+	Cols       uint64           `json:"cols,omitempty"`
+	KernelSize uint64           `json:"kernelSize,omitempty"`
+	Requester  string           `json:"requester"`
+	Reward     uint64           `json:"reward"`
+	Nonce      uint64           `json:"nonce"`
+}
+
+func (payload apiComputeCreateJobRequest) buildTask() (
+	usefulwork.Task,
+	error,
+) {
+	if payload.Task != nil {
+		hasInlineTask :=
+			strings.TrimSpace(payload.Type) != "" ||
+				len(payload.Values) != 0 ||
+				len(payload.ValuesB) != 0 ||
+				payload.RowsA != 0 ||
+				payload.ColsA != 0 ||
+				payload.ColsB != 0 ||
+				payload.Rows != 0 ||
+				payload.Cols != 0 ||
+				payload.KernelSize != 0
+
+		if hasInlineTask {
+			return usefulwork.Task{}, fmt.Errorf(
+				"compute request cannot combine task with inline task fields",
+			)
+		}
+
+		if err := usefulwork.ValidateTask(*payload.Task); err != nil {
+			return usefulwork.Task{}, err
+		}
+
+		return *payload.Task, nil
+	}
+
+	taskType := strings.TrimSpace(payload.Type)
+
+	switch taskType {
+	case usefulwork.TaskTypeSumSquares:
+		return usefulwork.NewSumSquaresTask(
+			payload.Values,
+		)
+
+	case usefulwork.TaskTypeDotProduct:
+		return usefulwork.NewDotProductTask(
+			payload.Values,
+			payload.ValuesB,
+		)
+
+	case usefulwork.TaskTypePrimeCount:
+		return usefulwork.NewPrimeCountTask(
+			payload.Values,
+		)
+
+	case usefulwork.TaskTypeMatrixMultiply:
+		return usefulwork.NewMatrixMultiplyTask(
+			payload.RowsA,
+			payload.ColsA,
+			payload.ColsB,
+			payload.Values,
+			payload.ValuesB,
+		)
+
+	case usefulwork.TaskTypeImageConvolution:
+		return usefulwork.NewImageConvolutionTask(
+			payload.Rows,
+			payload.Cols,
+			payload.KernelSize,
+			payload.Values,
+			payload.ValuesB,
+		)
+
+	case "":
+		return usefulwork.Task{}, fmt.Errorf(
+			"compute task type cannot be empty",
+		)
+
+	default:
+		return usefulwork.Task{}, fmt.Errorf(
+			"unsupported compute task type: %s",
+			taskType,
+		)
+	}
 }
 
 type apiComputeClaimJobRequest struct {
@@ -71,8 +159,21 @@ func (api *apiServer) handleComputeJobs(
 			return
 		}
 
+		task, err := payload.buildTask()
+		if err != nil {
+			apiWriteError(
+				writer,
+				http.StatusBadRequest,
+				fmt.Errorf(
+					"invalid compute task: %w",
+					err,
+				),
+			)
+			return
+		}
+
 		job, err := api.computeMarket.Create(
-			payload.Task,
+			task,
 			payload.Requester,
 			payload.Reward,
 			payload.Nonce,
