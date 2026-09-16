@@ -22,7 +22,7 @@ import (
 
 const (
 	dataDir      = "data"
-	prismVersion = "0.35.3"
+	prismVersion = "0.36.0"
 )
 
 func main() {
