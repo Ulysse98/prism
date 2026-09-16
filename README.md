@@ -1,4 +1,4 @@
-# Prism v0.18 â€” ETHOnline 2026
+# Prism v0.18 ETHOnline 2026
 
 > **Proof of Stake secures. Proof of Useful Work computes. Proof of Useful Participation rewards contribution.**
 
