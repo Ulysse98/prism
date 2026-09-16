@@ -22,7 +22,7 @@ import (
 
 const (
 	dataDir      = "data"
-	prismVersion = "0.35.3"
+	prismVersion = "0.36.0"
 )
 
 func main() {
@@ -100,6 +100,11 @@ func main() {
 
 	if command == "mine-api" {
 		runMineAPICommand(os.Args[2:])
+		return
+	}
+
+	if command == "compute-worker" {
+		runComputeWorkerCommand(os.Args[2:])
 		return
 	}
 

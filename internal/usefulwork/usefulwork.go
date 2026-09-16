@@ -16,6 +16,7 @@ const (
 	TaskTypePrimeCount       = "prime_count"
 	TaskTypeMatrixMultiply   = "matrix_multiply"
 	TaskTypeImageConvolution = "image_convolution"
+	TaskTypeMLInferenceBatch = "ml_inference_batch"
 )
 
 type Task struct {
@@ -164,6 +165,16 @@ func ValidateTask(
 				task,
 			)
 
+	case TaskTypeMLInferenceBatch:
+		if err = validateMLInferenceBatchTask(task); err != nil {
+			return err
+		}
+
+		expectedInputHash, err =
+			calculateMLInferenceInputHash(
+				task,
+			)
+
 	default:
 		return fmt.Errorf(
 			"unsupported useful work task type: %s",
@@ -225,6 +236,11 @@ func Compute(
 			"image_convolution returns vector output; use ComputeImageConvolution",
 		)
 
+	case TaskTypeMLInferenceBatch:
+		return 0, fmt.Errorf(
+			"ml_inference_batch returns vector output; use ComputeMLInferenceBatch",
+		)
+
 	default:
 		return 0, fmt.Errorf(
 			"unsupported useful work task type: %s",
@@ -263,6 +279,9 @@ func scoreForTask(
 
 	case TaskTypeImageConvolution:
 		return convolutionWorkUnits(task)
+
+	case TaskTypeMLInferenceBatch:
+		return mlInferenceWorkUnits(task)
 
 	default:
 		return uint64(len(task.Values))
@@ -330,7 +349,8 @@ func Execute(
 	}
 
 	if task.Type == TaskTypeMatrixMultiply ||
-		task.Type == TaskTypeImageConvolution {
+		task.Type == TaskTypeImageConvolution ||
+		task.Type == TaskTypeMLInferenceBatch {
 
 		var resultValues []uint64
 		var err error
@@ -343,6 +363,10 @@ func Execute(
 		case TaskTypeImageConvolution:
 			resultValues, err =
 				ComputeImageConvolution(task)
+
+		case TaskTypeMLInferenceBatch:
+			resultValues, err =
+				ComputeMLInferenceBatch(task)
 		}
 		if err != nil {
 			return Proof{}, err
@@ -410,7 +434,8 @@ func VerifyProof(
 	}
 
 	if proof.Task.Type == TaskTypeMatrixMultiply ||
-		proof.Task.Type == TaskTypeImageConvolution {
+		proof.Task.Type == TaskTypeImageConvolution ||
+		proof.Task.Type == TaskTypeMLInferenceBatch {
 
 		if proof.Result != 0 {
 			return fmt.Errorf(
@@ -431,6 +456,12 @@ func VerifyProof(
 		case TaskTypeImageConvolution:
 			expectedValues, err =
 				ComputeImageConvolution(
+					proof.Task,
+				)
+
+		case TaskTypeMLInferenceBatch:
+			expectedValues, err =
+				ComputeMLInferenceBatch(
 					proof.Task,
 				)
 		}

@@ -107,6 +107,26 @@ func mineTaskCatalogForHeight(
 		return nil, err
 	}
 
+	mlInference, err :=
+		usefulwork.NewMLInferenceBatchTask(
+			3,
+			3,
+			3,
+			[]uint64{
+				base + 8, base + 1, base,
+				base, base + 8, base + 1,
+				base + 1, base, base + 8,
+			},
+			[]uint64{
+				3, 1, 1,
+				1, 3, 1,
+				1, 1, 3,
+			},
+		)
+	if err != nil {
+		return nil, err
+	}
+
 	return []mineTaskOption{
 		{
 			Task:       sumSquares,
@@ -126,6 +146,10 @@ func mineTaskCatalogForHeight(
 		},
 		{
 			Task:       imageConvolution,
+			Difficulty: "HIGH",
+		},
+		{
+			Task:       mlInference,
 			Difficulty: "HIGH",
 		},
 	}, nil

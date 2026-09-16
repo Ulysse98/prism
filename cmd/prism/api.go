@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"prism/internal/compute"
 	"prism/internal/p2p"
 	"prism/internal/participation"
 	"prism/internal/storage"
@@ -16,8 +17,9 @@ import (
 )
 
 type apiServer struct {
-	dataPath string
-	stateMu  sync.Mutex
+	dataPath      string
+	stateMu       sync.Mutex
+	computeMarket *compute.Marketplace
 }
 
 type apiStatusResponse struct {
@@ -135,8 +137,21 @@ func runAPICommand(args []string) {
 		return
 	}
 
+	computeMarket, err :=
+		compute.NewPersistentMarketplace(
+			*nodeData,
+		)
+	if err != nil {
+		fmt.Println(
+			"Unable to load Prism Compute marketplace:",
+			err,
+		)
+		return
+	}
+
 	api := &apiServer{
-		dataPath: *nodeData,
+		dataPath:      *nodeData,
+		computeMarket: computeMarket,
 	}
 
 	mux := http.NewServeMux()
@@ -189,6 +204,16 @@ func runAPICommand(args []string) {
 		"/api/v1/mine/submit",
 		api.handleMineSubmit,
 	)
+
+	mux.HandleFunc(
+		"/api/v1/compute/jobs",
+		api.handleComputeJobs,
+	)
+
+	mux.HandleFunc(
+		"/api/v1/compute/jobs/",
+		api.handleComputeJobAction,
+	)
 	listenAddress := fmt.Sprintf(
 		"%s:%d",
 		*host,
@@ -219,6 +244,10 @@ func runAPICommand(args []string) {
 	fmt.Println("  GET /api/v1/mine/tasks")
 	fmt.Println("  POST /api/v1/mine/start")
 	fmt.Println("  POST /api/v1/mine/submit")
+	fmt.Println("  GET  /api/v1/compute/jobs")
+	fmt.Println("  POST /api/v1/compute/jobs")
+	fmt.Println("  POST /api/v1/compute/jobs/{id}/claim")
+	fmt.Println("  POST /api/v1/compute/jobs/{id}/complete")
 	fmt.Println()
 
 	fmt.Println(

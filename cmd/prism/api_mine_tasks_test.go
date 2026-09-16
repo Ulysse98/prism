@@ -6,7 +6,7 @@ import (
 	"prism/internal/usefulwork"
 )
 
-func TestMineTaskCatalogHasFiveWorkloads(
+func TestMineTaskCatalogHasSixWorkloads(
 	t *testing.T,
 ) {
 
@@ -16,9 +16,9 @@ func TestMineTaskCatalogHasFiveWorkloads(
 		t.Fatal(err)
 	}
 
-	if len(options) != 5 {
+	if len(options) != 6 {
 		t.Fatalf(
-			"expected 5 workloads, got %d",
+			"expected 6 workloads, got %d",
 			len(options),
 		)
 	}
@@ -63,6 +63,7 @@ func TestMineTaskCatalogHasFiveWorkloads(
 		usefulwork.TaskTypePrimeCount,
 		usefulwork.TaskTypeMatrixMultiply,
 		usefulwork.TaskTypeImageConvolution,
+		usefulwork.TaskTypeMLInferenceBatch,
 	} {
 		if !seenTypes[expected] {
 			t.Fatalf(
@@ -82,6 +83,7 @@ func TestMineTaskDefaultRotatesByHeight(
 		usefulwork.TaskTypePrimeCount,
 		usefulwork.TaskTypeMatrixMultiply,
 		usefulwork.TaskTypeImageConvolution,
+		usefulwork.TaskTypeMLInferenceBatch,
 		usefulwork.TaskTypeSumSquares,
 	}
 
@@ -115,6 +117,7 @@ func TestMineTaskSelectionByType(
 		usefulwork.TaskTypePrimeCount,
 		usefulwork.TaskTypeMatrixMultiply,
 		usefulwork.TaskTypeImageConvolution,
+		usefulwork.TaskTypeMLInferenceBatch,
 	}
 
 	for _, taskType := range taskTypes {

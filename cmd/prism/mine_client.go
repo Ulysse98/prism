@@ -50,7 +50,7 @@ func runMineAPICommand(args []string) {
 	taskType := flags.String(
 		"task",
 		"",
-		"useful work task type (sum_squares, dot_product, prime_count, matrix_multiply, image_convolution)",
+		"useful work task type (sum_squares, dot_product, prime_count, matrix_multiply, image_convolution, ml_inference_batch)",
 	)
 
 	if err := flags.Parse(args); err != nil {
@@ -75,6 +75,9 @@ func runMineAPICommand(args []string) {
 		)
 		fmt.Println(
 			`.\prism.exe mine-api -data .\data -task matrix_multiply Alice`,
+		)
+		fmt.Println(
+			`.\prism.exe mine-api -data .\data -task ml_inference_batch Alice`,
 		)
 		return
 	}
@@ -154,6 +157,14 @@ func runMineAPICommand(args []string) {
 		fmt.Printf(
 			"Kernel dimensions: %dx%d\n",
 			job.ColsB,
+			job.ColsB,
+		)
+
+	case usefulwork.TaskTypeMLInferenceBatch:
+		fmt.Printf(
+			"ML batch: samples=%d features=%d classes=%d\n",
+			job.RowsA,
+			job.ColsA,
 			job.ColsB,
 		)
 	}

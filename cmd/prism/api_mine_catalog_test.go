@@ -6,7 +6,7 @@ import (
 	"prism/internal/usefulwork"
 )
 
-func TestMineCatalogResponseHasFiveWorkloads(
+func TestMineCatalogResponseHasSixWorkloads(
 	t *testing.T,
 ) {
 	response, err :=
@@ -25,9 +25,9 @@ func TestMineCatalogResponseHasFiveWorkloads(
 		)
 	}
 
-	if len(response.Tasks) != 5 {
+	if len(response.Tasks) != 6 {
 		t.Fatalf(
-			"expected 5 tasks, got %d",
+			"expected 6 tasks, got %d",
 			len(response.Tasks),
 		)
 	}
@@ -38,6 +38,7 @@ func TestMineCatalogResponseHasFiveWorkloads(
 		usefulwork.TaskTypePrimeCount:       false,
 		usefulwork.TaskTypeMatrixMultiply:   false,
 		usefulwork.TaskTypeImageConvolution: false,
+		usefulwork.TaskTypeMLInferenceBatch: false,
 	}
 
 	for _, entry := range response.Tasks {
@@ -100,6 +101,7 @@ func TestMineCatalogWorkUnits(
 		usefulwork.TaskTypePrimeCount:       8,
 		usefulwork.TaskTypeMatrixMultiply:   12,
 		usefulwork.TaskTypeImageConvolution: 36,
+		usefulwork.TaskTypeMLInferenceBatch: 27,
 	}
 
 	for _, entry := range response.Tasks {
