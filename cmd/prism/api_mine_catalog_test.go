@@ -25,20 +25,21 @@ func TestMineCatalogResponseHasSixWorkloads(
 		)
 	}
 
-	if len(response.Tasks) != 6 {
+	if len(response.Tasks) != 7 {
 		t.Fatalf(
-			"expected 6 tasks, got %d",
+			"expected 7 tasks, got %d",
 			len(response.Tasks),
 		)
 	}
 
 	expected := map[string]bool{
-		usefulwork.TaskTypeSumSquares:       false,
-		usefulwork.TaskTypeDotProduct:       false,
-		usefulwork.TaskTypePrimeCount:       false,
-		usefulwork.TaskTypeMatrixMultiply:   false,
-		usefulwork.TaskTypeImageConvolution: false,
-		usefulwork.TaskTypeMLInferenceBatch: false,
+		usefulwork.TaskTypeSumSquares:           false,
+		usefulwork.TaskTypeDotProduct:           false,
+		usefulwork.TaskTypePrimeCount:           false,
+		usefulwork.TaskTypeMatrixMultiply:       false,
+		usefulwork.TaskTypeImageConvolution:     false,
+		usefulwork.TaskTypeMLInferenceBatch:     false,
+		usefulwork.TaskTypeMLInferenceQuantized: false,
 	}
 
 	for _, entry := range response.Tasks {
@@ -96,12 +97,13 @@ func TestMineCatalogWorkUnits(
 	}
 
 	expected := map[string]uint64{
-		usefulwork.TaskTypeSumSquares:       3,
-		usefulwork.TaskTypeDotProduct:       6,
-		usefulwork.TaskTypePrimeCount:       8,
-		usefulwork.TaskTypeMatrixMultiply:   12,
-		usefulwork.TaskTypeImageConvolution: 36,
-		usefulwork.TaskTypeMLInferenceBatch: 27,
+		usefulwork.TaskTypeSumSquares:           3,
+		usefulwork.TaskTypeDotProduct:           6,
+		usefulwork.TaskTypePrimeCount:           8,
+		usefulwork.TaskTypeMatrixMultiply:       12,
+		usefulwork.TaskTypeImageConvolution:     36,
+		usefulwork.TaskTypeMLInferenceBatch:     27,
+		usefulwork.TaskTypeMLInferenceQuantized: 27,
 	}
 
 	for _, entry := range response.Tasks {

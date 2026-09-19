@@ -18,6 +18,8 @@ func mineTaskCatalogForHeight(
 
 	base := (height % 97) + 11
 
+	signedBase := int64(base)
+
 	sumSquares, err :=
 		usefulwork.NewSumSquaresTask(
 			[]uint64{
@@ -127,6 +129,27 @@ func mineTaskCatalogForHeight(
 		return nil, err
 	}
 
+	quantizedML, err :=
+		usefulwork.NewMLInferenceQuantizedTask(
+			3,
+			3,
+			3,
+			[]int64{
+				signedBase + 8, -signedBase - 1, 2,
+				-3, signedBase + 6, -1,
+				signedBase, -2, signedBase + 4,
+			},
+			[]int64{
+				2, -1, 1,
+				-1, 3, -2,
+				1, 1, -3,
+			},
+			[]int64{-2, 3, 1},
+		)
+	if err != nil {
+		return nil, err
+	}
+
 	return []mineTaskOption{
 		{
 			Task:       sumSquares,
@@ -150,6 +173,10 @@ func mineTaskCatalogForHeight(
 		},
 		{
 			Task:       mlInference,
+			Difficulty: "HIGH",
+		},
+		{
+			Task:       quantizedML,
 			Difficulty: "HIGH",
 		},
 	}, nil
