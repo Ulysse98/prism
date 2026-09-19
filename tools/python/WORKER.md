@@ -1,6 +1,6 @@
 # Worker Python HTTP signe
 
-Le worker prend en charge `ml_inference_quantized`, avec le noeud Go v0.37.0.
+Le worker prend en charge `ml_inference_quantized`, avec le noeud Go v0.39.0.
 Voir [README.md](README.md) pour l'environnement Python et les comparateurs,
 et [WATCH.md](WATCH.md) pour le mode automatique ajoute dans la branche v0.38.
 
@@ -41,8 +41,9 @@ le noeud peut avoir traite la requete. Relancer demo creerait un autre job.
 - Task.ID = SHA-256 de `type|input_hash`.
 - OutputHash = SHA-256 du JSON compact des predictions.
 - Result scalaire = 0 pour une preuve vectorielle.
+- Proof v2 lie cryptographiquement le calcul au marketplace et au reseau.
 - Proof.ID = SHA-256 de
-  `task_id|worker|public_key|result|output_hash|score`.
+  `Prism/PoUW/Proof/v2|job_id|chain_id|genesis_hash|task_id|worker|public_key|result|output_hash|score`.
 - Signature Ed25519 sur le texte ASCII hexadecimal de Proof.ID.
 - Adresse = `prism_` + les 20 premiers octets du SHA-256 de la cle publique.
 - Job.ID = SHA-256 de `task_id|requester|reward|nonce`.

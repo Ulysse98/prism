@@ -1,4 +1,4 @@
-"""Prism v0.37 quantized Task, Job, wallet and signed Proof wire formats.
+"""Prism v0.39 quantized Task, Job, wallet and signed Proof v2 wire formats.
 
 Based on the Go sources supplied at commit b83445e. Signing API:
 https://cryptography.io/en/latest/hazmat/primitives/asymmetric/ed25519/
