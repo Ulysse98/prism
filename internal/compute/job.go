@@ -134,6 +134,13 @@ func (job *Job) Complete(
 		)
 	}
 
+	if proof.ProofVersion == usefulwork.ComputeProofVersion &&
+		proof.JobID != job.ID {
+		return fmt.Errorf(
+			"context-bound proof does not belong to compute job",
+		)
+	}
+
 	if proof.Task.ID != job.Task.ID {
 		return fmt.Errorf(
 			"proof task does not match compute job",

@@ -121,6 +121,24 @@ func runComputeWorkerCommand(args []string) {
 		return
 	}
 
+	status, err := fetchComputeStatus(
+		client,
+		baseURL+"/status",
+	)
+	if err != nil {
+		fmt.Println("Unable to fetch node status:")
+		fmt.Println(err)
+		return
+	}
+	if !status.ChainValid {
+		fmt.Println("Node does not report a valid chain.")
+		return
+	}
+	if status.ChainID == "" || status.GenesisHash == "" {
+		fmt.Println("Node status is missing chain identity.")
+		return
+	}
+
 	fmt.Println("=== PRISM COMPUTE WORKER ===")
 	fmt.Println("Worker:", workerName)
 	fmt.Println("Address:", worker.Address)
@@ -132,8 +150,11 @@ func runComputeWorkerCommand(args []string) {
 	fmt.Println()
 	fmt.Println("Computing useful work...")
 
-	proof, err := usefulwork.Execute(
+	proof, err := usefulwork.ExecuteCompute(
 		job.Task,
+		job.ID,
+		status.ChainID,
+		status.GenesisHash,
 		worker,
 	)
 	if err != nil {
@@ -191,6 +212,37 @@ func runComputeWorkerCommand(args []string) {
 	fmt.Println("Settlement TX:", completed.SettlementTxID)
 	fmt.Println("Block:", completed.Block)
 	fmt.Println("Recovered:", completed.Recovered)
+}
+
+func fetchComputeStatus(
+	client *http.Client,
+	url string,
+) (apiStatusResponse, error) {
+	response, err := client.Get(url)
+	if err != nil {
+		return apiStatusResponse{}, err
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(
+		io.LimitReader(response.Body, 1<<20),
+	)
+	if err != nil {
+		return apiStatusResponse{}, err
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return apiStatusResponse{}, fmt.Errorf(
+			"HTTP %d: %s",
+			response.StatusCode,
+			strings.TrimSpace(string(body)),
+		)
+	}
+
+	var payload apiStatusResponse
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return apiStatusResponse{}, err
+	}
+	return payload, nil
 }
 
 func fetchComputeJobs(

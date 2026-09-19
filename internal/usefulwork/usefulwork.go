@@ -36,6 +36,10 @@ type Task struct {
 
 type Proof struct {
 	ID           string   `json:"id"`
+	ProofVersion uint8    `json:"proof_version,omitempty"`
+	JobID        string   `json:"job_id,omitempty"`
+	ChainID      string   `json:"chain_id,omitempty"`
+	GenesisHash  string   `json:"genesis_hash,omitempty"`
 	Task         Task     `json:"task"`
 	Worker       string   `json:"worker"`
 	PublicKey    string   `json:"public_key"`
@@ -45,6 +49,8 @@ type Proof struct {
 	Score        uint64   `json:"score"`
 	Signature    string   `json:"signature"`
 }
+
+const ComputeProofVersion uint8 = 2
 
 func NewSumSquaresTask(
 	values []uint64,
@@ -348,6 +354,33 @@ func CalculateProofID(
 	return hex.EncodeToString(hash[:])
 }
 
+func computeProofPayload(
+	proof Proof,
+) string {
+	return fmt.Sprintf(
+		"Prism/PoUW/Proof/v2|%s|%s|%s|%s|%s|%s|%d|%s|%d",
+		proof.JobID,
+		proof.ChainID,
+		proof.GenesisHash,
+		proof.Task.ID,
+		proof.Worker,
+		proof.PublicKey,
+		proof.Result,
+		proof.OutputHash,
+		proof.Score,
+	)
+}
+
+func CalculateComputeProofID(
+	proof Proof,
+) string {
+	hash := sha256.Sum256(
+		[]byte(computeProofPayload(proof)),
+	)
+
+	return hex.EncodeToString(hash[:])
+}
+
 func Execute(
 	task Task,
 	worker *wallet.Wallet,
@@ -438,6 +471,68 @@ func Execute(
 	)
 
 	return proof, nil
+}
+
+// ExecuteCompute creates a context-bound proof for a marketplace job.
+// Execute remains the legacy v1 path used by ordinary PoUW work.
+func ExecuteCompute(
+	task Task,
+	jobID string,
+	chainID string,
+	genesisHash string,
+	worker *wallet.Wallet,
+) (Proof, error) {
+	if jobID == "" {
+		return Proof{}, fmt.Errorf("compute proof job ID cannot be empty")
+	}
+	if chainID == "" {
+		return Proof{}, fmt.Errorf("compute proof chain ID cannot be empty")
+	}
+	if genesisHash == "" {
+		return Proof{}, fmt.Errorf("compute proof genesis hash cannot be empty")
+	}
+
+	proof, err := Execute(task, worker)
+	if err != nil {
+		return Proof{}, err
+	}
+
+	proof.ProofVersion = ComputeProofVersion
+	proof.JobID = jobID
+	proof.ChainID = chainID
+	proof.GenesisHash = genesisHash
+	proof.ID = CalculateComputeProofID(proof)
+	proof.Signature = hex.EncodeToString(
+		ed25519.Sign(worker.PrivateKey, []byte(proof.ID)),
+	)
+
+	return proof, nil
+}
+
+func VerifyComputeProofContext(
+	proof Proof,
+	jobID string,
+	chainID string,
+	genesisHash string,
+) error {
+	if proof.ProofVersion != ComputeProofVersion {
+		return fmt.Errorf(
+			"compute proof must use protocol version %d",
+			ComputeProofVersion,
+		)
+	}
+	if proof.JobID != jobID {
+		return fmt.Errorf("compute proof job ID does not match job")
+	}
+	if proof.ChainID != chainID {
+		return fmt.Errorf("compute proof chain ID does not match node")
+	}
+	if proof.GenesisHash != genesisHash {
+		return fmt.Errorf(
+			"compute proof genesis hash does not match node",
+		)
+	}
+	return nil
 }
 
 func VerifyProof(
@@ -591,7 +686,24 @@ func VerifyProof(
 		)
 	}
 
-	if proof.ID != CalculateProofID(proof) {
+	expectedProofID := CalculateProofID(proof)
+	if proof.ProofVersion == ComputeProofVersion {
+		if proof.JobID == "" ||
+			proof.ChainID == "" ||
+			proof.GenesisHash == "" {
+			return fmt.Errorf(
+				"context-bound compute proof is missing signed context",
+			)
+		}
+		expectedProofID = CalculateComputeProofID(proof)
+	} else if proof.ProofVersion != 0 {
+		return fmt.Errorf(
+			"unsupported useful work proof version: %d",
+			proof.ProofVersion,
+		)
+	}
+
+	if proof.ID != expectedProofID {
 		return fmt.Errorf(
 			"invalid useful work proof ID",
 		)

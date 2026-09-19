@@ -262,7 +262,7 @@ class HTTPWorkerTests(unittest.TestCase):
             self.assertIs(receipt["settled"], True)
             self.assertEqual(receipt["predictions"], [0, 1, 0])
             self.assertEqual(receipt["bountyReward"], 1)
-            self.assertEqual([method for method, _ in node.requests], ["GET", "POST", "POST"])
+            self.assertEqual([method for method, _ in node.requests], ["GET", "GET", "POST", "POST"])
             self.assertNotIn("private_key", compact(node.received_proof).decode())
 
     def test_create_and_process(self):
