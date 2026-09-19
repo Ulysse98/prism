@@ -16,9 +16,9 @@ func TestMineTaskCatalogHasSixWorkloads(
 		t.Fatal(err)
 	}
 
-	if len(options) != 6 {
+	if len(options) != 7 {
 		t.Fatalf(
-			"expected 6 workloads, got %d",
+			"expected 7 workloads, got %d",
 			len(options),
 		)
 	}
@@ -64,6 +64,7 @@ func TestMineTaskCatalogHasSixWorkloads(
 		usefulwork.TaskTypeMatrixMultiply,
 		usefulwork.TaskTypeImageConvolution,
 		usefulwork.TaskTypeMLInferenceBatch,
+		usefulwork.TaskTypeMLInferenceQuantized,
 	} {
 		if !seenTypes[expected] {
 			t.Fatalf(
@@ -84,6 +85,7 @@ func TestMineTaskDefaultRotatesByHeight(
 		usefulwork.TaskTypeMatrixMultiply,
 		usefulwork.TaskTypeImageConvolution,
 		usefulwork.TaskTypeMLInferenceBatch,
+		usefulwork.TaskTypeMLInferenceQuantized,
 		usefulwork.TaskTypeSumSquares,
 	}
 
@@ -118,6 +120,7 @@ func TestMineTaskSelectionByType(
 		usefulwork.TaskTypeMatrixMultiply,
 		usefulwork.TaskTypeImageConvolution,
 		usefulwork.TaskTypeMLInferenceBatch,
+		usefulwork.TaskTypeMLInferenceQuantized,
 	}
 
 	for _, taskType := range taskTypes {

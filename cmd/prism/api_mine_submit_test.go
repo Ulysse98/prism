@@ -244,6 +244,32 @@ func TestHandleMineSubmitAcceptsValidMLInference(
 	}
 }
 
+func TestHandleMineSubmitAcceptsValidQuantizedMLInference(
+	t *testing.T,
+) {
+	api, payload :=
+		newMineSubmitHTTPFixture(
+			t,
+			usefulwork.
+				TaskTypeMLInferenceQuantized,
+		)
+
+	response :=
+		performMineSubmit(
+			t,
+			api,
+			payload,
+		)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf(
+			"expected HTTP 200, got %d: %s",
+			response.Code,
+			response.Body.String(),
+		)
+	}
+}
+
 func TestHandleMineSubmitRejectsReplayAsStale(
 	t *testing.T,
 ) {

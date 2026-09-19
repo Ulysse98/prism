@@ -50,7 +50,7 @@ func runMineAPICommand(args []string) {
 	taskType := flags.String(
 		"task",
 		"",
-		"useful work task type (sum_squares, dot_product, prime_count, matrix_multiply, image_convolution, ml_inference_batch)",
+		"useful work task type (sum_squares, dot_product, prime_count, matrix_multiply, image_convolution, ml_inference_batch, ml_inference_quantized)",
 	)
 
 	if err := flags.Parse(args); err != nil {
@@ -78,6 +78,9 @@ func runMineAPICommand(args []string) {
 		)
 		fmt.Println(
 			`.\prism.exe mine-api -data .\data -task ml_inference_batch Alice`,
+		)
+		fmt.Println(
+			`.\prism.exe mine-api -data .\data -task ml_inference_quantized Alice`,
 		)
 		return
 	}
@@ -132,7 +135,21 @@ func runMineAPICommand(args []string) {
 	fmt.Println("Task:", job.Task)
 	fmt.Println("Difficulty:", job.Difficulty)
 	fmt.Println("Reward:", job.Reward, "PRISM")
-	fmt.Println("Input:", job.Input)
+	if len(job.Input) > 0 {
+		fmt.Println("Input:", job.Input)
+	}
+
+	if len(job.SignedValues) > 0 {
+		fmt.Println("Signed input:", job.SignedValues)
+	}
+
+	if len(job.SignedValuesB) > 0 {
+		fmt.Println("Signed weights:", job.SignedValuesB)
+	}
+
+	if len(job.Biases) > 0 {
+		fmt.Println("Biases:", job.Biases)
+	}
 
 	if len(job.InputB) > 0 {
 		fmt.Println("Input B:", job.InputB)
@@ -160,7 +177,8 @@ func runMineAPICommand(args []string) {
 			job.ColsB,
 		)
 
-	case usefulwork.TaskTypeMLInferenceBatch:
+	case usefulwork.TaskTypeMLInferenceBatch,
+		usefulwork.TaskTypeMLInferenceQuantized:
 		fmt.Printf(
 			"ML batch: samples=%d features=%d classes=%d\n",
 			job.RowsA,
@@ -183,16 +201,7 @@ func runMineAPICommand(args []string) {
 		return
 	}
 
-	task := usefulwork.Task{
-		ID:        job.ID,
-		Type:      job.Task,
-		Values:    job.Input,
-		ValuesB:   job.InputB,
-		RowsA:     job.RowsA,
-		ColsA:     job.ColsA,
-		ColsB:     job.ColsB,
-		InputHash: job.InputHash,
-	}
+	task := job.usefulWorkTask()
 
 	fmt.Println("Computing useful work...")
 

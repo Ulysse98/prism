@@ -23,6 +23,9 @@ type apiMineJob struct {
 	Task              string   `json:"task"`
 	Input             []uint64 `json:"input"`
 	InputB            []uint64 `json:"inputB,omitempty"`
+	SignedValues      []int64  `json:"signedValues,omitempty"`
+	SignedValuesB     []int64  `json:"signedValuesB,omitempty"`
+	Biases            []int64  `json:"biases,omitempty"`
 	RowsA             uint64   `json:"rowsA,omitempty"`
 	ColsA             uint64   `json:"colsA,omitempty"`
 	ColsB             uint64   `json:"colsB,omitempty"`
@@ -32,6 +35,38 @@ type apiMineJob struct {
 	Status            string   `json:"status"`
 	CreatedAt         string   `json:"createdAt"`
 	SourceChainHeight uint64   `json:"sourceChainHeight"`
+}
+
+func apiMineJobFromTask(task usefulwork.Task) apiMineJob {
+	return apiMineJob{
+		ID:            task.ID,
+		Task:          task.Type,
+		Input:         task.Values,
+		InputB:        task.ValuesB,
+		SignedValues:  task.SignedValues,
+		SignedValuesB: task.SignedValuesB,
+		Biases:        task.Biases,
+		RowsA:         task.RowsA,
+		ColsA:         task.ColsA,
+		ColsB:         task.ColsB,
+		InputHash:     task.InputHash,
+	}
+}
+
+func (job apiMineJob) usefulWorkTask() usefulwork.Task {
+	return usefulwork.Task{
+		ID:            job.ID,
+		Type:          job.Task,
+		Values:        job.Input,
+		ValuesB:       job.InputB,
+		SignedValues:  job.SignedValues,
+		SignedValuesB: job.SignedValuesB,
+		Biases:        job.Biases,
+		RowsA:         job.RowsA,
+		ColsA:         job.ColsA,
+		ColsB:         job.ColsB,
+		InputHash:     job.InputHash,
+	}
 }
 
 type apiMineSubmitRequest struct {
@@ -279,25 +314,14 @@ func (api *apiServer) handleMineStart(
 		return
 	}
 
-	job := apiMineJob{
-		ID:            task.ID,
-		Worker:        workerLabel,
-		WorkerAddress: workerAddress,
-		Task:          task.Type,
-		Input:         task.Values,
-		InputB:        task.ValuesB,
-		RowsA:         task.RowsA,
-		ColsA:         task.ColsA,
-		ColsB:         task.ColsB,
-		InputHash:     task.InputHash,
-		Difficulty:    option.Difficulty,
-		Reward:        reward,
-		Status:        "READY",
-		CreatedAt: time.Now().
-			UTC().
-			Format(time.RFC3339),
-		SourceChainHeight: lastBlock.Height,
-	}
+	job := apiMineJobFromTask(task)
+	job.Worker = workerLabel
+	job.WorkerAddress = workerAddress
+	job.Difficulty = option.Difficulty
+	job.Reward = reward
+	job.Status = "READY"
+	job.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	job.SourceChainHeight = lastBlock.Height
 
 	apiWriteJSON(
 		writer,
