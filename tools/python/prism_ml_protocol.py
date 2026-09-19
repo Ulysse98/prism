@@ -167,13 +167,28 @@ def load_wallet(data: Path, name: str) -> Wallet:
     return wallet_from_record(matching[0])
 
 
+COMPUTE_PROOF_VERSION = 2
+
+
+def compute_proof_id(proof: dict) -> str:
+    message = (f'Prism/PoUW/Proof/v2|{proof["job_id"]}|{proof["chain_id"]}|'
+               f'{proof["genesis_hash"]}|{proof["task"]["id"]}|{proof["worker"]}|'
+               f'{proof["public_key"]}|{proof["result"]}|{proof["output_hash"]}|'
+               f'{proof["score"]}')
+    return digest(message.encode("utf-8"))
+
+
 def proof_id(proof: dict) -> str:
+    if proof.get("proof_version") == COMPUTE_PROOF_VERSION:
+        return compute_proof_id(proof)
     message = (f'{proof["task"]["id"]}|{proof["worker"]}|{proof["public_key"]}|'
                f'{proof["result"]}|{proof["output_hash"]}|{proof["score"]}')
     return digest(message.encode("utf-8"))
 
 
-def make_proof(task: dict, wallet: Wallet) -> dict:
+def make_proof(task: dict, wallet: Wallet, *, job_id: str | None = None,
+               chain_id: str | None = None,
+               genesis_hash: str | None = None) -> dict:
     payload = task_payload(task)
     try:
         result = infer(payload)
@@ -185,6 +200,21 @@ def make_proof(task: dict, wallet: Wallet) -> dict:
         "result": 0, "result_values": predictions, "output_hash": digest(compact(predictions)),
         "score": work_units(task),
     }
+    context = (job_id, chain_id, genesis_hash)
+    if any(value is not None for value in context):
+        if any(value is None for value in context):
+            raise ProtocolError("compute proof context is incomplete")
+        identifier(job_id, "job ID")
+        if (not isinstance(chain_id, str) or not chain_id.strip() or
+                len(chain_id) > 128):
+            raise ProtocolError("invalid chain ID")
+        identifier(genesis_hash, "genesis hash")
+        proof.update({
+            "proof_version": COMPUTE_PROOF_VERSION,
+            "job_id": job_id,
+            "chain_id": chain_id,
+            "genesis_hash": genesis_hash,
+        })
     proof["id"] = proof_id(proof)
     proof["signature"] = wallet.private_key.sign(proof["id"].encode("ascii")).hex()
     return proof
@@ -194,6 +224,16 @@ def verify_proof(proof: dict) -> None:
     if not isinstance(proof, dict):
         raise ProtocolError("invalid proof object")
     try:
+        version = proof.get("proof_version", 0)
+        if type(version) is not int or version not in (0, COMPUTE_PROOF_VERSION):
+            raise ProtocolError("unsupported proof version")
+        if version == COMPUTE_PROOF_VERSION:
+            identifier(proof.get("job_id"), "job ID")
+            if (not isinstance(proof.get("chain_id"), str) or
+                    not proof["chain_id"].strip() or
+                    len(proof["chain_id"]) > 128):
+                raise ProtocolError("invalid chain ID")
+            identifier(proof.get("genesis_hash"), "genesis hash")
         payload = task_payload(proof["task"])
         predictions = infer(payload)["predictions"]
         values = proof["result_values"]

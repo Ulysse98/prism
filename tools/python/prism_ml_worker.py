@@ -94,6 +94,30 @@ def find_job(api: API, selected_id: str) -> dict:
     return validate_job(matching[0], selected_id)
 
 
+
+def compute_proof_context(api: API, job_id_value: str) -> dict | None:
+    identifier(job_id_value, "job ID")
+    status = api.request("GET", "/status")
+    if not isinstance(status, dict):
+        raise WorkerError("invalid node status response")
+    if "chainValid" in status and status.get("chainValid") is not True:
+        raise WorkerError("node does not confirm a valid chain")
+    chain_id = status.get("chainId")
+    genesis_value = status.get("genesisHash")
+    # Legacy/local test nodes may expose only the old status shape.
+    # Keep v1 for those nodes; a current node supplies both fields.
+    if chain_id is None or genesis_value is None:
+        return None
+    if (not isinstance(chain_id, str) or not chain_id.strip() or
+            len(chain_id) > 128):
+        raise WorkerError("missing or invalid chain identity")
+    genesis_hash = identifier(genesis_value, "genesis hash")
+    return {
+        "job_id": job_id_value,
+        "chain_id": chain_id,
+        "genesis_hash": genesis_hash,
+    }
+
 def checked_receipt(response: object, original: dict, proof: dict) -> dict:
     if not isinstance(response, dict) or response.get("verified") is not True or response.get("settled") is not True:
         raise WorkerError("completion not confirmed: verified and settled must both be true")
@@ -126,9 +150,16 @@ def run_job(api: API, wallet, selected_id: str) -> dict:
         raise WorkerError("job is claimed by a different worker")
     # Preflight before claiming: bad arithmetic, wallet or oversized proof must
     # not strand an otherwise OPEN job in CLAIMED state.
+    # Preflight locally before making the extra status request.
     proof = make_proof(job["task"], wallet)
     body = {"proof": proof}
     API.encode(body)
+
+    context = compute_proof_context(api, job["id"])
+    if context is not None:
+        proof = make_proof(job["task"], wallet, **context)
+        body = {"proof": proof}
+        API.encode(body)
     if job["status"] == "OPEN":
         response = api.request("POST", f"/compute/jobs/{selected_id}/claim", {"worker": wallet.address})
         claimed = validate_job(response.get("job") if isinstance(response, dict) else None, selected_id)

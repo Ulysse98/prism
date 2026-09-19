@@ -261,14 +261,20 @@ class WatchTests(unittest.TestCase):
             another = new_job(first["task"], first["nonce"] + 1)
             node.jobs[another["id"]] = another
             watcher, _, _ = self.setup_watcher(api, directory)
-            self.assertEqual(watcher.sweep(), 1)
-            self.assertEqual(len(node.payments), 1)
-            self.assertEqual(sum(j["status"] == "OPEN" for j in node.jobs.values()), 1)
+            self.assertEqual(watcher.sweep(), 2)
+            self.assertEqual(len(node.payments), 2)
+            self.assertEqual(sum(j["status"] == "OPEN" for j in node.jobs.values()), 0)
 
     def test_existing_chain_proof_is_rejected_without_prior_journal(self):
         with queue_server(1) as (node, api), tempfile.TemporaryDirectory() as directory:
             job = next(iter(node.jobs.values()))
-            proof = make_proof(job["task"], test_wallet())
+            proof = make_proof(
+                job["task"],
+                test_wallet(),
+                job_id=job["id"],
+                chain_id=node.identity["chainId"],
+                genesis_hash=node.identity["genesisHash"],
+            )
             node.payments[proof["id"]] = {"tx": "1" * 64, "block": 12, "reward": 1}
             watcher, _, _ = self.setup_watcher(api, directory)
             self.assertEqual(watcher.sweep(), 0)
@@ -282,10 +288,11 @@ class WatchTests(unittest.TestCase):
             node.jobs[another["id"]] = another
             node.fault = "503"
             watcher, _, _ = self.setup_watcher(api, directory)
-            self.assertEqual(watcher.sweep(), 0)
-            self.now += 100
             self.assertEqual(watcher.sweep(), 1)
             self.assertEqual(len(node.payments), 1)
+            self.now += 100
+            self.assertEqual(watcher.sweep(), 1)
+            self.assertEqual(len(node.payments), 2)
 
     def test_self_requested_jobs_are_not_claimed_by_address_or_name(self):
         for requester in (test_wallet().address, test_wallet().name.lower()):

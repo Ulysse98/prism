@@ -180,7 +180,14 @@ class Watcher:
         if job["status"] == "VERIFIED" and previous is None:
             return False
         try:
-            proof = make_proof(job["task"], self.wallet)
+            identity = self.journal.identity
+            proof = make_proof(
+                job["task"],
+                self.wallet,
+                job_id=job["id"],
+                chain_id=identity["chainId"],
+                genesis_hash=identity["genesisHash"],
+            )
             API.encode({"proof": proof})
         except (ProtocolError, WorkerError) as error:
             self.journal.jobs[job_id] = {"taskId": job["task"]["id"], "proofId": None,

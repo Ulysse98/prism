@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"prism/internal/p2p"
 
 	"prism/internal/compute"
 	"prism/internal/mempool"
@@ -86,6 +87,23 @@ func settleComputeJob(
 	chain, pos, wallets, err := api.loadState()
 	if err != nil {
 		return apiComputeSettlementResult{}, err
+	}
+
+	if len(chain.Blocks) == 0 || chain.Blocks[0].Hash == "" {
+		return apiComputeSettlementResult{}, fmt.Errorf(
+			"cannot settle compute job without a genesis hash",
+		)
+	}
+	chainID := p2p.MakeChainID(chain.Blocks[0].Hash)
+	if proof.ProofVersion == usefulwork.ComputeProofVersion {
+		if err := usefulwork.VerifyComputeProofContext(
+			proof,
+			jobID,
+			chainID,
+			chain.Blocks[0].Hash,
+		); err != nil {
+			return apiComputeSettlementResult{}, err
+		}
 	}
 
 	_, requesterWallet, err := resolveLocalWallet(
