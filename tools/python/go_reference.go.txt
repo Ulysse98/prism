@@ -1,0 +1,53 @@
+// Test adapter only. check_go_parity.py runs a temporary copy inside Prism.
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "os"
+    "prism/internal/usefulwork"
+)
+
+type input struct {
+    BatchSize uint64  `json:"batch_size"`
+    Features  uint64  `json:"features"`
+    Classes   uint64  `json:"classes"`
+    Inputs    []int64 `json:"inputs"`
+    Weights   []int64 `json:"weights"`
+    Biases    []int64 `json:"biases"`
+}
+
+type output struct {
+    InputHash   string   `json:"inputHash,omitempty"`
+    Predictions []uint64 `json:"predictions,omitempty"`
+    Error       string   `json:"error,omitempty"`
+}
+
+func main() {
+    var inputs []input
+    if err := json.NewDecoder(os.Stdin).Decode(&inputs); err != nil {
+        fmt.Fprintln(os.Stderr, err)
+        os.Exit(1)
+    }
+    outputs := make([]output, 0, len(inputs))
+    for _, item := range inputs {
+        task, err := usefulwork.NewMLInferenceQuantizedTask(
+            item.BatchSize, item.Features, item.Classes,
+            item.Inputs, item.Weights, item.Biases,
+        )
+        if err != nil {
+            outputs = append(outputs, output{Error: err.Error()})
+            continue
+        }
+        predictions, err := usefulwork.ComputeMLInferenceQuantized(task)
+        if err != nil {
+            outputs = append(outputs, output{InputHash: task.InputHash, Error: err.Error()})
+            continue
+        }
+        outputs = append(outputs, output{InputHash: task.InputHash, Predictions: predictions})
+    }
+    if err := json.NewEncoder(os.Stdout).Encode(outputs); err != nil {
+        fmt.Fprintln(os.Stderr, err)
+        os.Exit(1)
+    }
+}

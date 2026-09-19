@@ -1,0 +1,66 @@
+// Temporary adapter run by check_go_proofs.py inside the real Prism module.
+package main
+
+import (
+    "crypto/ed25519"
+    "encoding/json"
+    "fmt"
+    "os"
+
+    "prism/internal/compute"
+    "prism/internal/usefulwork"
+    "prism/internal/wallet"
+)
+
+type reference struct {
+    Verified bool             `json:"verified"`
+    Error    string           `json:"error,omitempty"`
+    Proof    *usefulwork.Proof `json:"proof,omitempty"`
+    Job      *compute.Job     `json:"job,omitempty"`
+}
+
+func main() {
+    var proofs []usefulwork.Proof
+    if err := json.NewDecoder(os.Stdin).Decode(&proofs); err != nil {
+        fmt.Fprintln(os.Stderr, err)
+        os.Exit(1)
+    }
+    // Public, deterministic TEST key only; never load the user's wallets.
+    seed := make([]byte, ed25519.SeedSize)
+    for i := range seed { seed[i] = byte(i) }
+    private := ed25519.NewKeyFromSeed(seed)
+    public := private.Public().(ed25519.PublicKey)
+    testWallet := &wallet.Wallet{
+        Address: wallet.AddressFromPublicKey(public), PublicKey: public, PrivateKey: private,
+    }
+    results := make([]reference, 0, len(proofs))
+    for _, proof := range proofs {
+        if err := usefulwork.VerifyProof(proof); err != nil {
+            results = append(results, reference{Error: err.Error()})
+            continue
+        }
+        expected, err := usefulwork.Execute(proof.Task, testWallet)
+        if err != nil {
+            fmt.Fprintln(os.Stderr, err)
+            os.Exit(1)
+        }
+        job, err := compute.NewJob(proof.Task, "test-requester", 1, 37)
+        if err != nil {
+            fmt.Fprintln(os.Stderr, err)
+            os.Exit(1)
+        }
+        if err := job.Claim(testWallet.Address); err != nil {
+            fmt.Fprintln(os.Stderr, err)
+            os.Exit(1)
+        }
+        if err := job.Complete(proof); err != nil {
+            fmt.Fprintln(os.Stderr, err)
+            os.Exit(1)
+        }
+        results = append(results, reference{Verified: true, Proof: &expected, Job: &job})
+    }
+    if err := json.NewEncoder(os.Stdout).Encode(results); err != nil {
+        fmt.Fprintln(os.Stderr, err)
+        os.Exit(1)
+    }
+}
