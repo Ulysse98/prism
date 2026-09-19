@@ -1,4 +1,4 @@
-"""One-job Python worker for Prism v0.37's quantized compute marketplace."""
+"""Python worker for Prism's quantized marketplace: direct jobs and watch mode."""
 from __future__ import annotations
 
 import argparse
@@ -18,6 +18,16 @@ from prism_ml_protocol import (
 
 
 class WorkerError(ValueError):
+    pass
+
+
+class HTTPStatusError(WorkerError):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+class TransportError(WorkerError):
     pass
 
 
@@ -65,9 +75,9 @@ class API:
                 pass
             finally:
                 error.close()
-            raise WorkerError(f"{method} {path}: HTTP {error.code}{detail}; no automatic retry") from error
+            raise HTTPStatusError(error.code, f"{method} {path}: HTTP {error.code}{detail}; no automatic retry") from error
         except (urllib.error.URLError, OSError, http.client.HTTPException) as error:
-            raise WorkerError(f"{method} {path}: connection failed; server outcome may be unknown, no automatic retry") from error
+            raise TransportError(f"{method} {path}: connection failed; server outcome may be unknown, no automatic retry") from error
         if len(raw) > 1 << 20:
             raise WorkerError("HTTP response exceeds 1 MiB")
         return decode_json(raw)
@@ -174,7 +184,22 @@ def main() -> int:
     demo.add_argument("--worker", required=True, help="local wallet name")
     demo.add_argument("--reward", type=int, required=True)
     demo.add_argument("--nonce", type=int)
+    watch = sub.add_parser("watch", help="process queued quantized jobs with a durable journal")
+    watch.add_argument("--worker", required=True)
+    watch.add_argument("--poll-interval", type=float, default=2.0)
+    watch.add_argument("--journal", type=Path)
+    watch.add_argument("--max-jobs", type=int, default=0, help="stop after N new confirmations; 0 means unlimited")
+    watch.add_argument("--once", action="store_true", help="perform one queue sweep and exit")
+    watch.add_argument("--retry-failed", action="store_true", help="reconsider jobs previously stopped by a permanent error")
+    queue = sub.add_parser("enqueue-demo", help="create distinct demo jobs without processing them")
+    queue.add_argument("--requester", required=True)
+    queue.add_argument("--reward", type=int, required=True)
+    queue.add_argument("--count", type=int, default=3)
+    queue.add_argument("--nonce", type=int)
     args = parser.parse_args()
+    if args.command == "watch":
+        from prism_ml_watch import run_watch
+        return run_watch(args)
     try:
         if args.command == "identity":
             wallet = load_wallet(args.data, args.wallet)
@@ -188,6 +213,15 @@ def main() -> int:
             nonce = time.time_ns() if args.nonce is None else args.nonce
             uint(args.reward, "reward", 1)
             uint(nonce, "nonce")
+            if args.command == "enqueue-demo":
+                if not 1 <= args.count <= 20:
+                    raise WorkerError("demo count must be between 1 and 20")
+                tasks = [make_task(demo_payload(nonce + index)) for index in range(args.count)]
+                api = API(args.api, args.timeout)
+                for index, task in enumerate(tasks):
+                    job = create_job(api, task, requester.address, args.reward, nonce + index)
+                    print(json.dumps({"event": "queued", "jobId": job["id"], "reward": job["reward"]}), flush=True)
+                return 0
             if args.command == "demo":
                 worker = load_wallet(args.data, args.worker)
                 if requester.address == worker.address:
