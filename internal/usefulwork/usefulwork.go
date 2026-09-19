@@ -11,23 +11,27 @@ import (
 )
 
 const (
-	TaskTypeSumSquares       = "sum_squares"
-	TaskTypeDotProduct       = "dot_product"
-	TaskTypePrimeCount       = "prime_count"
-	TaskTypeMatrixMultiply   = "matrix_multiply"
-	TaskTypeImageConvolution = "image_convolution"
-	TaskTypeMLInferenceBatch = "ml_inference_batch"
+	TaskTypeSumSquares           = "sum_squares"
+	TaskTypeDotProduct           = "dot_product"
+	TaskTypePrimeCount           = "prime_count"
+	TaskTypeMatrixMultiply       = "matrix_multiply"
+	TaskTypeImageConvolution     = "image_convolution"
+	TaskTypeMLInferenceBatch     = "ml_inference_batch"
+	TaskTypeMLInferenceQuantized = "ml_inference_quantized"
 )
 
 type Task struct {
-	ID        string   `json:"id"`
-	Type      string   `json:"type"`
-	Values    []uint64 `json:"values"`
-	ValuesB   []uint64 `json:"values_b,omitempty"`
-	RowsA     uint64   `json:"rows_a,omitempty"`
-	ColsA     uint64   `json:"cols_a,omitempty"`
-	ColsB     uint64   `json:"cols_b,omitempty"`
-	InputHash string   `json:"input_hash"`
+	ID            string   `json:"id"`
+	Type          string   `json:"type"`
+	Values        []uint64 `json:"values"`
+	ValuesB       []uint64 `json:"values_b,omitempty"`
+	SignedValues  []int64  `json:"signed_values,omitempty"`
+	SignedValuesB []int64  `json:"signed_values_b,omitempty"`
+	Biases        []int64  `json:"biases,omitempty"`
+	RowsA         uint64   `json:"rows_a,omitempty"`
+	ColsA         uint64   `json:"cols_a,omitempty"`
+	ColsB         uint64   `json:"cols_b,omitempty"`
+	InputHash     string   `json:"input_hash"`
 }
 
 type Proof struct {
@@ -165,6 +169,16 @@ func ValidateTask(
 				task,
 			)
 
+	case TaskTypeMLInferenceQuantized:
+		if err = validateMLInferenceQuantizedTask(task); err != nil {
+			return err
+		}
+
+		expectedInputHash, err =
+			calculateMLInferenceQuantizedInputHash(
+				task,
+			)
+
 	case TaskTypeMLInferenceBatch:
 		if err = validateMLInferenceBatchTask(task); err != nil {
 			return err
@@ -236,6 +250,11 @@ func Compute(
 			"image_convolution returns vector output; use ComputeImageConvolution",
 		)
 
+	case TaskTypeMLInferenceQuantized:
+		return 0, fmt.Errorf(
+			"ml_inference_quantized returns vector output; use ComputeMLInferenceQuantized",
+		)
+
 	case TaskTypeMLInferenceBatch:
 		return 0, fmt.Errorf(
 			"ml_inference_batch returns vector output; use ComputeMLInferenceBatch",
@@ -279,6 +298,9 @@ func scoreForTask(
 
 	case TaskTypeImageConvolution:
 		return convolutionWorkUnits(task)
+
+	case TaskTypeMLInferenceQuantized:
+		return mlInferenceWorkUnits(task)
 
 	case TaskTypeMLInferenceBatch:
 		return mlInferenceWorkUnits(task)
@@ -350,7 +372,8 @@ func Execute(
 
 	if task.Type == TaskTypeMatrixMultiply ||
 		task.Type == TaskTypeImageConvolution ||
-		task.Type == TaskTypeMLInferenceBatch {
+		task.Type == TaskTypeMLInferenceBatch ||
+		task.Type == TaskTypeMLInferenceQuantized {
 
 		var resultValues []uint64
 		var err error
@@ -363,6 +386,10 @@ func Execute(
 		case TaskTypeImageConvolution:
 			resultValues, err =
 				ComputeImageConvolution(task)
+
+		case TaskTypeMLInferenceQuantized:
+			resultValues, err =
+				ComputeMLInferenceQuantized(task)
 
 		case TaskTypeMLInferenceBatch:
 			resultValues, err =
@@ -435,7 +462,8 @@ func VerifyProof(
 
 	if proof.Task.Type == TaskTypeMatrixMultiply ||
 		proof.Task.Type == TaskTypeImageConvolution ||
-		proof.Task.Type == TaskTypeMLInferenceBatch {
+		proof.Task.Type == TaskTypeMLInferenceBatch ||
+		proof.Task.Type == TaskTypeMLInferenceQuantized {
 
 		if proof.Result != 0 {
 			return fmt.Errorf(
@@ -456,6 +484,12 @@ func VerifyProof(
 		case TaskTypeImageConvolution:
 			expectedValues, err =
 				ComputeImageConvolution(
+					proof.Task,
+				)
+
+		case TaskTypeMLInferenceQuantized:
+			expectedValues, err =
+				ComputeMLInferenceQuantized(
 					proof.Task,
 				)
 
