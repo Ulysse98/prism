@@ -1,4 +1,4 @@
-# Prism v0.39 — context-bound compute proofs
+# Prism v0.40 — funded compute bounties
 
 > **Proof of Stake secures. Proof of Useful Work computes.
 > Proof of Useful Participation rewards contribution.**
@@ -14,7 +14,7 @@ It combines three complementary mechanisms:
 
 ## Current status
 
-**Node software version:** Prism v0.39.0
+**Node software version:** Prism v0.40.0
 
 **Status:** Active development
 
@@ -24,8 +24,13 @@ mobile integration, and experimental cross-chain integrations.
 
 Prism v0.38 added a durable sequential Python `watch` worker for quantized
 ML jobs, persistent settlement receipts and recovery after interrupted
-requests. Prism v0.39 hardens compute proofs by binding every marketplace
+requests. Prism v0.39 hardened compute proofs by binding every marketplace
 proof to its job ID, chain ID and genesis hash before settlement.
+
+Prism v0.40 adds funded compute bounties: OPEN and CLAIMED marketplace jobs
+are accounted against the requester's available PRISM balance, overcommitted
+jobs are rejected, and concurrent job creation is serialized to prevent
+double reservation. This funding guard is not yet an on-chain escrow.
 
 - [Python setup and numerical parity](tools/python/README.md)
 - [Signed HTTP worker](tools/python/WORKER.md)
