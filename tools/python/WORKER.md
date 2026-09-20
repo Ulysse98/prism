@@ -1,6 +1,6 @@
 # Worker Python HTTP signe
 
-Le worker prend en charge `ml_inference_quantized`, avec le noeud Go v0.39.0.
+Le worker prend en charge `ml_inference_quantized`, avec le noeud Go v0.40.0.
 Voir [README.md](README.md) pour l'environnement Python et les comparateurs,
 et [WATCH.md](WATCH.md) pour le mode automatique ajoute dans la branche v0.38.
 
