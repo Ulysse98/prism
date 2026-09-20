@@ -2,6 +2,7 @@ package compute
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -216,4 +217,48 @@ func (market *Marketplace) Complete(
 	}
 
 	return job, nil
+}
+func (market *Marketplace) ReservedRewardFor(
+	requester string,
+) (uint64, error) {
+
+	if market == nil {
+		return 0, fmt.Errorf(
+			"compute marketplace cannot be nil",
+		)
+	}
+
+	requester = strings.TrimSpace(requester)
+	if requester == "" {
+		return 0, fmt.Errorf(
+			"compute requester cannot be empty",
+		)
+	}
+
+	market.mu.RLock()
+	defer market.mu.RUnlock()
+
+	var reserved uint64
+
+	for _, job := range market.jobs {
+		if !strings.EqualFold(job.Requester, requester) {
+			continue
+		}
+
+		if job.Status != JobStatusOpen &&
+			job.Status != JobStatusClaimed {
+			continue
+		}
+
+		if reserved > math.MaxUint64-job.Reward {
+			return 0, fmt.Errorf(
+				"compute reserved reward overflow for requester %s",
+				requester,
+			)
+		}
+
+		reserved += job.Reward
+	}
+
+	return reserved, nil
 }
