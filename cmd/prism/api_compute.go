@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 
+	"prism/internal/compute"
 	"prism/internal/usefulwork"
 )
 
@@ -112,6 +114,124 @@ type apiComputeCompleteJobRequest struct {
 	Proof usefulwork.Proof `json:"proof"`
 }
 
+func (api *apiServer) createFundedComputeJob(
+	task usefulwork.Task,
+	requester string,
+	reward uint64,
+	nonce uint64,
+) (compute.Job, int, error) {
+
+	if api == nil {
+		return compute.Job{},
+			http.StatusInternalServerError,
+			fmt.Errorf("API server cannot be nil")
+	}
+
+	if api.computeMarket == nil {
+		return compute.Job{},
+			http.StatusInternalServerError,
+			fmt.Errorf("compute marketplace is unavailable")
+	}
+
+	// Serialise funding check + marketplace creation.
+	// This prevents two concurrent HTTP requests from both
+	// observing the same unreserved balance.
+	api.stateMu.Lock()
+	defer api.stateMu.Unlock()
+
+	chain, _, wallets, err := api.loadState()
+	if err != nil {
+		return compute.Job{},
+			http.StatusInternalServerError,
+			err
+	}
+
+	requesterName, requesterWallet, err :=
+		resolveLocalWallet(
+			requester,
+			wallets,
+		)
+	if err != nil {
+		return compute.Job{},
+			http.StatusBadRequest,
+			fmt.Errorf(
+				"compute requester must be a local wallet: %w",
+				err,
+			)
+	}
+
+	available, err :=
+		chain.AvailableBalanceOf(
+			requesterWallet.Address,
+		)
+	if err != nil {
+		return compute.Job{},
+			http.StatusInternalServerError,
+			err
+	}
+
+	// Historical jobs may store the requester as its local
+	// wallet name or directly as its Prism address.
+	reservedByName, err :=
+		api.computeMarket.ReservedRewardFor(
+			requesterName,
+		)
+	if err != nil {
+		return compute.Job{},
+			http.StatusInternalServerError,
+			err
+	}
+
+	reservedByAddress, err :=
+		api.computeMarket.ReservedRewardFor(
+			requesterWallet.Address,
+		)
+	if err != nil {
+		return compute.Job{},
+			http.StatusInternalServerError,
+			err
+	}
+
+	if reservedByName >
+		math.MaxUint64-reservedByAddress {
+
+		return compute.Job{},
+			http.StatusInternalServerError,
+			fmt.Errorf(
+				"compute funded reward overflow",
+			)
+	}
+
+	reserved := reservedByName + reservedByAddress
+
+	if reserved > available ||
+		reward > available-reserved {
+
+		return compute.Job{},
+			http.StatusBadRequest,
+			fmt.Errorf(
+				"insufficient funded compute balance: available %d PRISM, reserved %d PRISM, requested %d PRISM",
+				available,
+				reserved,
+				reward,
+			)
+	}
+
+	job, err := api.computeMarket.Create(
+		task,
+		requester,
+		reward,
+		nonce,
+	)
+	if err != nil {
+		return compute.Job{},
+			http.StatusBadRequest,
+			err
+	}
+
+	return job, http.StatusCreated, nil
+}
+
 func (api *apiServer) handleComputeJobs(
 	writer http.ResponseWriter,
 	request *http.Request,
@@ -172,7 +292,7 @@ func (api *apiServer) handleComputeJobs(
 			return
 		}
 
-		job, err := api.computeMarket.Create(
+		job, status, err := api.createFundedComputeJob(
 			task,
 			payload.Requester,
 			payload.Reward,
@@ -181,7 +301,7 @@ func (api *apiServer) handleComputeJobs(
 		if err != nil {
 			apiWriteError(
 				writer,
-				http.StatusBadRequest,
+				status,
 				err,
 			)
 			return
