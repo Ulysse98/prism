@@ -1,57 +1,287 @@
-# Sample Hardhat 3 Project (`node:test` and `viem`)
+# Prism × Arbitrum Proof Registry
 
-This project showcases a Hardhat 3 project using the native Node.js test runner (`node:test`) and the `viem` library for Ethereum interactions.
+Prism anchors verified Proof v2 compute jobs on Arbitrum Sepolia.
 
-To learn more about Hardhat 3, please visit the [Getting Started guide](https://hardhat.org/docs/getting-started#getting-started-with-hardhat-3). To share your feedback, join our [Hardhat 3](https://hardhat.org/hardhat3-telegram-group) Telegram group or [open an issue](https://github.com/NomicFoundation/hardhat/issues/new) in our GitHub issue tracker.
+The integration connects Prism's decentralized compute marketplace with an EVM registry that records a permanent link between:
 
-## Project Overview
+- a Prism compute Job ID
+- its verified Proof v2 ID
+- the Prism worker identity hash
+- the authorized recorder that submitted the anchor
+- the Arbitrum registration timestamp
 
-This example project includes:
+## Architecture
 
-- A simple Hardhat configuration file.
-- Foundry-compatible Solidity unit tests.
-- TypeScript integration tests using [`node:test`](nodejs.org/api/test.html), the new Node.js native test runner, and [`viem`](https://viem.sh/).
-- Examples demonstrating how to connect to different types of networks, including locally simulating OP mainnet.
+```text
+Requester
+   |
+   v
+Prism Compute Marketplace
+   |
+   | funded compute job
+   v
+Prism Worker
+   |
+   | executes useful work
+   | signs Proof v2 with Ed25519
+   v
+Prism Verification
+   |
+   | verifies job context
+   | verifies result
+   | verifies worker identity
+   | verifies signature
+   v
+Authorized Recorder
+   |
+   | registerProof(jobId, proofId, workerIdHash)
+   v
+PrismProofRegistry
+   |
+   v
+Arbitrum Sepolia
 
-## Usage
-
-### Running Tests
-
-To run all the tests in the project, execute the following command:
-
-```shell
-npx hardhat test
 ```
 
-You can also selectively run the Solidity or `node:test` tests:
+## Deployed Contract
+
+Network:
+
+```text
+Arbitrum Sepolia
+Chain ID: 421614
+```
+
+PrismProofRegistry:
+
+```text
+0x8B4Cc27E3ACaF6b6deBC2c96462240eC196EfBC0
+```
+
+## Verified End-to-End Demo
+
+A real Prism v0.40 Proof v2 has been successfully anchored on Arbitrum Sepolia.
+
+Prism block:
+
+```text
+56
+```
+
+Task:
+
+```text
+ml_inference_quantized
+```
+
+Job ID:
+
+```text
+e09d1ea31bc3438f8475b713251bc0c6bd3b7477805b3e7b0d3004ac2266f6ca
+```
+
+Proof ID:
+
+```text
+64fcae59a11bd43192533a99a12a30098d2f3b4cf434bce3898a4cb3d06152e9
+```
+
+Worker:
+
+```text
+prism_97f844d6b007c3f940a57ef946959cfd38fecf2c
+```
+
+Worker identity hash:
+
+```text
+24c42023c68e4a15cb7b0fa17aab481c9de1d9a2a929167e2f089ba60f9c64e0
+```
+
+Arbitrum transaction:
+
+```text
+0x8e377cec1097e3d7d23a29f8b67c85ed9759b82fe1e72f720da7a245ba6f5b42
+```
+
+The transaction completed successfully and the registry returned:
+
+```text
+Exists      : true
+Proof count : 1
+```
+
+## Contract Model
+
+`PrismProofRegistry` stores one record per Prism compute job.
+
+```solidity
+struct ProofRecord {
+    bytes32 proofId;
+    bytes32 workerIdHash;
+    address submitter;
+    uint64 registeredAt;
+    bool exists;
+}
+```
+
+A proof is registered with:
+
+```solidity
+registerProof(
+    bytes32 jobId,
+    bytes32 proofId,
+    bytes32 workerIdHash
+)
+```
+
+The registry prevents:
+
+- duplicate Job IDs
+- duplicate Proof IDs
+- zero Job IDs
+- zero Proof IDs
+- zero worker identity hashes
+- submissions from unauthorized recorders
+
+## Trust Model
+
+The EVM contract does not reproduce Prism computation or Ed25519 verification.
+
+Verification happens inside Prism before anchoring.
+
+A Prism Proof v2 cryptographically binds:
+
+```text
+job ID
+chain ID
+genesis hash
+task ID
+worker
+public key
+result
+output hash
+score
+```
+
+The proof is signed by the Prism worker using Ed25519.
+
+After Prism verifies the Proof v2 and the compute marketplace marks the job as `VERIFIED`, an authorized recorder anchors its identity on Arbitrum.
+
+The recorder is therefore the current bridge trust boundary.
+
+Future versions can reduce this trust assumption with stronger cross-chain verification or zero-knowledge proof verification.
+
+## Run the Demo
+
+### 1. Install the Arbitrum integration
 
 ```shell
+cd integrations/arbitrum
+npm ci
+```
+
+### 2. Configure the Arbitrum Sepolia recorder
+
+```shell
+npx hardhat keystore set ARBITRUM_SEPOLIA_PRIVATE_KEY
+```
+
+Do not commit private keys or `.env` files.
+
+### 3. Check the network and recorder
+
+```shell
+npx hardhat run scripts/checkArbitrumSepolia.ts --network arbitrumSepolia
+```
+
+### 4. Start the Prism API
+
+From the Prism repository root:
+
+```shell
+go run ./cmd/prism api --data data --host 127.0.0.1 --port 8080
+```
+
+### 5. Anchor the latest verified Proof v2
+
+From `integrations/arbitrum`:
+
+```shell
+npx hardhat run scripts/anchorLatestComputeProof.ts --network arbitrumSepolia
+```
+
+The script:
+
+1. reads the Prism compute marketplace
+2. selects `VERIFIED` jobs
+3. matches them against Proof v2 records in the Prism chain
+4. validates Job ID, Proof ID, worker, chain ID, and genesis hash
+5. hashes the Prism worker identity
+6. checks recorder authorization
+7. submits `registerProof(...)`
+8. waits for Arbitrum confirmation
+9. reads the record back from the contract
+
+Running it again for an already anchored job does not submit a duplicate transaction.
+
+### 6. Check the deployed registry
+
+```shell
+npx hardhat run scripts/checkPrismProofRegistry.ts --network arbitrumSepolia
+```
+
+Example:
+
+```text
+PRISM PROOF REGISTRY
+--------------------
+Chain ID    : 421614
+Registry    : 0x8B4Cc27E3ACaF6b6deBC2c96462240eC196EfBC0
+Is recorder : true
+Proof count : 1
+```
+
+## Tests
+
+```shell
+npx hardhat compile
 npx hardhat test solidity
-npx hardhat test nodejs
 ```
 
-### Make a deployment to Sepolia
+Current result:
 
-This project includes an example Ignition module to deploy the contract. You can deploy this module to a locally simulated chain or to Sepolia.
-
-To run the deployment to a local chain:
-
-```shell
-npx hardhat ignition deploy ignition/modules/Counter.ts
+```text
+18 passing
 ```
 
-To run the deployment to Sepolia, you need an account with funds to send the transaction. The provided Hardhat configuration includes a Configuration Variable called `SEPOLIA_PRIVATE_KEY`, which you can use to set the private key of the account you want to use.
+## Repository Layout
 
-You can set the `SEPOLIA_PRIVATE_KEY` variable using the `hardhat-keystore` plugin or by setting it as an environment variable.
+```text
+contracts/
+  PrismProofRegistry.sol
+  PrismProofRegistry.t.sol
 
-To set the `SEPOLIA_PRIVATE_KEY` config variable using `hardhat-keystore`:
+ignition/
+  modules/
+    PrismProofRegistry.ts
+  deployments/
+    chain-421614/
 
-```shell
-npx hardhat keystore set SEPOLIA_PRIVATE_KEY
+scripts/
+  checkArbitrumSepolia.ts
+  checkPrismProofRegistry.ts
+  anchorLatestComputeProof.ts
 ```
 
-After setting the variable, you can run the deployment with the Sepolia network:
+## Status
 
-```shell
-npx hardhat ignition deploy --network sepolia ignition/modules/Counter.ts
+```text
+Prism v0.40
+Proof v2
+Funded Compute Marketplace
+Arbitrum Sepolia
+End-to-end anchor confirmed
 ```
+
+The current integration demonstrates a complete Prism compute proof lifecycle from useful computation to a publicly queryable EVM anchor.
