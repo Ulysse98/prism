@@ -1,0 +1,49 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_34-3a3685fd47fb4e200981a2485d9059c2b39b0fc0",
+  "solcVersion": "0.8.34",
+  "solcLongVersion": "0.8.34+commit.80d5c536",
+  "compilerType": "solc",
+  "toolVersions": {
+    "hardhat": "3.16.0"
+  },
+  "userSourceNameMap": {
+    "contracts/PrismProofRegistry.sol": "project/contracts/PrismProofRegistry.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "prague",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode.linkReferences",
+            "evm.bytecode.object",
+            "evm.bytecode.opcodes",
+            "evm.bytecode.sourceMap",
+            "evm.deployedBytecode.immutableReferences",
+            "evm.deployedBytecode.linkReferences",
+            "evm.deployedBytecode.object",
+            "evm.deployedBytecode.opcodes",
+            "evm.deployedBytecode.sourceMap",
+            "evm.methodIdentifiers"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/PrismProofRegistry.sol": {
+        "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.34;\n\n/// @title PrismProofRegistry\n/// @notice Anchors verified Prism Proof v2 compute proofs on Arbitrum.\ncontract PrismProofRegistry {\n    struct ProofRecord {\n        bytes32 proofId;\n        bytes32 workerIdHash;\n        address submitter;\n        uint64 registeredAt;\n        bool exists;\n    }\n\n    address public owner;\n\n    mapping(address => bool) public recorders;\n    mapping(bytes32 => ProofRecord) private proofsByJobId;\n    mapping(bytes32 => bytes32) private jobByProofId;\n\n    uint256 public proofCount;\n\n    error Unauthorized();\n    error InvalidJobId();\n    error InvalidProofId();\n    error InvalidWorkerIdHash();\n    error JobAlreadyRegistered(bytes32 jobId);\n    error ProofAlreadyRegistered(bytes32 proofId);\n\n    event RecorderUpdated(\n        address indexed recorder,\n        bool allowed\n    );\n\n    event ProofRegistered(\n        bytes32 indexed jobId,\n        bytes32 indexed proofId,\n        bytes32 indexed workerIdHash,\n        address submitter,\n        uint64 registeredAt\n    );\n\n    constructor() {\n        owner = msg.sender;\n        recorders[msg.sender] = true;\n\n        emit RecorderUpdated(msg.sender, true);\n    }\n\n    modifier onlyOwner() {\n        if (msg.sender != owner) {\n            revert Unauthorized();\n        }\n\n        _;\n    }\n\n    modifier onlyRecorder() {\n        if (!recorders[msg.sender]) {\n            revert Unauthorized();\n        }\n\n        _;\n    }\n\n    function setRecorder(\n        address recorder,\n        bool allowed\n    ) external onlyOwner {\n        recorders[recorder] = allowed;\n\n        emit RecorderUpdated(recorder, allowed);\n    }\n\n    function registerProof(\n        bytes32 jobId,\n        bytes32 proofId,\n        bytes32 workerIdHash\n    ) external onlyRecorder {\n        if (jobId == bytes32(0)) {\n            revert InvalidJobId();\n        }\n\n        if (proofId == bytes32(0)) {\n            revert InvalidProofId();\n        }\n\n        if (workerIdHash == bytes32(0)) {\n            revert InvalidWorkerIdHash();\n        }\n\n        if (proofsByJobId[jobId].exists) {\n            revert JobAlreadyRegistered(jobId);\n        }\n\n        if (jobByProofId[proofId] != bytes32(0)) {\n            revert ProofAlreadyRegistered(proofId);\n        }\n\n        uint64 registeredAt = uint64(block.timestamp);\n\n        proofsByJobId[jobId] = ProofRecord({\n            proofId: proofId,\n            workerIdHash: workerIdHash,\n            submitter: msg.sender,\n            registeredAt: registeredAt,\n            exists: true\n        });\n\n        jobByProofId[proofId] = jobId;\n        proofCount++;\n\n        emit ProofRegistered(\n            jobId,\n            proofId,\n            workerIdHash,\n            msg.sender,\n            registeredAt\n        );\n    }\n\n    function getProof(\n        bytes32 jobId\n    ) external view returns (ProofRecord memory) {\n        return proofsByJobId[jobId];\n    }\n\n    function getJobForProof(\n        bytes32 proofId\n    ) external view returns (bytes32) {\n        return jobByProofId[proofId];\n    }\n\n    function hasProof(\n        bytes32 jobId\n    ) external view returns (bool) {\n        return proofsByJobId[jobId].exists;\n    }\n}\n"
+      }
+    }
+  }
+}
