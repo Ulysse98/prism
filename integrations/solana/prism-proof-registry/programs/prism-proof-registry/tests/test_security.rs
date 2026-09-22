@@ -258,15 +258,11 @@ fn assert_rejected_without_state(
 
     assert_eq!(proof_count(svm, &config), 0);
 
-    let (proof, _) = Pubkey::find_program_address(
-        &[b"job", job_id.as_ref()],
-        &prism_proof_registry::id(),
-    );
+    let (proof, _) =
+        Pubkey::find_program_address(&[b"job", job_id.as_ref()], &prism_proof_registry::id());
 
-    let (proof_index, _) = Pubkey::find_program_address(
-        &[b"proof", proof_id.as_ref()],
-        &prism_proof_registry::id(),
-    );
+    let (proof_index, _) =
+        Pubkey::find_program_address(&[b"proof", proof_id.as_ref()], &prism_proof_registry::id());
 
     assert!(
         svm.get_account(&proof).is_none(),
@@ -281,64 +277,36 @@ fn assert_rejected_without_state(
 
 #[test]
 fn rejects_zero_job_id() {
-    let (mut svm, owner, config) =
-        initialize_registry();
+    let (mut svm, owner, config) = initialize_registry();
 
     assert_rejected_without_state(
-        &mut svm,
-        &owner,
-        config,
-        [0u8; 32],
-        [2u8; 32],
-        [3u8; 32],
-        [4u8; 32],
+        &mut svm, &owner, config, [0u8; 32], [2u8; 32], [3u8; 32], [4u8; 32],
     );
 }
 
 #[test]
 fn rejects_zero_proof_id() {
-    let (mut svm, owner, config) =
-        initialize_registry();
+    let (mut svm, owner, config) = initialize_registry();
 
     assert_rejected_without_state(
-        &mut svm,
-        &owner,
-        config,
-        [1u8; 32],
-        [0u8; 32],
-        [3u8; 32],
-        [4u8; 32],
+        &mut svm, &owner, config, [1u8; 32], [0u8; 32], [3u8; 32], [4u8; 32],
     );
 }
 
 #[test]
 fn rejects_zero_worker_id_hash() {
-    let (mut svm, owner, config) =
-        initialize_registry();
+    let (mut svm, owner, config) = initialize_registry();
 
     assert_rejected_without_state(
-        &mut svm,
-        &owner,
-        config,
-        [1u8; 32],
-        [2u8; 32],
-        [0u8; 32],
-        [4u8; 32],
+        &mut svm, &owner, config, [1u8; 32], [2u8; 32], [0u8; 32], [4u8; 32],
     );
 }
 
 #[test]
 fn rejects_zero_prism_chain_id_hash() {
-    let (mut svm, owner, config) =
-        initialize_registry();
+    let (mut svm, owner, config) = initialize_registry();
 
     assert_rejected_without_state(
-        &mut svm,
-        &owner,
-        config,
-        [1u8; 32],
-        [2u8; 32],
-        [3u8; 32],
-        [0u8; 32],
+        &mut svm, &owner, config, [1u8; 32], [2u8; 32], [3u8; 32], [0u8; 32],
     );
 }
