@@ -27,11 +27,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Anchor and Solana
-        uses: metadaoproject/setup-anchor@v3.4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          anchor-version: "1.2.0"
-          solana-cli-version: "4.1.2"
           node-version: "24"
 
       - name: Setup host Rust
@@ -40,6 +38,14 @@ jobs:
             --profile minimal \
             --component rustfmt \
             --component clippy
+
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v4.1.2/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Install Anchor CLI
+        run: npm install -g @anchor-lang/cli@1.2.0
 
       - name: Tool versions
         run: |
