@@ -1,0 +1,71 @@
+name: Solana CI
+
+on:
+  push:
+    paths:
+      - "integrations/solana/**"
+      - ".github/workflows/solana.yml"
+
+  pull_request:
+    paths:
+      - "integrations/solana/**"
+      - ".github/workflows/solana.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  proof-registry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: integrations/solana/prism-proof-registry
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Setup host Rust
+        run: |
+          rustup toolchain install 1.98.1 \
+            --profile minimal \
+            --component rustfmt \
+            --component clippy
+
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v4.1.2/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Install Anchor CLI
+        run: npm install -g @anchor-lang/cli@1.2.0
+
+      - name: Tool versions
+        run: |
+          rustc --version
+          cargo --version
+          solana --version
+          anchor --version
+
+      - name: Format check
+        run: cargo +1.98.1 fmt --all -- --check
+
+      - name: Anchor build
+        run: anchor build
+
+      - name: LiteSVM tests
+        run: |
+          cargo +1.98.1 test \
+            -p prism-proof-registry \
+            --tests \
+            -- --nocapture
+
+      - name: Diff check
+        run: git diff --check
