@@ -1,0 +1,14 @@
+[profile.default]
+src = "contracts"
+test = "test"
+out = "dist/foundry"
+cache_path = "cache/foundry"
+
+solc_version = "0.8.34"
+evm_version = "prague"
+
+optimizer = false
+
+remappings = [
+    "forge-std/=node_modules/forge-std/src/"
+]
