@@ -232,3 +232,113 @@ fn rejects_unauthorized_recorder() {
     assert!(svm.get_account(&proof).is_none());
     assert!(svm.get_account(&proof_index).is_none());
 }
+
+fn assert_rejected_without_state(
+    svm: &mut LiteSVM,
+    recorder: &Keypair,
+    config: Pubkey,
+    job_id: [u8; 32],
+    proof_id: [u8; 32],
+    worker_id_hash: [u8; 32],
+    prism_chain_id_hash: [u8; 32],
+) {
+    let ix = register_proof_ix(
+        config,
+        recorder.pubkey(),
+        job_id,
+        proof_id,
+        worker_id_hash,
+        prism_chain_id_hash,
+    );
+
+    assert!(
+        !execute_ix(svm, recorder, ix),
+        "invalid proof input must be rejected"
+    );
+
+    assert_eq!(proof_count(svm, &config), 0);
+
+    let (proof, _) = Pubkey::find_program_address(
+        &[b"job", job_id.as_ref()],
+        &prism_proof_registry::id(),
+    );
+
+    let (proof_index, _) = Pubkey::find_program_address(
+        &[b"proof", proof_id.as_ref()],
+        &prism_proof_registry::id(),
+    );
+
+    assert!(
+        svm.get_account(&proof).is_none(),
+        "failed transaction must not leave a proof record"
+    );
+
+    assert!(
+        svm.get_account(&proof_index).is_none(),
+        "failed transaction must not leave a proof index"
+    );
+}
+
+#[test]
+fn rejects_zero_job_id() {
+    let (mut svm, owner, config) =
+        initialize_registry();
+
+    assert_rejected_without_state(
+        &mut svm,
+        &owner,
+        config,
+        [0u8; 32],
+        [2u8; 32],
+        [3u8; 32],
+        [4u8; 32],
+    );
+}
+
+#[test]
+fn rejects_zero_proof_id() {
+    let (mut svm, owner, config) =
+        initialize_registry();
+
+    assert_rejected_without_state(
+        &mut svm,
+        &owner,
+        config,
+        [1u8; 32],
+        [0u8; 32],
+        [3u8; 32],
+        [4u8; 32],
+    );
+}
+
+#[test]
+fn rejects_zero_worker_id_hash() {
+    let (mut svm, owner, config) =
+        initialize_registry();
+
+    assert_rejected_without_state(
+        &mut svm,
+        &owner,
+        config,
+        [1u8; 32],
+        [2u8; 32],
+        [0u8; 32],
+        [4u8; 32],
+    );
+}
+
+#[test]
+fn rejects_zero_prism_chain_id_hash() {
+    let (mut svm, owner, config) =
+        initialize_registry();
+
+    assert_rejected_without_state(
+        &mut svm,
+        &owner,
+        config,
+        [1u8; 32],
+        [2u8; 32],
+        [3u8; 32],
+        [0u8; 32],
+    );
+}
