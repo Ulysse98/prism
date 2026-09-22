@@ -285,3 +285,38 @@ End-to-end anchor confirmed
 ```
 
 The current integration demonstrates a complete Prism compute proof lifecycle from useful computation to a publicly queryable EVM anchor.
+
+## Arbitrum Sepolia deployment
+
+Prism Proof Registry V2 is deployed and live on Arbitrum Sepolia.
+
+- Network: Arbitrum Sepolia
+- Chain ID: `421614`
+- Contract: `0x44d872e47Aaf7874fc8Cf7236683f3E2548A2459`
+- Deployer: `0xcD24214E42927D9D97396d62CA4f75178c09acfe`
+- Deployment transaction: `0x622a12112512fbcf1d5eeb82295d1047da01022417421a27ddd499d9278cec27`
+- First Proof V2 transaction: `0x11140165432dd921ea3669042f0016f4812c92a39f437c3c3678d9c3dbc71921`
+
+### First public Prism Proof V2
+
+- Job ID: `0x683aa29701c286298ecdcab90f89677665598563157dda752da1f24994ca0e08`
+- Proof ID: `0x5f725fb3054e7d67257f6138a0ea024a3e115f4251df0d9b9ea27a1a60526e22`
+- Registry ID: `0x277416b6244ddc0104c6e5479034f6c2473d0c463dd3d377014a83780fb52a0e`
+- Prism chain hash: `0x27a955f0f028e1b3f397d20c36a77c7b8546fe31dd754bcf1fbdaae3ad95aedb`
+
+The proof was successfully registered with `registerProofV2` and independently read back from Arbitrum Sepolia.
+
+### Verify from the command line
+
+```bash
+cast call \
+  0x44d872e47Aaf7874fc8Cf7236683f3E2548A2459 \
+  "proofCount()(uint256)" \
+  --rpc-url https://sepolia-rollup.arbitrum.io/rpc
+```
+
+Expected result:
+
+```text
+1
+```
