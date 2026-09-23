@@ -5,17 +5,19 @@ import (
 	"prism/internal/p2p"
 
 	"prism/internal/compute"
+	"prism/internal/crosschain"
 	"prism/internal/mempool"
 	"prism/internal/transaction"
 	"prism/internal/usefulwork"
 )
 
 type apiComputeSettlementResult struct {
-	Job            compute.Job
-	Block          uint64
-	SettlementTxID string
-	BountyReward   uint64
-	Recovered      bool
+	Job               compute.Job
+	Block             uint64
+	SettlementTxID    string
+	BountyReward      uint64
+	Recovered         bool
+	CrossChainReceipt *crosschain.Receipt
 }
 
 func settleComputeJob(
@@ -106,6 +108,26 @@ func settleComputeJob(
 		}
 	}
 
+	var receipt *crosschain.Receipt
+
+	if proof.ProofVersion == usefulwork.ComputeProofVersion {
+		value, err := crosschain.NewReceipt(
+			job.ID,
+			proof.ID,
+			proof.Worker,
+			chainID,
+		)
+		if err != nil {
+			return apiComputeSettlementResult{},
+				fmt.Errorf(
+					"cannot build cross-chain receipt: %w",
+					err,
+				)
+		}
+
+		receipt = &value
+	}
+
 	_, requesterWallet, err := resolveLocalWallet(
 		job.Requester,
 		wallets,
@@ -193,11 +215,12 @@ func settleComputeJob(
 			}
 
 			return apiComputeSettlementResult{
-				Job:            completedJob,
-				Block:          block.Height,
-				SettlementTxID: tx.ID,
-				BountyReward:   job.Reward,
-				Recovered:      true,
+				Job:               completedJob,
+				Block:             block.Height,
+				SettlementTxID:    tx.ID,
+				BountyReward:      job.Reward,
+				Recovered:         true,
+				CrossChainReceipt: receipt,
 			}, nil
 		}
 
@@ -325,10 +348,11 @@ func settleComputeJob(
 	}
 
 	return apiComputeSettlementResult{
-		Job:            completedJob,
-		Block:          block.Height,
-		SettlementTxID: tx.ID,
-		BountyReward:   job.Reward,
-		Recovered:      false,
+		Job:               completedJob,
+		Block:             block.Height,
+		SettlementTxID:    tx.ID,
+		BountyReward:      job.Reward,
+		Recovered:         false,
+		CrossChainReceipt: receipt,
 	}, nil
 }

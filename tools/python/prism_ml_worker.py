@@ -118,6 +118,45 @@ def compute_proof_context(api: API, job_id_value: str) -> dict | None:
         "genesis_hash": genesis_hash,
     }
 
+def checked_crosschain_receipt(value: object, job_id_value: str, proof_id_value: str) -> dict | None:
+    if value is None:
+        return None
+
+    if not isinstance(value, dict):
+        raise WorkerError("invalid cross-chain receipt")
+
+    version = value.get("version")
+    if type(version) is not int or version != 1:
+        raise WorkerError("unsupported cross-chain receipt version")
+
+    def hex32(name: str) -> str:
+        raw = value.get(name)
+        if not isinstance(raw, str) or len(raw) != 66 or not raw.startswith("0x"):
+            raise WorkerError(f"invalid cross-chain receipt {name}")
+        try:
+            int(raw[2:], 16)
+        except ValueError as error:
+            raise WorkerError(f"invalid cross-chain receipt {name}") from error
+        return raw.lower()
+
+    receipt = {
+        "version": version,
+        "jobId": hex32("jobId"),
+        "proofId": hex32("proofId"),
+        "workerIdHash": hex32("workerIdHash"),
+        "prismChainIdHash": hex32("prismChainIdHash"),
+        "registryId": hex32("registryId"),
+    }
+
+    if receipt["jobId"] != ("0x" + job_id_value).lower():
+        raise WorkerError("cross-chain receipt job ID mismatch")
+
+    if receipt["proofId"] != ("0x" + proof_id_value).lower():
+        raise WorkerError("cross-chain receipt proof ID mismatch")
+
+    return receipt
+
+
 def checked_receipt(response: object, original: dict, proof: dict) -> dict:
     if not isinstance(response, dict) or response.get("verified") is not True or response.get("settled") is not True:
         raise WorkerError("completion not confirmed: verified and settled must both be true")
@@ -135,11 +174,23 @@ def checked_receipt(response: object, original: dict, proof: dict) -> dict:
     recovered = response.get("recovered")
     if type(recovered) is not bool:
         raise WorkerError("missing or invalid recovered flag")
-    return {
+
+    crosschain = checked_crosschain_receipt(
+        response.get("crossChainReceipt"),
+        job["id"],
+        proof["id"],
+    )
+
+    receipt = {
         "verified": True, "settled": True, "jobId": job["id"], "worker": proof["worker"],
         "predictions": proof["result_values"], "score": proof["score"], "proofId": proof["id"],
         "bountyReward": bounty, "settlementTxId": txid, "block": block, "recovered": recovered,
     }
+
+    if crosschain is not None:
+        receipt["crossChainReceipt"] = crosschain
+
+    return receipt
 
 
 def run_job(api: API, wallet, selected_id: str) -> dict:
