@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"prism/internal/compute"
+	"prism/internal/crosschain"
 	"prism/internal/p2p"
 	"prism/internal/participation"
 	"prism/internal/storage"
@@ -20,6 +21,7 @@ type apiServer struct {
 	dataPath      string
 	stateMu       sync.Mutex
 	computeMarket *compute.Marketplace
+	settlements   *crosschain.SettlementStore
 }
 
 type apiStatusResponse struct {
@@ -149,9 +151,23 @@ func runAPICommand(args []string) {
 		return
 	}
 
+	settlements, err :=
+		crosschain.NewSettlementStore(
+			*nodeData,
+		)
+
+	if err != nil {
+		fmt.Println(
+			"Unable to load cross-chain settlements:",
+			err,
+		)
+		return
+	}
+
 	api := &apiServer{
 		dataPath:      *nodeData,
 		computeMarket: computeMarket,
+		settlements:   settlements,
 	}
 
 	mux := http.NewServeMux()
@@ -203,6 +219,16 @@ func runAPICommand(args []string) {
 	mux.HandleFunc(
 		"/api/v1/mine/submit",
 		api.handleMineSubmit,
+	)
+
+	mux.HandleFunc(
+		"/api/v1/settlements",
+		api.handleSettlements,
+	)
+
+	mux.HandleFunc(
+		"/api/v1/settlements/",
+		api.handleSettlementByRegistry,
 	)
 
 	mux.HandleFunc(
