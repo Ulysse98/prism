@@ -1,6 +1,6 @@
 # Worker Python HTTP signe
 
-Le worker prend en charge `ml_inference_quantized`, avec le noeud Go v0.40.0.
+Le worker prend en charge `ml_inference_quantized`, avec le noeud Go v0.41.0.
 Voir [README.md](README.md) pour l'environnement Python et les comparateurs,
 et [WATCH.md](WATCH.md) pour le mode automatique ajoute dans la branche v0.38.
 
@@ -69,3 +69,10 @@ Pour v0.37 : 49 tests Python, 126 comparaisons numeriques/hash, 16 cas de
 preuves et la demo HTTP avec reglement ont reussi sur la machine Windows.
 Les cas supplementaires de reprise v0.38 et leurs limites sont decrits dans
 [WATCH.md](WATCH.md).
+
+## Cross-chain receipts v0.41
+
+When a v0.41 node returns `crossChainReceipt`, the Python worker validates
+the receipt version, Job ID and Proof ID, then propagates the receipt in its
+JSON output. That output can be passed directly to the Arbitrum and Solana
+cross-chain tools through `PRISM_CROSSCHAIN_RECEIPT_FILE`.

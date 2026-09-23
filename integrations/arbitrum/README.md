@@ -350,3 +350,58 @@ Run `npx hardhat run scripts/verifyCrosschainProofV2.ts --network arbitrumSepoli
 Expected final result: `Arbitrum ↔ Solana ID : ✅ MATCH`.
 
 `✅ PRISM PROOF V2 CROSS-CHAIN IDENTITY VERIFIED`
+
+## Prism v0.41 real compute receipt E2E
+
+Prism v0.41 was verified end to end with a receipt generated from a real funded compute settlement rather than a static test vector.
+
+### Prism settlement
+
+- Prism chain ID: `prism-7ab81e59be26f04c`
+- Prism block: `1`
+- Job ID: `0x199a9e9f49d131a63e29d274edd3f65c217f1fba17a8faeec678f3dc65415cab`
+- Proof ID: `0x396ba3fc732f6eb8176806c84241126f525cb610f1b78590a79aec5193f4ed18`
+- Worker identity hash: `0x1386a716cfa9f843b72f77d9fa78d927ed4919b053493719f6219a88933bde45`
+- Prism chain ID hash: `0x72b18452d377a0c04435976c41641f5fba947981e2a1e9b9e24971508a7d3061`
+- Settlement transaction: `e83d38806dde45eb3b298db47e998e22ab50024a26894ffbabf60ffb4d8134ee`
+- Canonical Registry ID: `0xdf58bc5a9b24150c7e4b6ffa74d7af084be25692fd1a74da4ba6dff546650972`
+
+### Arbitrum Sepolia
+
+- Registry: `0x44d872e47Aaf7874fc8Cf7236683f3E2548A2459`
+- Block: `311867093`
+- Transaction: `0xc9f4fc89055c0d5acd0e6643ca9804b5a60d007ffb135588a8a723cf2eeb252c`
+- Registry ID: `0xdf58bc5a9b24150c7e4b6ffa74d7af084be25692fd1a74da4ba6dff546650972`
+- Reverse registry index: verified
+
+### Solana Devnet
+
+- Program ID: `2yjpnNnDRnK4pvyRWLLMftAH2jfuAC2TnjyArVW3bhPz`
+- Proof PDA: `CZ4doHUfZJaYJSRoFjXUj427m7NkfG78w7fGutH8PhTn`
+- Transaction: `2BJZsWjTJebkLZHsNrpQaNj6zsDfAkEaP9hT79LSZKH5dwJVZHXXbi4UZqtf7cA1KEqr3JtxUdFHfQLc9HB2d4Co`
+- Registry ID: `0xdf58bc5a9b24150c7e4b6ffa74d7af084be25692fd1a74da4ba6dff546650972`
+- Stored Proof v2 fields: verified
+
+Final verifier result:
+
+```text
+Arbitrum ↔ Solana ID : ✅ MATCH
+
+✅ PRISM PROOF V2 CROSS-CHAIN IDENTITY VERIFIED
+```
+
+This demonstrates the v0.41 pipeline:
+
+```text
+Prism compute job
+        ↓
+signed Proof v2
+        ↓
+Prism settlement
+        ↓
+crossChainReceipt
+        ↓
+Arbitrum Sepolia + Solana Devnet
+        ↓
+same canonical Registry ID
+```
