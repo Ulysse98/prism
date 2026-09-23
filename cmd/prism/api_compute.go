@@ -507,13 +507,14 @@ func handleComputeComplete(
 		writer,
 		http.StatusOK,
 		map[string]any{
-			"verified":       true,
-			"settled":        true,
-			"job":            settlement.Job,
-			"bountyReward":   settlement.BountyReward,
-			"settlementTxId": settlement.SettlementTxID,
-			"block":          settlement.Block,
-			"recovered":      settlement.Recovered,
+			"verified":          true,
+			"settled":           true,
+			"job":               settlement.Job,
+			"bountyReward":      settlement.BountyReward,
+			"settlementTxId":    settlement.SettlementTxID,
+			"block":             settlement.Block,
+			"recovered":         settlement.Recovered,
+			"crossChainReceipt": settlement.CrossChainReceipt,
 		},
 	)
 }
