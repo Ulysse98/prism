@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"prism/internal/crosschain"
+	"prism/internal/p2p"
 	"prism/internal/storage"
 	"prism/internal/usefulwork"
 )
@@ -490,6 +492,108 @@ func TestHandleMineSubmitRejectsBadSignature(
 		t.Fatalf(
 			"unexpected response: %s",
 			response.Body.String(),
+		)
+	}
+}
+
+func TestHandleMineSubmitReturnsCanonicalCrossChainReceipt(
+	t *testing.T,
+) {
+	api, payload :=
+		newMineSubmitHTTPFixture(
+			t,
+			usefulwork.TaskTypeSumSquares,
+		)
+
+	response :=
+		performMineSubmit(
+			t,
+			api,
+			payload,
+		)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf(
+			"expected HTTP 200, got %d: %s",
+			response.Code,
+			response.Body.String(),
+		)
+	}
+
+	var body struct {
+		Verified          bool               `json:"verified"`
+		Proof             apiWorkResponse    `json:"proof"`
+		CrossChainReceipt crosschain.Receipt `json:"crossChainReceipt"`
+	}
+
+	if err :=
+		json.NewDecoder(
+			response.Body,
+		).Decode(&body); err != nil {
+
+		t.Fatalf(
+			"cannot decode mine submit response: %v",
+			err,
+		)
+	}
+
+	if !body.Verified {
+		t.Fatal(
+			"expected verified mine response",
+		)
+	}
+
+	if body.Proof.ProofID !=
+		payload.ProofID {
+
+		t.Fatalf(
+			"proof ID mismatch: got %s want %s",
+			body.Proof.ProofID,
+			payload.ProofID,
+		)
+	}
+
+	chain, _, _, err :=
+		api.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(chain.Blocks) == 0 {
+		t.Fatal(
+			"chain is empty after mine submit",
+		)
+	}
+
+	genesis :=
+		chain.Blocks[0]
+
+	expected, err :=
+		crosschain.NewReceipt(
+			payload.JobID,
+			payload.ProofID,
+			payload.WorkerAddress,
+			p2p.MakeChainID(
+				genesis.Hash,
+			),
+		)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if body.CrossChainReceipt !=
+		expected {
+
+		t.Fatalf(
+			"cross-chain receipt mismatch:\ngot:  %+v\nwant: %+v",
+			body.CrossChainReceipt,
+			expected,
+		)
+	}
+
+	if body.CrossChainReceipt.RegistryID == "" {
+		t.Fatal(
+			"cross-chain registry ID is empty",
 		)
 	}
 }

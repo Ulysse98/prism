@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"prism/internal/consensus"
+	"prism/internal/crosschain"
+	"prism/internal/p2p"
 	"prism/internal/usefulwork"
 )
 
@@ -490,6 +492,44 @@ func (api *apiServer) handleMineSubmit(
 		return
 	}
 
+	genesis := chain.Blocks[0]
+
+	if genesis.Hash == "" {
+		apiWriteError(
+			writer,
+			http.StatusInternalServerError,
+			fmt.Errorf(
+				"cannot create cross-chain receipt without genesis hash",
+			),
+		)
+		return
+	}
+
+	chainID :=
+		p2p.MakeChainID(
+			genesis.Hash,
+		)
+
+	crossChainReceipt, err :=
+		crosschain.NewReceipt(
+			proof.Task.ID,
+			proof.ID,
+			proof.Worker,
+			chainID,
+		)
+
+	if err != nil {
+		apiWriteError(
+			writer,
+			http.StatusInternalServerError,
+			fmt.Errorf(
+				"cannot build cross-chain receipt: %w",
+				err,
+			),
+		)
+		return
+	}
+
 	// Calculate the reward before creating the block.
 	//
 	// stateMu is held here, so no competing mine submit can alter
@@ -608,11 +648,12 @@ func (api *apiServer) handleMineSubmit(
 		writer,
 		http.StatusOK,
 		map[string]any{
-			"verified":    true,
-			"reward":      reward,
-			"block":       block.Height,
-			"totalSupply": totalSupply,
-			"proof":       responseProof,
+			"verified":          true,
+			"reward":            reward,
+			"block":             block.Height,
+			"totalSupply":       totalSupply,
+			"proof":             responseProof,
+			"crossChainReceipt": crossChainReceipt,
 		},
 	)
 }
