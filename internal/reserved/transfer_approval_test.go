@@ -241,9 +241,13 @@ func TestReservedTransferProposalRejectsTamperedApproval(
 		t.Fatal(err)
 	}
 
+	signature := proposal.Approvals[0].Signature
+	replacement := "00"
+	if strings.HasPrefix(signature, "00") {
+		replacement = "01"
+	}
 	proposal.Approvals[0].Signature =
-		"00" +
-			proposal.Approvals[0].Signature[2:]
+		replacement + signature[2:]
 
 	err =
 		ValidateReservedTransferProposalApproval(
