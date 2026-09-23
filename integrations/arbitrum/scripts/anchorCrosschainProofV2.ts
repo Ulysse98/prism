@@ -1,29 +1,26 @@
 import { network } from "hardhat";
 import {
   getAddress,
-  keccak256,
-  stringToHex,
   type Address,
 } from "viem";
+
+import {
+  loadCrossChainReceipt,
+} from "./crosschainReceipt.js";
 
 const registryAddress = getAddress(
   process.env.PRISM_ARBITRUM_REGISTRY ??
     "0x44d872e47Aaf7874fc8Cf7236683f3E2548A2459",
 ) as Address;
 
-const jobId =
-  keccak256(stringToHex("prism-job-001"));
+const receipt =
+  loadCrossChainReceipt();
 
-const proofId =
-  keccak256(stringToHex("prism-proof-v2-001"));
-
-const workerIdHash =
-  keccak256(stringToHex("prism-worker-alice"));
-
+const jobId = receipt.jobId;
+const proofId = receipt.proofId;
+const workerIdHash = receipt.workerIdHash;
 const prismChainIdHash =
-  keccak256(
-    stringToHex("prism-d8c1f3e740b48957"),
-  );
+  receipt.prismChainIdHash;
 
 const { viem } = await network.getOrCreate();
 

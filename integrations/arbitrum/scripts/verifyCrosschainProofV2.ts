@@ -2,13 +2,14 @@ import { createHash } from "node:crypto";
 
 import {
   createPublicClient,
-  encodeAbiParameters,
   http,
-  keccak256,
-  stringToHex,
   type Address,
   type Hex,
 } from "viem";
+
+import {
+  loadCrossChainReceipt,
+} from "./crosschainReceipt.js";
 
 import { arbitrumSepolia } from "viem/chains";
 
@@ -18,37 +19,23 @@ import {
 } from "@solana/web3.js";
 
 /*
- * Prism Proof v2 canonical test vector.
+ * Prism Proof v2 cross-chain receipt.
+ *
+ * Set PRISM_CROSSCHAIN_RECEIPT_FILE to a real
+ * /complete response JSON. Without it, the loader
+ * keeps the historical canonical test vector as a
+ * backwards-compatible demo fallback.
  */
-const jobId =
-  keccak256(stringToHex("prism-job-001"));
+const receipt =
+  loadCrossChainReceipt();
 
-const proofId =
-  keccak256(stringToHex("prism-proof-v2-001"));
-
-const workerIdHash =
-  keccak256(stringToHex("prism-worker-alice"));
-
+const jobId = receipt.jobId;
+const proofId = receipt.proofId;
+const workerIdHash = receipt.workerIdHash;
 const prismChainIdHash =
-  keccak256(
-    stringToHex("prism-d8c1f3e740b48957"),
-  );
-
-const encoded = encodeAbiParameters(
-  [
-    { type: "bytes32" },
-    { type: "bytes32" },
-    { type: "bytes32" },
-  ],
-  [
-    jobId,
-    prismChainIdHash,
-    proofId,
-  ],
-);
-
+  receipt.prismChainIdHash;
 const canonicalRegistryId =
-  keccak256(encoded);
+  receipt.registryId;
 
 /*
  * Arbitrum Sepolia.
