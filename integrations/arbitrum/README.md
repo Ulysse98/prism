@@ -318,5 +318,35 @@ cast call \
 Expected result:
 
 ```text
-1
+2
 ```
+
+## Cross-chain Proof V2 verification
+
+Prism Proof V2 is now independently anchored and verified on both Arbitrum Sepolia and Solana Devnet.
+
+### Canonical Proof V2
+
+- Job ID: `0xdbab0c89f752689748f4b1d375cd94800b40a1ed299e028edfa2336c0ba9a6cd`
+- Proof ID: `0x42b5df2e467b316cd4fe45bdc303c15494854b917d8b98ee82402d1ef9076c38`
+- Prism chain hash: `0x27a955f0f028e1b3f397d20c36a77c7b8546fe31dd754bcf1fbdaae3ad95aedb`
+- Canonical Registry ID: `0x0d2f7411a6f9e0263209bcc7278d172346e0b5916902bb22efc8c0ffbb1a618e`
+
+### Arbitrum Sepolia
+
+- Registry: `0x44d872e47Aaf7874fc8Cf7236683f3E2548A2459`
+- Proof transaction: `0x945a6aff2945fdc93cbdea876e43e685e1e269b82846d32c8604b305e8e8b10f`
+
+### Solana Devnet
+
+- Program ID: `2yjpnNnDRnK4pvyRWLLMftAH2jfuAC2TnjyArVW3bhPz`
+- Proof PDA: `8f4CgN5LNArQ1ZUYfQu8WtQJS2xD8dvccHrBmcsaeM6f`
+- Proof transaction: `3zjDpkFV2EXtuWQgwcCqztEERTsZegToLC2qiFQmkCDhTArMwcDjxUZwTdS44b5hdkRyGC4HFLBaSkvutmyDBH9d`
+
+### Verification
+
+Run `npx hardhat run scripts/verifyCrosschainProofV2.ts --network arbitrumSepolia`.
+
+Expected final result: `Arbitrum ↔ Solana ID : ✅ MATCH`.
+
+`✅ PRISM PROOF V2 CROSS-CHAIN IDENTITY VERIFIED`
