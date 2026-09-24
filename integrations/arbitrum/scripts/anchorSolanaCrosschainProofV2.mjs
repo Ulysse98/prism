@@ -3,6 +3,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 
+import bs58 from "bs58";
+
 import {
   Connection,
   Keypair,
@@ -396,15 +398,91 @@ if (!proofAccount) {
       "confirmed",
     );
 
-  const recovered =
-    signatureHistory.find(
-      (entry) =>
-        entry.err === null,
-    );
+  const expectedRegisterProofData =
+    Buffer.concat([
+      discriminator(
+        "register_proof_v2",
+      ),
+      jobBytes,
+      proofBytes,
+      bytes32(workerIdHash),
+      bytes32(prismChainIdHash),
+    ]);
+
+  let recovered = null;
+
+  for (const entry of signatureHistory) {
+    if (entry.err !== null) {
+      continue;
+    }
+
+    const transaction =
+      await connection.getParsedTransaction(
+        entry.signature,
+        {
+          commitment: "confirmed",
+          maxSupportedTransactionVersion: 0,
+        },
+      );
+
+    if (
+      !transaction ||
+      transaction.meta?.err
+    ) {
+      continue;
+    }
+
+    const matchesRegisterProof =
+      transaction.transaction.message.instructions.some(
+        (instruction) => {
+          if (
+            !("data" in instruction) ||
+            !instruction.programId.equals(
+              PROGRAM_ID,
+            )
+          ) {
+            return false;
+          }
+
+          const instructionData =
+            Buffer.from(
+              bs58.decode(
+                instruction.data,
+              ),
+            );
+
+          if (
+            !instructionData.equals(
+              expectedRegisterProofData,
+            )
+          ) {
+            return false;
+          }
+
+          return (
+            instruction.accounts.length >= 3 &&
+            instruction.accounts[0].equals(
+              configPda,
+            ) &&
+            instruction.accounts[1].equals(
+              proofPda,
+            ) &&
+            instruction.accounts[2].equals(
+              proofIndexPda,
+            )
+          );
+        },
+      );
+
+    if (matchesRegisterProof) {
+      recovered = entry;
+      break;
+    }
+  }
 
   if (!recovered) {
     throw new Error(
-      "Cannot recover confirmed Solana registration transaction for existing Proof v2",
+      "Cannot recover verified Solana register_proof_v2 transaction for existing Proof v2",
     );
   }
 
