@@ -386,6 +386,41 @@ if (!proofAccount) {
   console.log(
     "Proof already registered ✅",
   );
+
+  const signatureHistory =
+    await connection.getSignaturesForAddress(
+      proofPda,
+      {
+        limit: 20,
+      },
+      "confirmed",
+    );
+
+  const recovered =
+    signatureHistory.find(
+      (entry) =>
+        entry.err === null,
+    );
+
+  if (!recovered) {
+    throw new Error(
+      "Cannot recover confirmed Solana registration transaction for existing Proof v2",
+    );
+  }
+
+  confirmedSignature =
+    recovered.signature;
+  confirmedSlot =
+    recovered.slot;
+
+  console.log(
+    "Recovered TX  :",
+    confirmedSignature,
+  );
+  console.log(
+    "Recovered slot:",
+    confirmedSlot,
+  );
 }
 
 //
