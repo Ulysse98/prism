@@ -20,6 +20,13 @@ import {
 
 const RPC = "https://api.devnet.solana.com";
 
+const prismApi =
+  process.env.PRISM_API_URL?.replace(
+    /\/$/,
+    "",
+  ) ??
+  "http://127.0.0.1:8080/api/v1";
+
 const PROGRAM_ID = new PublicKey(
   "2yjpnNnDRnK4pvyRWLLMftAH2jfuAC2TnjyArVW3bhPz",
 );
@@ -273,6 +280,9 @@ if (!configAccount) {
 // 2. Register Proof v2
 //
 
+let confirmedSignature = null;
+let confirmedSlot = null;
+
 let proofAccount =
   await connection.getAccountInfo(
     proofPda,
@@ -328,7 +338,7 @@ if (!proofAccount) {
       data,
     });
 
-  const signature =
+  confirmedSignature =
     await sendAndConfirmTransaction(
       connection,
       new Transaction().add(ix),
@@ -340,7 +350,35 @@ if (!proofAccount) {
 
   console.log(
     "Proof TX     :",
-    signature,
+    confirmedSignature,
+  );
+
+  const statusResponse =
+    await connection.getSignatureStatuses(
+      [confirmedSignature],
+      {
+        searchTransactionHistory: true,
+      },
+    );
+
+  const signatureStatus =
+    statusResponse.value[0];
+
+  if (
+    !signatureStatus ||
+    signatureStatus.err !== null
+  ) {
+    throw new Error(
+      `Solana transaction was not confirmed successfully: ${confirmedSignature}`,
+    );
+  }
+
+  confirmedSlot =
+    signatureStatus.slot;
+
+  console.log(
+    "Slot         :",
+    confirmedSlot,
   );
 } else {
   console.log();
@@ -456,6 +494,56 @@ if (
 ) {
   throw new Error(
     "❌ SOLANA PROOF V2 DATA MISMATCH",
+  );
+}
+
+if (
+  confirmedSignature !== null &&
+  confirmedSlot !== null
+) {
+  const settlementResponse =
+    await fetch(
+      `${prismApi}/settlements`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify({
+          registryId:
+            canonicalRegistryId,
+          chain: "solana",
+          status: "confirmed",
+          txHash:
+            confirmedSignature,
+          registryAddress:
+            PROGRAM_ID.toBase58(),
+          blockNumber:
+            confirmedSlot,
+          explorerUrl:
+            `https://explorer.solana.com/tx/${confirmedSignature}?cluster=devnet`,
+        }),
+      },
+    );
+
+  if (
+    !settlementResponse.ok
+  ) {
+    const body =
+      await settlementResponse.text();
+
+    throw new Error(
+      `Prism settlement API returned HTTP ${settlementResponse.status}: ${body}`,
+    );
+  }
+
+  console.log(
+    "Prism settlement status: CONFIRMED",
+  );
+} else {
+  console.log(
+    "Settlement metadata not published: proof was already anchored.",
   );
 }
 
