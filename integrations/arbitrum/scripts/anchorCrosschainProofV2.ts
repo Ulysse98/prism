@@ -1,6 +1,7 @@
 import { network } from "hardhat";
 import {
   getAddress,
+  parseAbiItem,
   type Address,
   type Hex,
 } from "viem";
@@ -175,7 +176,60 @@ if (!exists) {
   console.log();
 
   console.log(
-    "Proof already registered — no transaction sent.",
+    "Proof already registered — recovering anchor transaction.",
+  );
+
+  const anchorEvent =
+    parseAbiItem(
+      "event ProofAnchorRegistered(bytes32 indexed registryId, bytes32 indexed jobId, bytes32 indexed proofId, bytes32 prismChainIdHash)",
+    );
+
+  const logs =
+    await publicClient.getLogs({
+      address: registryAddress,
+      event: anchorEvent,
+      args: {
+        registryId:
+          receipt.registryId,
+        jobId,
+        proofId,
+      },
+      fromBlock: 0n,
+      toBlock: "latest",
+    });
+
+  const recovered =
+    logs.find(
+      (log) =>
+        log.args.prismChainIdHash
+          ?.toLowerCase() ===
+        prismChainIdHash.toLowerCase(),
+    );
+
+  if (
+    !recovered ||
+    recovered.transactionHash === null ||
+    recovered.blockNumber === null
+  ) {
+    throw new Error(
+      "Cannot recover verified Arbitrum ProofAnchorRegistered event",
+    );
+  }
+
+  confirmedTxHash =
+    recovered.transactionHash;
+
+  confirmedBlockNumber =
+    recovered.blockNumber;
+
+  console.log(
+    "Recovered TX    :",
+    confirmedTxHash,
+  );
+
+  console.log(
+    "Recovered block :",
+    confirmedBlockNumber.toString(),
   );
 }
 
