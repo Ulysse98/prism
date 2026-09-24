@@ -159,6 +159,7 @@ function hex(bytes) {
 }
 
 const walletPath =
+  process.env.PRISM_SOLANA_KEYPAIR?.trim() ||
   join(
     homedir(),
     ".config/solana/id.json",
