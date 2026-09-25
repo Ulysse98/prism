@@ -137,12 +137,13 @@ CrossChainReceipt {
     return fallbackReceipt;
   }
 
+  const raw =
+    readFileSync(
+      path,
+      "utf8",
+    ).replace(/^\uFEFF/, "");
+
   return parseReceipt(
-    JSON.parse(
-      readFileSync(
-        path,
-        "utf8",
-      ),
-    ),
+    JSON.parse(raw),
   );
 }
