@@ -65,13 +65,19 @@ function loadReceipt() {
     process.env.PRISM_CROSSCHAIN_RECEIPT_FILE?.trim();
 
   if (!receiptPath) {
-    return fallbackReceipt;
+    throw new Error(
+      "PRISM_CROSSCHAIN_RECEIPT_FILE is required for Solana anchoring",
+    );
   }
 
+  const raw =
+    readFileSync(
+      receiptPath,
+      "utf8",
+    ).replace(/^\uFEFF/, "");
+
   const root =
-    JSON.parse(
-      readFileSync(receiptPath, "utf8"),
-    );
+    JSON.parse(raw);
 
   const candidate =
     root?.crossChainReceipt ?? root;
