@@ -23,6 +23,15 @@ const registryAddress =
       "0x44d872e47Aaf7874fc8Cf7236683f3E2548A2459",
   ) as Address;
 
+const receiptFile =
+  process.env.PRISM_CROSSCHAIN_RECEIPT_FILE?.trim();
+
+if (!receiptFile) {
+  throw new Error(
+    "PRISM_CROSSCHAIN_RECEIPT_FILE is required for Arbitrum anchoring",
+  );
+}
+
 const receipt =
   loadCrossChainReceipt();
 
