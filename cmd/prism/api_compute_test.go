@@ -1,9 +1,13 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"prism/internal/compute"
 	"prism/internal/usefulwork"
 )
 
@@ -126,5 +130,177 @@ func TestAPIComputeCreateRejectsMixedTaskFormats(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "cannot combine") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestAPIComputeFiltersMarketplaceJobs(
+	t *testing.T,
+) {
+	market := compute.NewMarketplace()
+
+	sumTask, err := usefulwork.NewSumSquaresTask(
+		[]uint64{1, 2, 3},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	primeTask, err := usefulwork.NewPrimeCountTask(
+		[]uint64{2, 3, 4, 5},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	openJob, err := market.Create(
+		sumTask,
+		"Alice",
+		25,
+		1,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	claimedJob, err := market.Create(
+		sumTask,
+		"Alice",
+		50,
+		2,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := market.Claim(
+		claimedJob.ID,
+		"prism_worker",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := market.Create(
+		primeTask,
+		"Bob",
+		100,
+		3,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/compute/jobs?status=OPEN&task=sum_squares&requester=Alice&minReward=20&limit=10",
+		nil,
+	)
+
+	filters, err := parseComputeJobFilters(
+		request,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	jobs := filterComputeJobs(
+		market.List(),
+		filters,
+	)
+
+	if len(jobs) != 1 {
+		t.Fatalf(
+			"expected one filtered job, got %d",
+			len(jobs),
+		)
+	}
+
+	if jobs[0].ID != openJob.ID {
+		t.Fatalf(
+			"unexpected filtered job: %s",
+			jobs[0].ID,
+		)
+	}
+}
+
+func TestAPIComputeRejectsInvalidFilters(
+	t *testing.T,
+) {
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/compute/jobs?status=INVALID",
+		nil,
+	)
+
+	if _, err := parseComputeJobFilters(
+		request,
+	); err == nil {
+
+		t.Fatal(
+			"expected invalid status to be rejected",
+		)
+	}
+}
+
+func TestAPIComputeGetsJobByID(
+	t *testing.T,
+) {
+	market := compute.NewMarketplace()
+
+	task, err := usefulwork.NewSumSquaresTask(
+		[]uint64{5, 6, 7},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	job, err := market.Create(
+		task,
+		"Alice",
+		42,
+		99,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	api := &apiServer{
+		computeMarket: market,
+	}
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/compute/jobs/"+job.ID,
+		nil,
+	)
+
+	recorder := httptest.NewRecorder()
+
+	api.handleComputeJobAction(
+		recorder,
+		request,
+	)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf(
+			"unexpected HTTP status: %d",
+			recorder.Code,
+		)
+	}
+
+	var response struct {
+		Job compute.Job `json:"job"`
+	}
+
+	if err := json.NewDecoder(
+		recorder.Body,
+	).Decode(&response); err != nil {
+
+		t.Fatal(err)
+	}
+
+	if response.Job.ID != job.ID {
+		t.Fatalf(
+			"unexpected job ID: %s",
+			response.Job.ID,
+		)
 	}
 }
