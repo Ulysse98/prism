@@ -13,7 +13,7 @@ import urllib.request
 
 from prism_ml_protocol import (
     ProtocolError, compact, decode_json, identifier, job_id, load_wallet,
-    make_proof, make_task, read_json, uint, validate_job, work_units,
+    make_claim, make_proof, make_task, read_json, uint, validate_job, work_units,
 )
 
 
@@ -212,7 +212,26 @@ def run_job(api: API, wallet, selected_id: str) -> dict:
         body = {"proof": proof}
         API.encode(body)
     if job["status"] == "OPEN":
-        response = api.request("POST", f"/compute/jobs/{selected_id}/claim", {"worker": wallet.address})
+        if context is None:
+            raise WorkerError(
+                "signed compute claim requires node chain identity"
+            )
+
+        claim = make_claim(
+            job["id"],
+            context["chain_id"],
+            context["genesis_hash"],
+            wallet,
+        )
+
+        API.encode(claim, 4096)
+
+        response = api.request(
+            "POST",
+            f"/compute/jobs/{selected_id}/claim",
+            claim,
+        )
+
         claimed = validate_job(response.get("job") if isinstance(response, dict) else None, selected_id)
         if claimed["status"] != "CLAIMED" or claimed.get("worker") != wallet.address:
             raise WorkerError("claim not confirmed for this wallet")

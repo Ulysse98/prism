@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"prism/internal/compute"
+	"prism/internal/p2p"
 	"prism/internal/usefulwork"
 )
 
@@ -106,12 +108,162 @@ func (payload apiComputeCreateJobRequest) buildTask() (
 	}
 }
 
-type apiComputeClaimJobRequest struct {
-	Worker string `json:"worker"`
-}
+type apiComputeClaimJobRequest = compute.ClaimAuthorization
 
 type apiComputeCompleteJobRequest struct {
 	Proof usefulwork.Proof `json:"proof"`
+}
+
+type apiComputeJobFilters struct {
+	Status    compute.JobStatus
+	Task      string
+	Requester string
+	Worker    string
+	MinReward uint64
+	Limit     int
+}
+
+func parseComputeJobFilters(
+	request *http.Request,
+) (apiComputeJobFilters, error) {
+	query := request.URL.Query()
+
+	filters := apiComputeJobFilters{
+		Task: strings.TrimSpace(
+			query.Get("task"),
+		),
+		Requester: strings.TrimSpace(
+			query.Get("requester"),
+		),
+		Worker: strings.TrimSpace(
+			query.Get("worker"),
+		),
+	}
+
+	status := strings.ToUpper(
+		strings.TrimSpace(query.Get("status")),
+	)
+
+	switch status {
+	case "":
+	case string(compute.JobStatusOpen):
+		filters.Status = compute.JobStatusOpen
+
+	case string(compute.JobStatusClaimed):
+		filters.Status = compute.JobStatusClaimed
+
+	case string(compute.JobStatusVerified):
+		filters.Status = compute.JobStatusVerified
+
+	default:
+		return apiComputeJobFilters{},
+			fmt.Errorf(
+				"invalid compute job status: %s",
+				status,
+			)
+	}
+
+	if raw := strings.TrimSpace(
+		query.Get("minReward"),
+	); raw != "" {
+		value, err := strconv.ParseUint(
+			raw,
+			10,
+			64,
+		)
+		if err != nil {
+			return apiComputeJobFilters{},
+				fmt.Errorf(
+					"invalid minReward: %w",
+					err,
+				)
+		}
+
+		filters.MinReward = value
+	}
+
+	if raw := strings.TrimSpace(
+		query.Get("limit"),
+	); raw != "" {
+		value, err := strconv.ParseUint(
+			raw,
+			10,
+			16,
+		)
+		if err != nil ||
+			value == 0 ||
+			value > 1000 {
+
+			return apiComputeJobFilters{},
+				fmt.Errorf(
+					"compute job limit must be between 1 and 1000",
+				)
+		}
+
+		filters.Limit = int(value)
+	}
+
+	return filters, nil
+}
+
+func filterComputeJobs(
+	jobs []compute.Job,
+	filters apiComputeJobFilters,
+) []compute.Job {
+	results := make(
+		[]compute.Job,
+		0,
+		len(jobs),
+	)
+
+	for _, job := range jobs {
+		if filters.Status != "" &&
+			job.Status != filters.Status {
+
+			continue
+		}
+
+		if filters.Task != "" &&
+			!strings.EqualFold(
+				job.Task.Type,
+				filters.Task,
+			) {
+
+			continue
+		}
+
+		if filters.Requester != "" &&
+			!strings.EqualFold(
+				job.Requester,
+				filters.Requester,
+			) {
+
+			continue
+		}
+
+		if filters.Worker != "" &&
+			!strings.EqualFold(
+				job.Worker,
+				filters.Worker,
+			) {
+
+			continue
+		}
+
+		if job.Reward < filters.MinReward {
+			continue
+		}
+
+		results = append(results, job)
+
+		if filters.Limit > 0 &&
+			len(results) >= filters.Limit {
+
+			break
+		}
+	}
+
+	return results
 }
 
 func (api *apiServer) createFundedComputeJob(
@@ -247,11 +399,29 @@ func (api *apiServer) handleComputeJobs(
 
 	switch request.Method {
 	case http.MethodGet:
+		filters, err := parseComputeJobFilters(
+			request,
+		)
+		if err != nil {
+			apiWriteError(
+				writer,
+				http.StatusBadRequest,
+				err,
+			)
+			return
+		}
+
+		jobs := filterComputeJobs(
+			api.computeMarket.List(),
+			filters,
+		)
+
 		apiWriteJSON(
 			writer,
 			http.StatusOK,
 			map[string]any{
-				"jobs": api.computeMarket.List(),
+				"count": len(jobs),
+				"jobs":  jobs,
 			},
 		)
 
@@ -337,21 +507,9 @@ func (api *apiServer) handleComputeJobAction(
 		apiWriteError(
 			writer,
 			http.StatusInternalServerError,
-			fmt.Errorf("compute marketplace is unavailable"),
-		)
-		return
-	}
-
-	if request.Method != http.MethodPost {
-		writer.Header().Set(
-			"Allow",
-			http.MethodPost,
-		)
-
-		apiWriteError(
-			writer,
-			http.StatusMethodNotAllowed,
-			fmt.Errorf("method not allowed"),
+			fmt.Errorf(
+				"compute marketplace is unavailable",
+			),
 		)
 		return
 	}
@@ -365,6 +523,35 @@ func (api *apiServer) handleComputeJobAction(
 
 	parts := strings.Split(path, "/")
 
+	// GET /api/v1/compute/jobs/{id}
+	if len(parts) == 1 &&
+		parts[0] != "" {
+
+		if request.Method != http.MethodGet {
+			writer.Header().Set(
+				"Allow",
+				http.MethodGet,
+			)
+
+			apiWriteError(
+				writer,
+				http.StatusMethodNotAllowed,
+				fmt.Errorf(
+					"method not allowed",
+				),
+			)
+			return
+		}
+
+		handleComputeJobGet(
+			api,
+			writer,
+			parts[0],
+		)
+		return
+	}
+
+	// POST /api/v1/compute/jobs/{id}/{action}
 	if len(parts) != 2 ||
 		parts[0] == "" ||
 		parts[1] == "" {
@@ -372,7 +559,25 @@ func (api *apiServer) handleComputeJobAction(
 		apiWriteError(
 			writer,
 			http.StatusNotFound,
-			fmt.Errorf("invalid compute job endpoint"),
+			fmt.Errorf(
+				"invalid compute job endpoint",
+			),
+		)
+		return
+	}
+
+	if request.Method != http.MethodPost {
+		writer.Header().Set(
+			"Allow",
+			http.MethodPost,
+		)
+
+		apiWriteError(
+			writer,
+			http.StatusMethodNotAllowed,
+			fmt.Errorf(
+				"method not allowed",
+			),
 		)
 		return
 	}
@@ -409,6 +614,30 @@ func (api *apiServer) handleComputeJobAction(
 	}
 }
 
+func handleComputeJobGet(
+	api *apiServer,
+	writer http.ResponseWriter,
+	jobID string,
+) {
+	job, err := api.computeMarket.Get(jobID)
+	if err != nil {
+		apiWriteError(
+			writer,
+			http.StatusNotFound,
+			err,
+		)
+		return
+	}
+
+	apiWriteJSON(
+		writer,
+		http.StatusOK,
+		map[string]any{
+			"job": job,
+		},
+	)
+}
+
 func handleComputeClaim(
 	api *apiServer,
 	writer http.ResponseWriter,
@@ -432,6 +661,51 @@ func handleComputeClaim(
 			http.StatusBadRequest,
 			fmt.Errorf(
 				"invalid compute claim request: %w",
+				err,
+			),
+		)
+		return
+	}
+
+	chain, _, _, err := api.loadState()
+	if err != nil {
+		apiWriteError(
+			writer,
+			http.StatusInternalServerError,
+			err,
+		)
+		return
+	}
+
+	if len(chain.Blocks) == 0 ||
+		chain.Blocks[0].Hash == "" {
+
+		apiWriteError(
+			writer,
+			http.StatusInternalServerError,
+			fmt.Errorf(
+				"cannot verify compute claim without a genesis block",
+			),
+		)
+		return
+	}
+
+	genesisHash := chain.Blocks[0].Hash
+	chainID := p2p.MakeChainID(
+		genesisHash,
+	)
+
+	if err := compute.VerifyClaimAuthorization(
+		payload,
+		jobID,
+		chainID,
+		genesisHash,
+	); err != nil {
+		apiWriteError(
+			writer,
+			http.StatusUnauthorized,
+			fmt.Errorf(
+				"invalid signed compute claim: %w",
 				err,
 			),
 		)

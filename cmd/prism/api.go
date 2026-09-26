@@ -277,6 +277,7 @@ func runAPICommand(args []string) {
 	fmt.Println("  POST /api/v1/mine/submit")
 	fmt.Println("  GET  /api/v1/receipts/{jobId}")
 	fmt.Println("  GET  /api/v1/compute/jobs")
+	fmt.Println("  GET  /api/v1/compute/jobs/{id}")
 	fmt.Println("  POST /api/v1/compute/jobs")
 	fmt.Println("  POST /api/v1/compute/jobs/{id}/claim")
 	fmt.Println("  POST /api/v1/compute/jobs/{id}/complete")
