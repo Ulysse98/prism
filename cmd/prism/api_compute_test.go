@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,8 @@ import (
 	"testing"
 
 	"prism/internal/compute"
+	"prism/internal/p2p"
+	"prism/internal/storage"
 	"prism/internal/usefulwork"
 )
 
@@ -301,6 +304,262 @@ func TestAPIComputeGetsJobByID(
 		t.Fatalf(
 			"unexpected job ID: %s",
 			response.Job.ID,
+		)
+	}
+}
+
+func TestAPIComputeAcceptsSignedClaim(
+	t *testing.T,
+) {
+	chain, pos, wallets, err := createNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bob := wallets["Bob"]
+	if bob == nil {
+		t.Fatal("Bob wallet missing")
+	}
+
+	dataPath := t.TempDir()
+
+	if err := storage.Save(
+		dataPath,
+		chain,
+		pos,
+		wallets,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	market, err :=
+		compute.NewPersistentMarketplace(
+			dataPath,
+		)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	task, err := usefulwork.NewSumSquaresTask(
+		[]uint64{11, 13, 17},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	job, err := market.Create(
+		task,
+		"Alice",
+		25,
+		45001,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(chain.Blocks) == 0 {
+		t.Fatal("test chain has no genesis block")
+	}
+
+	genesisHash := chain.Blocks[0].Hash
+	chainID := p2p.MakeChainID(
+		genesisHash,
+	)
+
+	claim, err :=
+		compute.SignClaimAuthorization(
+			job.ID,
+			chainID,
+			genesisHash,
+			bob,
+		)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body, err := json.Marshal(claim)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	api := &apiServer{
+		dataPath:      dataPath,
+		computeMarket: market,
+	}
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/compute/jobs/"+
+			job.ID+
+			"/claim",
+		bytes.NewReader(body),
+	)
+
+	recorder := httptest.NewRecorder()
+
+	api.handleComputeJobAction(
+		recorder,
+		request,
+	)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf(
+			"unexpected HTTP status: %d body=%s",
+			recorder.Code,
+			recorder.Body.String(),
+		)
+	}
+
+	var response struct {
+		Job compute.Job `json:"job"`
+	}
+
+	if err := json.NewDecoder(
+		recorder.Body,
+	).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+
+	if response.Job.Status !=
+		compute.JobStatusClaimed {
+
+		t.Fatalf(
+			"unexpected job status: %s",
+			response.Job.Status,
+		)
+	}
+
+	if response.Job.Worker != bob.Address {
+		t.Fatalf(
+			"unexpected worker: %s",
+			response.Job.Worker,
+		)
+	}
+}
+
+func TestAPIComputeRejectsForgedSignedClaim(
+	t *testing.T,
+) {
+	chain, pos, wallets, err := createNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	alice := wallets["Alice"]
+	if alice == nil {
+		t.Fatal("Alice wallet missing")
+	}
+
+	bob := wallets["Bob"]
+	if bob == nil {
+		t.Fatal("Bob wallet missing")
+	}
+
+	dataPath := t.TempDir()
+
+	if err := storage.Save(
+		dataPath,
+		chain,
+		pos,
+		wallets,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	market, err :=
+		compute.NewPersistentMarketplace(
+			dataPath,
+		)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	task, err := usefulwork.NewSumSquaresTask(
+		[]uint64{19, 23, 29},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	job, err := market.Create(
+		task,
+		"Alice",
+		30,
+		45002,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	genesisHash := chain.Blocks[0].Hash
+	chainID := p2p.MakeChainID(
+		genesisHash,
+	)
+
+	claim, err :=
+		compute.SignClaimAuthorization(
+			job.ID,
+			chainID,
+			genesisHash,
+			bob,
+		)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Attempt to claim the job as Alice using Bob's
+	// signed authorization.
+	claim.Worker = alice.Address
+
+	body, err := json.Marshal(claim)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	api := &apiServer{
+		dataPath:      dataPath,
+		computeMarket: market,
+	}
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/compute/jobs/"+
+			job.ID+
+			"/claim",
+		bytes.NewReader(body),
+	)
+
+	recorder := httptest.NewRecorder()
+
+	api.handleComputeJobAction(
+		recorder,
+		request,
+	)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf(
+			"expected HTTP 401, got %d body=%s",
+			recorder.Code,
+			recorder.Body.String(),
+		)
+	}
+
+	stored, err := market.Get(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if stored.Status != compute.JobStatusOpen {
+		t.Fatalf(
+			"forged claim mutated job status: %s",
+			stored.Status,
+		)
+	}
+
+	if stored.Worker != "" {
+		t.Fatalf(
+			"forged claim assigned worker: %s",
+			stored.Worker,
 		)
 	}
 }

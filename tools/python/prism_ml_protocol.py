@@ -167,6 +167,133 @@ def load_wallet(data: Path, name: str) -> Wallet:
     return wallet_from_record(matching[0])
 
 
+
+CLAIM_AUTHORIZATION_VERSION = 1
+
+
+def claim_id(claim: dict) -> str:
+    message = (
+        f'Prism/Compute/Claim/v1|{claim["jobId"]}|'
+        f'{claim["chainId"]}|{claim["genesisHash"]}|'
+        f'{claim["worker"]}|{claim["publicKey"]}'
+    )
+    return digest(message.encode("utf-8"))
+
+
+def make_claim(
+    job_id_value: str,
+    chain_id: str,
+    genesis_hash: str,
+    wallet: Wallet,
+) -> dict:
+    identifier(job_id_value, "job ID")
+
+    if (
+        not isinstance(chain_id, str)
+        or not chain_id.strip()
+        or chain_id != chain_id.strip()
+        or len(chain_id) > 128
+    ):
+        raise ProtocolError("invalid claim chain ID")
+
+    identifier(
+        genesis_hash,
+        "genesis hash",
+    )
+
+    claim = {
+        "version": CLAIM_AUTHORIZATION_VERSION,
+        "jobId": job_id_value,
+        "chainId": chain_id,
+        "genesisHash": genesis_hash,
+        "worker": wallet.address,
+        "publicKey": wallet.public_key,
+    }
+
+    claim["claimId"] = claim_id(claim)
+
+    claim["signature"] = wallet.private_key.sign(
+        claim["claimId"].encode("ascii")
+    ).hex()
+
+    return claim
+
+
+def verify_claim(
+    claim: object,
+    *,
+    job_id_value: str,
+    chain_id: str,
+    genesis_hash: str,
+) -> None:
+    if not isinstance(claim, dict):
+        raise ProtocolError("invalid compute claim")
+
+    try:
+        if claim.get("version") != CLAIM_AUTHORIZATION_VERSION:
+            raise ProtocolError(
+                "unsupported compute claim version"
+            )
+
+        if claim.get("jobId") != job_id_value:
+            raise ProtocolError(
+                "compute claim job mismatch"
+            )
+
+        if claim.get("chainId") != chain_id:
+            raise ProtocolError(
+                "compute claim chain mismatch"
+            )
+
+        if claim.get("genesisHash") != genesis_hash:
+            raise ProtocolError(
+                "compute claim genesis mismatch"
+            )
+
+        public = hex_bytes(
+            claim.get("publicKey"),
+            32,
+            "claim public key",
+        )
+
+        if claim.get("worker") != address(public):
+            raise ProtocolError(
+                "compute claim worker mismatch"
+            )
+
+        if (
+            identifier(
+                claim.get("claimId"),
+                "claim ID",
+            )
+            != claim_id(claim)
+        ):
+            raise ProtocolError(
+                "compute claim ID mismatch"
+            )
+
+        signature = hex_bytes(
+            claim.get("signature"),
+            64,
+            "claim signature",
+        )
+
+        Ed25519PublicKey.from_public_bytes(
+            public
+        ).verify(
+            signature,
+            claim["claimId"].encode("ascii"),
+        )
+
+    except (
+        KeyError,
+        InvalidSignature,
+    ) as error:
+        raise ProtocolError(
+            "invalid signed compute claim"
+        ) from error
+
+
 COMPUTE_PROOF_VERSION = 2
 
 

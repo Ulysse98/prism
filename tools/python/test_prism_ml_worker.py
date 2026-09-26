@@ -19,8 +19,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from check_go_proofs import proof_cases, test_wallet
 from prism_ml_protocol import (
-    ProtocolError, address, compact, decode_json, job_id, load_wallet, make_proof,
-    make_task, task_payload, uint, validate_job, verify_proof, wallet_from_record, work_units,
+    ProtocolError, address, compact, decode_json, job_id, load_wallet, make_claim,
+    make_proof, make_task, task_payload, uint, validate_job, verify_claim, verify_proof,
+    wallet_from_record, work_units,
 )
 from prism_ml_worker import API, WorkerError, create_job, demo_payload, run_job
 
@@ -91,6 +92,34 @@ class ProtocolTests(unittest.TestCase):
         wallet, task = test_wallet(), make_task(demo_payload(37))
         self.assertEqual(make_proof(task, wallet), make_proof(task, wallet))
 
+    def test_signed_claim_roundtrip(self):
+        wallet = test_wallet()
+        job = "a" * 64
+        chain = "prism-test-v045"
+        genesis = "b" * 64
+
+        claim = make_claim(
+            job,
+            chain,
+            genesis,
+            wallet,
+        )
+
+        verify_claim(
+            claim,
+            job_id_value=job,
+            chain_id=chain,
+            genesis_hash=genesis,
+        )
+
+        with self.assertRaises(ProtocolError):
+            verify_claim(
+                claim,
+                job_id_value=job,
+                chain_id="prism-other-chain",
+                genesis_hash=genesis,
+            )
+
     def test_wallet_seed_suffix_and_address_checks(self):
         original = record()
         self.assertEqual(wallet_from_record(original).address, original["address"])
@@ -154,6 +183,11 @@ class Node:
         self.redirect = False
         self.large_response = False
         self.received_proof = None
+        self.identity = {
+            "chainId": "prism-test-v045",
+            "genesisHash": "a" * 64,
+            "chainValid": True,
+        }
 
 
 @contextlib.contextmanager
@@ -180,16 +214,40 @@ def node_server():
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
-            self.send_json({"jobs": [node.job], "padding": "x" * (1 << 20) if node.large_response else ""})
+            if self.path.endswith("/status"):
+                self.send_json(node.identity)
+            else:
+                self.send_json({
+                    "jobs": [node.job],
+                    "padding": "x" * (1 << 20) if node.large_response else "",
+                })
 
         def do_POST(self):
             node.requests.append(("POST", self.path))
             body = decode_json(self.rfile.read(int(self.headers["Content-Length"])))
             if self.path.endswith("/claim"):
+                try:
+                    verify_claim(
+                        body,
+                        job_id_value=node.job["id"],
+                        chain_id=node.identity["chainId"],
+                        genesis_hash=node.identity["genesisHash"],
+                    )
+                except ProtocolError:
+                    self.send_json(
+                        {"error": "invalid signed claim"},
+                        401,
+                    )
+                    return
+
                 if node.job["status"] != "OPEN":
                     self.send_json({"error": "not open"}, 400)
                     return
-                node.job.update(status="CLAIMED", worker=body["worker"])
+
+                node.job.update(
+                    status="CLAIMED",
+                    worker=body["worker"],
+                )
                 returned = copy.deepcopy(node.job)
                 if node.claim_worker:
                     returned["worker"] = node.claim_worker

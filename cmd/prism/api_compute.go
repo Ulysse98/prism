@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"prism/internal/compute"
+	"prism/internal/p2p"
 	"prism/internal/usefulwork"
 )
 
@@ -107,9 +108,7 @@ func (payload apiComputeCreateJobRequest) buildTask() (
 	}
 }
 
-type apiComputeClaimJobRequest struct {
-	Worker string `json:"worker"`
-}
+type apiComputeClaimJobRequest = compute.ClaimAuthorization
 
 type apiComputeCompleteJobRequest struct {
 	Proof usefulwork.Proof `json:"proof"`
@@ -662,6 +661,51 @@ func handleComputeClaim(
 			http.StatusBadRequest,
 			fmt.Errorf(
 				"invalid compute claim request: %w",
+				err,
+			),
+		)
+		return
+	}
+
+	chain, _, _, err := api.loadState()
+	if err != nil {
+		apiWriteError(
+			writer,
+			http.StatusInternalServerError,
+			err,
+		)
+		return
+	}
+
+	if len(chain.Blocks) == 0 ||
+		chain.Blocks[0].Hash == "" {
+
+		apiWriteError(
+			writer,
+			http.StatusInternalServerError,
+			fmt.Errorf(
+				"cannot verify compute claim without a genesis block",
+			),
+		)
+		return
+	}
+
+	genesisHash := chain.Blocks[0].Hash
+	chainID := p2p.MakeChainID(
+		genesisHash,
+	)
+
+	if err := compute.VerifyClaimAuthorization(
+		payload,
+		jobID,
+		chainID,
+		genesisHash,
+	); err != nil {
+		apiWriteError(
+			writer,
+			http.StatusUnauthorized,
+			fmt.Errorf(
+				"invalid signed compute claim: %w",
 				err,
 			),
 		)
