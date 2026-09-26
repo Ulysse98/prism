@@ -150,7 +150,7 @@ func settleComputeJob(
 	// Crash/retry recovery:
 	//
 	// If the blockchain block was saved successfully but persistence
-	// of compute-jobs.json failed, recognize the exact proof +
+	// of the compute marketplace failed, recognize the exact proof +
 	// requester->worker bounty transaction and finalize the marketplace
 	// state without paying twice.
 	for _, block := range chain.Blocks {

@@ -340,6 +340,11 @@ func TestAPIComputeAcceptsSignedClaim(
 		t.Fatal(err)
 	}
 
+	registerComputeMarketplaceCleanup(
+		t,
+		market,
+	)
+
 	task, err := usefulwork.NewSumSquaresTask(
 		[]uint64{11, 13, 17},
 	)
@@ -473,6 +478,11 @@ func TestAPIComputeRejectsForgedSignedClaim(
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	registerComputeMarketplaceCleanup(
+		t,
+		market,
+	)
 
 	task, err := usefulwork.NewSumSquaresTask(
 		[]uint64{19, 23, 29},

@@ -1,11 +1,13 @@
 package compute
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"prism/internal/usefulwork"
@@ -16,6 +18,13 @@ const marketplaceFilename = "compute-jobs.json"
 type marketplaceSnapshot struct {
 	Version uint64 `json:"version"`
 	Jobs    []Job  `json:"jobs"`
+}
+
+type sqlExecer interface {
+	Exec(
+		query string,
+		args ...any,
+	) (sql.Result, error)
 }
 
 func NewPersistentMarketplace(
@@ -29,56 +38,155 @@ func NewPersistentMarketplace(
 		)
 	}
 
+	db, err := openMarketplaceDB(dataDir)
+	if err != nil {
+		return nil, err
+	}
+
 	market := &Marketplace{
 		jobs:    make(map[string]Job),
 		dataDir: dataDir,
+		db:      db,
 	}
 
 	if err := market.load(); err != nil {
+		_ = db.Close()
 		return nil, err
 	}
 
 	return market, nil
 }
 
-func (market *Marketplace) load() error {
-	path := filepath.Join(
-		market.dataDir,
-		marketplaceFilename,
-	)
+func (market *Marketplace) Close() error {
+	if market == nil || market.db == nil {
+		return nil
+	}
 
-	data, err := os.ReadFile(path)
+	return market.db.Close()
+}
+
+func (market *Marketplace) load() error {
+	if market.db == nil {
+		return fmt.Errorf(
+			"compute marketplace database is not open",
+		)
+	}
+
+	if err := market.importLegacyJSONIfNeeded(); err != nil {
+		return err
+	}
+
+	rows, err := market.db.Query(`
+SELECT
+id,
+task_id,
+task_json,
+requester,
+reward,
+work_units,
+nonce,
+status,
+worker,
+proof_id
+FROM compute_jobs
+ORDER BY id
+`)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
+		return fmt.Errorf(
+			"cannot load compute marketplace database: %w",
+			err,
+		)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			jobID         string
+			taskID        string
+			taskJSON      string
+			requester     string
+			rewardText    string
+			workUnitsText string
+			nonceText     string
+			statusText    string
+			worker        string
+			proofID       string
+		)
+
+		if err := rows.Scan(
+			&jobID,
+			&taskID,
+			&taskJSON,
+			&requester,
+			&rewardText,
+			&workUnitsText,
+			&nonceText,
+			&statusText,
+			&worker,
+			&proofID,
+		); err != nil {
+			return fmt.Errorf(
+				"cannot scan compute marketplace job: %w",
+				err,
+			)
 		}
 
-		return fmt.Errorf(
-			"cannot load compute marketplace: %w",
-			err,
+		var task usefulwork.Task
+
+		if err := json.Unmarshal(
+			[]byte(taskJSON),
+			&task,
+		); err != nil {
+			return fmt.Errorf(
+				"cannot decode compute task %s: %w",
+				jobID,
+				err,
+			)
+		}
+
+		if task.ID != taskID {
+			return fmt.Errorf(
+				"compute job %s task ID mismatch",
+				jobID,
+			)
+		}
+
+		reward, err := parsePersistedUint64(
+			"reward",
+			rewardText,
 		)
-	}
+		if err != nil {
+			return err
+		}
 
-	var snapshot marketplaceSnapshot
-
-	if err := json.Unmarshal(
-		data,
-		&snapshot,
-	); err != nil {
-		return fmt.Errorf(
-			"cannot decode compute marketplace: %w",
-			err,
+		workUnits, err := parsePersistedUint64(
+			"work units",
+			workUnitsText,
 		)
-	}
+		if err != nil {
+			return err
+		}
 
-	if snapshot.Version != 1 {
-		return fmt.Errorf(
-			"unsupported compute marketplace version: %d",
-			snapshot.Version,
+		nonce, err := parsePersistedUint64(
+			"nonce",
+			nonceText,
 		)
-	}
+		if err != nil {
+			return err
+		}
 
-	for _, job := range snapshot.Jobs {
+		job := Job{
+			ID:        jobID,
+			Task:      task,
+			Requester: requester,
+			Reward:    reward,
+			WorkUnits: workUnits,
+			Nonce:     nonce,
+			Status:    JobStatus(statusText),
+			Worker:    worker,
+			ProofID:   proofID,
+		}
+
 		if err := validatePersistedJob(job); err != nil {
 			return fmt.Errorf(
 				"invalid persisted compute job %s: %w",
@@ -97,72 +205,35 @@ func (market *Marketplace) load() error {
 		market.jobs[job.ID] = job
 	}
 
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf(
+			"cannot iterate compute marketplace database: %w",
+			err,
+		)
+	}
+
 	return nil
 }
 
-func (market *Marketplace) persistLocked() error {
-	if market.dataDir == "" {
+func (
+	market *Marketplace,
+) importLegacyJSONIfNeeded() error {
+
+	var count uint64
+
+	if err := market.db.QueryRow(`
+SELECT COUNT(*)
+FROM compute_jobs
+`).Scan(&count); err != nil {
+		return fmt.Errorf(
+			"cannot inspect compute marketplace database: %w",
+			err,
+		)
+	}
+
+	// SQLite already owns the marketplace state.
+	if count != 0 {
 		return nil
-	}
-
-	if err := os.MkdirAll(
-		market.dataDir,
-		0755,
-	); err != nil {
-		return err
-	}
-
-	snapshot := marketplaceSnapshot{
-		Version: 1,
-		Jobs:    market.listLocked(),
-	}
-
-	data, err := json.MarshalIndent(
-		snapshot,
-		"",
-		"  ",
-	)
-	if err != nil {
-		return fmt.Errorf(
-			"cannot encode compute marketplace: %w",
-			err,
-		)
-	}
-
-	temp, err := os.CreateTemp(
-		market.dataDir,
-		".compute-jobs-*.tmp",
-	)
-	if err != nil {
-		return fmt.Errorf(
-			"cannot create compute marketplace temp file: %w",
-			err,
-		)
-	}
-
-	tempPath := temp.Name()
-
-	defer func() {
-		_ = os.Remove(tempPath)
-	}()
-
-	if err := temp.Chmod(0600); err != nil {
-		_ = temp.Close()
-		return err
-	}
-
-	if _, err := temp.Write(data); err != nil {
-		_ = temp.Close()
-		return err
-	}
-
-	if err := temp.Sync(); err != nil {
-		_ = temp.Close()
-		return err
-	}
-
-	if err := temp.Close(); err != nil {
-		return err
 	}
 
 	path := filepath.Join(
@@ -170,17 +241,248 @@ func (market *Marketplace) persistLocked() error {
 		marketplaceFilename,
 	)
 
-	if err := os.Rename(
-		tempPath,
-		path,
-	); err != nil {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+
 		return fmt.Errorf(
-			"cannot replace compute marketplace state: %w",
+			"cannot load legacy compute marketplace: %w",
 			err,
 		)
 	}
 
+	var snapshot marketplaceSnapshot
+
+	if err := json.Unmarshal(
+		data,
+		&snapshot,
+	); err != nil {
+		return fmt.Errorf(
+			"cannot decode legacy compute marketplace: %w",
+			err,
+		)
+	}
+
+	if snapshot.Version != 1 {
+		return fmt.Errorf(
+			"unsupported legacy compute marketplace version: %d",
+			snapshot.Version,
+		)
+	}
+
+	seen := make(map[string]struct{})
+
+	for _, job := range snapshot.Jobs {
+		if err := validatePersistedJob(job); err != nil {
+			return fmt.Errorf(
+				"invalid legacy compute job %s: %w",
+				job.ID,
+				err,
+			)
+		}
+
+		if _, exists := seen[job.ID]; exists {
+			return fmt.Errorf(
+				"duplicate legacy compute job: %s",
+				job.ID,
+			)
+		}
+
+		seen[job.ID] = struct{}{}
+	}
+
+	tx, err := market.db.Begin()
+	if err != nil {
+		return fmt.Errorf(
+			"cannot start legacy compute marketplace migration: %w",
+			err,
+		)
+	}
+
+	committed := false
+
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	for _, job := range snapshot.Jobs {
+		if err := insertMarketplaceJob(
+			tx,
+			job,
+		); err != nil {
+			return fmt.Errorf(
+				"cannot migrate legacy compute job %s: %w",
+				job.ID,
+				err,
+			)
+		}
+	}
+
+	if _, err := tx.Exec(`
+INSERT INTO compute_meta (
+key,
+value
+)
+VALUES (
+'legacy_json_imported',
+'1'
+)
+ON CONFLICT(key)
+DO UPDATE SET value = excluded.value
+`); err != nil {
+		return fmt.Errorf(
+			"cannot record compute marketplace migration: %w",
+			err,
+		)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf(
+			"cannot commit legacy compute marketplace migration: %w",
+			err,
+		)
+	}
+
+	committed = true
+
 	return nil
+}
+
+func (market *Marketplace) persistLocked() error {
+	// In-memory marketplaces created with NewMarketplace
+	// intentionally have no persistent database.
+	if market.db == nil {
+		return nil
+	}
+
+	tx, err := market.db.Begin()
+	if err != nil {
+		return fmt.Errorf(
+			"cannot start compute marketplace transaction: %w",
+			err,
+		)
+	}
+
+	committed := false
+
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if _, err := tx.Exec(`
+DELETE FROM compute_jobs
+`); err != nil {
+		return fmt.Errorf(
+			"cannot clear compute marketplace jobs: %w",
+			err,
+		)
+	}
+
+	for _, job := range market.listLocked() {
+		if err := validatePersistedJob(job); err != nil {
+			return fmt.Errorf(
+				"invalid compute job %s: %w",
+				job.ID,
+				err,
+			)
+		}
+
+		if err := insertMarketplaceJob(
+			tx,
+			job,
+		); err != nil {
+			return fmt.Errorf(
+				"cannot persist compute job %s: %w",
+				job.ID,
+				err,
+			)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf(
+			"cannot commit compute marketplace transaction: %w",
+			err,
+		)
+	}
+
+	committed = true
+
+	return nil
+}
+
+func insertMarketplaceJob(
+	exec sqlExecer,
+	job Job,
+) error {
+
+	taskJSON, err := json.Marshal(job.Task)
+	if err != nil {
+		return fmt.Errorf(
+			"cannot encode compute task: %w",
+			err,
+		)
+	}
+
+	_, err = exec.Exec(`
+INSERT INTO compute_jobs (
+id,
+task_id,
+task_json,
+requester,
+reward,
+work_units,
+nonce,
+status,
+worker,
+proof_id
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`,
+		job.ID,
+		job.Task.ID,
+		string(taskJSON),
+		job.Requester,
+		strconv.FormatUint(job.Reward, 10),
+		strconv.FormatUint(job.WorkUnits, 10),
+		strconv.FormatUint(job.Nonce, 10),
+		string(job.Status),
+		job.Worker,
+		job.ProofID,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func parsePersistedUint64(
+	field string,
+	value string,
+) (uint64, error) {
+
+	parsed, err := strconv.ParseUint(
+		value,
+		10,
+		64,
+	)
+	if err != nil {
+		return 0, fmt.Errorf(
+			"invalid persisted compute %s %q: %w",
+			field,
+			value,
+			err,
+		)
+	}
+
+	return parsed, nil
 }
 
 func validatePersistedJob(

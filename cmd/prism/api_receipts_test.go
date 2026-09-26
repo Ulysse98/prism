@@ -57,6 +57,11 @@ func TestReceiptAPIReconstructsVerifiedCrossChainReceipt(
 		t.Fatal(err)
 	}
 
+	registerComputeMarketplaceCleanup(
+		t,
+		market,
+	)
+
 	settlements, err :=
 		crosschain.NewSettlementStore(
 			dataPath,

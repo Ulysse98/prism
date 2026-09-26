@@ -151,6 +151,15 @@ func runAPICommand(args []string) {
 		return
 	}
 
+	defer func() {
+		if err := computeMarket.Close(); err != nil {
+			fmt.Println(
+				"Unable to close Prism Compute marketplace:",
+				err,
+			)
+		}
+	}()
+
 	settlements, err :=
 		crosschain.NewSettlementStore(
 			*nodeData,

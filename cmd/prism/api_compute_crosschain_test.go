@@ -52,6 +52,11 @@ func TestSettleComputeJobBuildsCrossChainReceipt(
 		t.Fatal(err)
 	}
 
+	registerComputeMarketplaceCleanup(
+		t,
+		market,
+	)
+
 	task, err :=
 		usefulwork.NewSumSquaresTask(
 			[]uint64{13, 21, 34},
