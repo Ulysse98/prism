@@ -1,6 +1,7 @@
 package compute
 
 import (
+	"database/sql"
 	"fmt"
 	"math"
 	"sort"
@@ -14,6 +15,7 @@ type Marketplace struct {
 	mu      sync.RWMutex
 	jobs    map[string]Job
 	dataDir string
+	db      *sql.DB
 }
 
 func NewMarketplace() *Marketplace {

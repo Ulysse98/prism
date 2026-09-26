@@ -45,6 +45,11 @@ func TestSettleComputeJobRetryDoesNotDoublePay(
 		t.Fatal(err)
 	}
 
+	registerComputeMarketplaceCleanup(
+		t,
+		market,
+	)
+
 	task, err :=
 		usefulwork.NewSumSquaresTask(
 			[]uint64{21, 34, 55},

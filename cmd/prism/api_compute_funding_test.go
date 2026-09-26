@@ -56,6 +56,11 @@ func newComputeFundingAPITest(
 		t.Fatal(err)
 	}
 
+	registerComputeMarketplaceCleanup(
+		t,
+		market,
+	)
+
 	return &apiServer{
 			dataPath:      dataPath,
 			computeMarket: market,
