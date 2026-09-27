@@ -221,7 +221,7 @@
                         <input type="text" id="block-search" placeholder="Rechercher un block...">
                         <button onclick="searchBlocks()">&#128269;</button>
                     </div>
-                    <button class="btn btn-primary" onclick="loadBlocks()">&#8635; Rafrachir</button>
+                    <button class="btn btn-primary" onclick="loadBlocks()">&#8635; Rafraichir</button>
                 </div>
 
                 <div class="table-container">
@@ -255,7 +255,7 @@
 
                 <div class="job-actions">
                     <button class="btn btn-primary" onclick="showCreateJobModal()">
-                        &#43; Creer un Job
+                        &#43; Creer un Job
                     </button>
                     <div class="job-filters">
                         <select id="job-status-filter" onchange="filterJobs()">
@@ -343,7 +343,7 @@
 
                     <div class="compute-card">
                         <h3>&#128279; Devenir Worker</h3>
-                        <p>Excutez des tches et gagnez des rcompenses</p>
+                        <p>Executez des taches et gagnez des recompenses</p>
                         <button class="btn btn-secondary" onclick="showWorkerInfo()">
                             Configurer Worker
                         </button>
@@ -361,17 +361,17 @@
                         <div class="endpoint">
                             <span class="method post">POST</span>
                             <span class="path">/api/v1/compute/jobs</span>
-                            <span class="desc">Crr un job</span>
+                            <span class="desc">Crer un job</span>
                         </div>
                         <div class="endpoint">
                             <span class="method post">POST</span>
                             <span class="path">/api/v1/compute/jobs/{id}/claim</span>
-                            <span class="desc">Rclamer un job</span>
+                            <span class="desc">Reclamer un job</span>
                         </div>
                         <div class="endpoint">
                             <span class="method post">POST</span>
                             <span class="path">/api/v1/compute/jobs/{id}/complete</span>
-                            <span class="desc">Complter un job</span>
+                            <span class="desc">Completer un job</span>
                         </div>
                     </div>
                 </div>
@@ -382,7 +382,7 @@
         <div id="create-job-modal" class="modal">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h3>Crr un Job ML</h3>
+                    <h3>Crer un Job ML</h3>
                     <button class="modal-close" onclick="closeCreateJobModal()">&times;</button>
                 </div>
                 <form id="create-job-form" onsubmit="createJob(event)">
@@ -404,7 +404,7 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="job-reward">Rcompense (PRISM)</label>
+                        <label for="job-reward">Recompense (PRISM)</label>
                         <input type="number" id="job-reward" min="1" value="100" required>
                     </div>
 
@@ -418,7 +418,7 @@
                             Annuler
                         </button>
                         <button type="submit" class="btn btn-primary">
-                            Crr le Job
+                            Crer le Job
                         </button>
                     </div>
                 </form>
@@ -442,11 +442,10 @@
                         <li>Recevez la r&eacute;compense en PRISM</li>
                     </ol>
                     <div class="code-block">
-                        <pre>docker run -d \
-  --name prism-worker \
-  -e PRISM_API=http://api:8080 \
-  -e PRISM_WALLET=/app/wallet.json \
-  prism-worker:v0.48.0</pre>
+                        <pre>docker compose \
+  -f docker-compose.testnet.yaml \
+  --profile worker \
+  up -d worker</pre>
                     </div>
                 </div>
             </div>
@@ -455,7 +454,7 @@
         <!-- Footer -->
         <footer class="footer">
             <div class="footer-content">
-                <p>Prism Testnet Explorer v0.48.0</p>
+                <p>Prism Testnet Explorer v0.48.1</p>
                 <div class="footer-links">
                     <a href="https://github.com/Ulysse98/prism" target="_blank">GitHub</a>
                     <a href="#" onclick="showDocs()">Documentation</a>

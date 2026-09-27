@@ -27,9 +27,6 @@ RUN pip install --no-cache-dir -r requirements-worker.txt
 # Copy the entire repository
 COPY . .
 
-# Copy worker configuration (if exists)
-COPY worker-config.json /app/config.json 2>/dev/null || true
-
 # Create data directory
 RUN mkdir -p /app/data /app/logs
 
@@ -40,7 +37,7 @@ RUN useradd -m prism && \
 USER prism
 
 # Set the entrypoint
-ENTRYPOINT ["python", "tools/python/prism_worker.py"]
+ENTRYPOINT ["python", "tools/python/prism_ml_worker.py"]
 
 # Default command (can be overridden)
-CMD ["--config", "/app/config.json"]
+CMD ["--help"]
