@@ -291,3 +291,34 @@ func TestSelectRecoverableClaimedJob(
 		)
 	}
 }
+
+func TestAutonomousWorkerStatsAccumulateRuntimeMetrics(
+	t *testing.T,
+) {
+	stats := autonomousWorkerStats{}
+
+	stats.CompletedJobs++
+	stats.FailedJobs++
+	stats.BountyEarned += 25
+
+	if stats.CompletedJobs != 1 {
+		t.Fatalf(
+			"unexpected completed jobs: %d",
+			stats.CompletedJobs,
+		)
+	}
+
+	if stats.FailedJobs != 1 {
+		t.Fatalf(
+			"unexpected failed jobs: %d",
+			stats.FailedJobs,
+		)
+	}
+
+	if stats.BountyEarned != 25 {
+		t.Fatalf(
+			"unexpected bounty earned: %d",
+			stats.BountyEarned,
+		)
+	}
+}

@@ -38,6 +38,9 @@ type apiComputeWorkerCompleteResponse struct {
 
 type autonomousWorkerStats struct {
 	Cycles          uint64
+	CompletedJobs   uint64
+	FailedJobs      uint64
+	BountyEarned    uint64
 	RecoveredClaims uint64
 	OpenScans       uint64
 	StartedAt       time.Time
@@ -1306,6 +1309,19 @@ func printAutonomousWorkerSummary(
 	fmt.Println(
 		"Cycles:",
 		stats.Cycles,
+	)
+	fmt.Println(
+		"Jobs completed:",
+		stats.CompletedJobs,
+	)
+	fmt.Println(
+		"Jobs failed:",
+		stats.FailedJobs,
+	)
+	fmt.Println(
+		"Bounty earned:",
+		stats.BountyEarned,
+		"PRISM",
 	)
 	fmt.Println(
 		"Recovered claims:",
