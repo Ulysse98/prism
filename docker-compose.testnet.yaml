@@ -81,11 +81,11 @@ services:
       - --port
       - "8080"
       - --data
-      - /app/data
+      - /app/data/node-7001
     ports:
       - "8080:8080"
     volumes:
-      - node1-data:/app/data:ro
+      - node1-data:/app/data
     networks:
       - prism-testnet
     depends_on:
