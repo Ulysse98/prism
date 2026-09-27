@@ -345,12 +345,6 @@ async function loadValidators() {
         validatorsBody.innerHTML = '<tr><td colspan="6">Erreur lors du chargement</td></tr>';
     }
 }
-
-function getUptimeStatus(validator) {
-    // In a real implementation, we'd calculate uptime
-    return 'success';
-}
-
 // ============================================================================
 // Worker Info Modal
 // ============================================================================
