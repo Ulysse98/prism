@@ -1,0 +1,46 @@
+# Dockerfile for Prism Compute Worker (Python)
+# This builds a container with Python runtime for executing ML tasks
+
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better caching
+COPY tools/python/requirements-worker.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements-worker.txt
+
+# Copy the entire repository
+COPY . .
+
+# Copy worker configuration (if exists)
+COPY worker-config.json /app/config.json 2>/dev/null || true
+
+# Create data directory
+RUN mkdir -p /app/data /app/logs
+
+# Create a non-root user
+RUN useradd -m prism && \
+    chown -R prism:prism /app
+
+USER prism
+
+# Set the entrypoint
+ENTRYPOINT ["python", "tools/python/prism_worker.py"]
+
+# Default command (can be overridden)
+CMD ["--config", "/app/config.json"]
