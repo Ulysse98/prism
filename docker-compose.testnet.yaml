@@ -1,0 +1,150 @@
+services:
+  # ============================================================================
+  # Prism Nodes (P2P Network)
+  # ============================================================================
+  node-1:
+    image: prism-node:v0.48.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: prism-node-1
+    command:
+      - node
+      - --host
+      - 0.0.0.0
+      - --port
+      - "7001"
+    ports:
+      - "7001:7001"
+    volumes:
+      - node1-data:/app/data
+    networks:
+      - prism-testnet
+    restart: unless-stopped
+
+  node-2:
+    image: prism-node:v0.48.0
+    container_name: prism-node-2
+    command:
+      - node
+      - --host
+      - 0.0.0.0
+      - --port
+      - "7002"
+      - --peer
+      - prism-node-1:7001
+    ports:
+      - "7002:7002"
+    volumes:
+      - node2-data:/app/data
+    networks:
+      - prism-testnet
+    depends_on:
+      node-1:
+        condition: service_started
+    restart: unless-stopped
+
+  node-3:
+    image: prism-node:v0.48.0
+    container_name: prism-node-3
+    command:
+      - node
+      - --host
+      - 0.0.0.0
+      - --port
+      - "7003"
+      - --peer
+      - prism-node-1:7001
+    ports:
+      - "7003:7003"
+    volumes:
+      - node3-data:/app/data
+    networks:
+      - prism-testnet
+    depends_on:
+      node-1:
+        condition: service_started
+    restart: unless-stopped
+
+  # ============================================================================
+  # Prism API Server (REST HTTP)
+  # ============================================================================
+  api:
+    image: prism-node:v0.48.0
+    container_name: prism-api
+    command:
+      - api
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --data
+      - /app/data/node-7001
+    ports:
+      - "8080:8080"
+    volumes:
+      - node1-data:/app/data
+    networks:
+      - prism-testnet
+    depends_on:
+      node-1:
+        condition: service_started
+    restart: unless-stopped
+
+  # ============================================================================
+  # Prism Web Explorer (Frontend)
+  # ============================================================================
+  explorer:
+    image: nginx:alpine
+    container_name: prism-explorer
+    ports:
+      - "80:80"
+    volumes:
+      - ./web/explorer:/usr/share/nginx/html:ro
+      - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - prism-testnet
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  # ============================================================================
+  # Prism Compute Worker (Optional - for ML tasks)
+  # ============================================================================
+  worker:
+    image: prism-worker:v0.48.0
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: prism-worker
+    command:
+      - compute-worker
+      - --api
+      - http://prism-api:8080
+      - --wallet
+      - /app/wallet.json
+      - --interval
+      - "5"
+    volumes:
+      - ./web/worker:/app/data
+    networks:
+      - prism-testnet
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+    profiles:
+      - worker
+
+volumes:
+  node1-data:
+    driver: local
+  node2-data:
+    driver: local
+  node3-data:
+    driver: local
+
+networks:
+  prism-testnet:
+    driver: bridge

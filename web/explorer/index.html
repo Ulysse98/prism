@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prism Explorer - Testnet</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+.recent-activity-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    width: 100%;
+}
+
+.recent-activity-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 4px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.recent-activity-item:last-child {
+    border-bottom: none;
+}
+
+.recent-activity-icon {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(52, 211, 153, 0.12);
+    color: #34d399;
+    font-weight: 700;
+}
+
+.recent-activity-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.recent-activity-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 5px;
+}
+
+.recent-activity-badge {
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.recent-activity-badge.verified {
+    background: rgba(52, 211, 153, 0.12);
+    color: #34d399;
+}
+
+.recent-activity-badge.invalid {
+    background: rgba(248, 113, 113, 0.12);
+    color: #f87171;
+}
+
+.recent-activity-meta {
+    color: #a9b6cc;
+    font-size: 13px;
+}
+
+.recent-activity-proof {
+    margin-top: 4px;
+    color: #718096;
+    font-family: monospace;
+    font-size: 11px;
+}
+
+.recent-activity-reward {
+    text-align: right;
+    white-space: nowrap;
+    font-weight: 700;
+    color: #a78bfa;
+}
+
+.recent-activity-reward span {
+    display: block;
+    margin-top: 4px;
+    color: #718096;
+    font-size: 11px;
+    font-weight: 400;
+}
+
+.recent-activity-empty {
+    padding: 28px 10px;
+    text-align: center;
+    color: #718096;
+}
+
+.activity-chart {
+    height: auto !important;
+}
+</style>
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">&#9679;</span>
+                <h1>Prism Explorer</h1>
+            </div>
+            <nav class="nav">
+                <a href="#" class="nav-link active" data-section="dashboard">Dashboard</a>
+                <a href="#" class="nav-link" data-section="blocks">Blocks</a>
+                <a href="#" class="nav-link" data-section="jobs">ML Jobs</a>
+                <a href="#" class="nav-link" data-section="validators">Validators</a>
+                <a href="#" class="nav-link" data-section="compute">Compute</a>
+            </nav>
+            <div class="network-status">
+                <span class="status-dot" id="network-status"></span>
+                <span id="network-name">Prism Testnet</span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main">
+            <!-- Dashboard Section -->
+            <section id="dashboard" class="section active">
+                <div class="section-header">
+                    <h2>Dashboard</h2>
+                    <p class="section-subtitle">Overview du réseau Prism</p>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-icon">&#128220;</span>
+                            <h3>Block Height</h3>
+                        </div>
+                        <div class="stat-value" id="block-height">-</div>
+                        <div class="stat-label">Dernier bloc</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-icon">&#128274;</span>
+                            <h3>Validators</h3>
+                        </div>
+                        <div class="stat-value" id="validator-count">-</div>
+                        <div class="stat-label">Nœuds actifs</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-icon">&#128176;</span>
+                            <h3>Total Stake</h3>
+                        </div>
+                        <div class="stat-value" id="total-stake">-</div>
+                        <div class="stat-label">PRISM stakés</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-icon">&#128737;</span>
+                            <h3>ML Jobs</h3>
+                        </div>
+                        <div class="stat-value" id="job-count">-</div>
+                        <div class="stat-label">Tâches en cours</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-icon">&#128200;</span>
+                            <h3>Chain Hash</h3>
+                        </div>
+                        <div class="stat-value hash" id="last-hash">-</div>
+                        <div class="stat-label">Dernier bloc</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-icon">&#9889;</span>
+                            <h3>Protocol</h3>
+                        </div>
+                        <div class="stat-value" id="protocol-version">-</div>
+                        <div class="stat-label">Version</div>
+                    </div>
+                </div>
+
+                <div class="charts-row">
+                    <div class="chart-card">
+                        <h3>Activité récente</h3>
+                        <div class="activity-chart" id="activity-chart">
+                            <div class="chart-bar" style="height: 60%"></div>
+                            <div class="chart-bar" style="height: 80%"></div>
+                            <div class="chart-bar" style="height: 45%"></div>
+                            <div class="chart-bar" style="height: 90%"></div>
+                            <div class="chart-bar" style="height: 70%"></div>
+                            <div class="chart-bar" style="height: 55%"></div>
+                            <div class="chart-bar" style="height: 85%"></div>
+                        </div>
+
+                    </div>
+                </div>
+            </section>
+
+            <!-- Blocks Section -->
+            <section id="blocks" class="section">
+                <div class="section-header">
+                    <h2>Blocks</h2>
+                    <p class="section-subtitle">Overview du réseau Prism</p>
+                </div>
+
+                <div class="table-controls">
+                    <div class="search-box">
+                        <input type="text" id="block-search" placeholder="Rechercher un block...">
+                        <button onclick="searchBlocks()">&#128269;</button>
+                    </div>
+                    <button class="btn btn-primary" onclick="loadBlocks()">&#8635; Rafrachir</button>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table" id="blocks-table">
+                        <thead>
+                            <tr>
+                                <th>Height</th>
+                                <th>Hash</th>
+                                <th>Proposer</th>
+                                <th>Transactions</th>
+                                <th>Useful Work</th>
+                                <th>Timestamp</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="blocks-body">
+                            <tr class="loading-row">
+                                <td colspan="7">Chargement des blocks...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- ML Jobs Section -->
+            <section id="jobs" class="section">
+                <div class="section-header">
+                    <h2>ML Jobs</h2>
+                    <p class="section-subtitle">Overview du réseau Prism</p>
+                </div>
+
+                <div class="job-actions">
+                    <button class="btn btn-primary" onclick="showCreateJobModal()">
+                        &#43; Creer un Job
+                    </button>
+                    <div class="job-filters">
+                        <select id="job-status-filter" onchange="filterJobs()">
+                            <option value="all">Tous les statuts</option>
+                            <option value="open">Ouvert</option>
+                            <option value="claimed">R&eacute;clam&eacute;</option>
+                            <option value="verified">V&eacute;rifi&eacute;</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table" id="jobs-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Type</th>
+                                <th>Requester</th>
+                                <th>Worker</th>
+                                <th>Reward</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="jobs-body">
+                            <tr class="loading-row">
+                                <td colspan="7">Chargement des jobs...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Validators Section -->
+            <section id="validators" class="section">
+                <div class="section-header">
+                    <h2>Validators</h2>
+                    <p class="section-subtitle">Overview du réseau Prism</p>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table" id="validators-table">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Address</th>
+                                <th>Stake</th>
+                                <th>Total Balance</th>
+                                <th>Available</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="validators-body">
+                            <tr class="loading-row">
+                                <td colspan="6">Chargement des validateurs...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Compute Section -->
+            <section id="compute" class="section">
+                <div class="section-header">
+                    <h2>Compute Marketplace</h2>
+                    <p class="section-subtitle">Overview du réseau Prism</p>
+                </div>
+
+                <div class="compute-grid">
+                    <div class="compute-card">
+                        <h3>&#128737; Soumettre un Job</h3>
+                        <p>Cr&eacute;ez une nouvelle t&acirc;che de calcul ML</p>
+                        <button class="btn btn-primary" onclick="showCreateJobModal()">
+                            Soumettre un Job
+                        </button>
+                    </div>
+
+                    <div class="compute-card">
+                        <h3>&#128221; Mes Jobs</h3>
+                        <p>Voir l'historique de vos t&acirc;ches</p>
+                        <button class="btn btn-secondary" onclick="loadMyJobs()">
+                            Voir mes Jobs
+                        </button>
+                    </div>
+
+                    <div class="compute-card">
+                        <h3>&#128279; Devenir Worker</h3>
+                        <p>Excutez des tches et gagnez des rcompenses</p>
+                        <button class="btn btn-secondary" onclick="showWorkerInfo()">
+                            Configurer Worker
+                        </button>
+                    </div>
+                </div>
+
+                <div class="compute-docs">
+                    <h3>Documentation API</h3>
+                    <div class="api-endpoints">
+                        <div class="endpoint">
+                            <span class="method get">GET</span>
+                            <span class="path">/api/v1/compute/jobs</span>
+                            <span class="desc">Liste des jobs</span>
+                        </div>
+                        <div class="endpoint">
+                            <span class="method post">POST</span>
+                            <span class="path">/api/v1/compute/jobs</span>
+                            <span class="desc">Crr un job</span>
+                        </div>
+                        <div class="endpoint">
+                            <span class="method post">POST</span>
+                            <span class="path">/api/v1/compute/jobs/{id}/claim</span>
+                            <span class="desc">Rclamer un job</span>
+                        </div>
+                        <div class="endpoint">
+                            <span class="method post">POST</span>
+                            <span class="path">/api/v1/compute/jobs/{id}/complete</span>
+                            <span class="desc">Complter un job</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Create Job Modal -->
+        <div id="create-job-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Crr un Job ML</h3>
+                    <button class="modal-close" onclick="closeCreateJobModal()">&times;</button>
+                </div>
+                <form id="create-job-form" onsubmit="createJob(event)">
+                    <div class="form-group">
+                        <label for="job-type">Type de t&acirc;che</label>
+                        <select id="job-type" required>
+                            <option value="">S&eacute;lectionnez un type</option>
+                            <option value="sum_squares">Sum of Squares</option>
+                            <option value="dot_product">Dot Product</option>
+                            <option value="prime_count">Prime Count</option>
+                            <option value="matrix_multiply">Matrix Multiply</option>
+                            <option value="ml_inference_quantized">ML Inference (Quantized)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="job-values">Valeurs (JSON)</label>
+                        <textarea id="job-values" rows="3" placeholder="[1, 2, 3, 4, 5]"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="job-reward">Rcompense (PRISM)</label>
+                        <input type="number" id="job-reward" min="1" value="100" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="job-requester">Requester (Adresse)</label>
+                        <input type="text" id="job-requester" placeholder="Alice" required>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeCreateJobModal()">
+                            Annuler
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            Crr le Job
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Worker Info Modal -->
+        <div id="worker-info-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Configuration Worker</h3>
+                    <button class="modal-close" onclick="closeWorkerInfoModal()">&times;</button>
+                </div>
+                <div class="worker-info">
+                    <h4>Devenir un Worker Prism</h4>
+                    <p>Pour ex&eacute;cuter des t&acirc;ches de calcul et gagner des r&eacute;compenses :</p>
+                    <ol>
+                        <li>Lancez un worker avec votre wallet</li>
+                        <li>Le worker poll l'API pour de nouvelles t&acirc;ches</li>
+                        <li>Ex&eacute;cutez le calcul et soumettez la preuve</li>
+                        <li>Recevez la r&eacute;compense en PRISM</li>
+                    </ol>
+                    <div class="code-block">
+                        <pre>docker run -d \
+  --name prism-worker \
+  -e PRISM_API=http://api:8080 \
+  -e PRISM_WALLET=/app/wallet.json \
+  prism-worker:v0.48.0</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <p>Prism Testnet Explorer v0.48.0</p>
+                <div class="footer-links">
+                    <a href="https://github.com/Ulysse98/prism" target="_blank">GitHub</a>
+                    <a href="#" onclick="showDocs()">Documentation</a>
+                    <a href="#">API Reference</a>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
