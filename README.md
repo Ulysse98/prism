@@ -14,7 +14,7 @@ It combines three complementary mechanisms:
 
 ## Current status
 
-**Node software version:** Prism v0.44.0
+**Node software version:** Prism v0.48.0
 
 **Status:** Active development
 
