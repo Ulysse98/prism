@@ -291,3 +291,55 @@ func TestSelectRecoverableClaimedJob(
 		)
 	}
 }
+
+func TestAutonomousWorkerStatsAccumulateRuntimeMetrics(
+	t *testing.T,
+) {
+	stats := autonomousWorkerStats{}
+
+	recordAutonomousComputeIteration(
+		&stats,
+		autonomousComputeIterationResult{
+			Processed:    true,
+			Completed:    true,
+			JobID:        "completed-job",
+			BountyReward: 25,
+		},
+	)
+
+	recordAutonomousComputeIteration(
+		&stats,
+		autonomousComputeIterationResult{
+			Processed: true,
+			JobID:     "failed-job",
+		},
+	)
+
+	// No marketplace job was found:
+	// this must not count as a failure.
+	recordAutonomousComputeIteration(
+		&stats,
+		autonomousComputeIterationResult{},
+	)
+
+	if stats.CompletedJobs != 1 {
+		t.Fatalf(
+			"unexpected completed jobs: %d",
+			stats.CompletedJobs,
+		)
+	}
+
+	if stats.FailedJobs != 1 {
+		t.Fatalf(
+			"unexpected failed jobs: %d",
+			stats.FailedJobs,
+		)
+	}
+
+	if stats.BountyEarned != 25 {
+		t.Fatalf(
+			"unexpected bounty earned: %d",
+			stats.BountyEarned,
+		)
+	}
+}

@@ -178,3 +178,154 @@ func TestAPIComputeRejectsClaimForAlreadyRewardedTask(
 		)
 	}
 }
+
+func TestAPIComputeRejectsCreationForAlreadyRewardedTask(
+	t *testing.T,
+) {
+	chain, pos, wallets, err := createNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bob := wallets["Bob"]
+	if bob == nil {
+		t.Fatal("Bob wallet missing")
+	}
+
+	task, err := usefulwork.NewSumSquaresTask(
+		[]uint64{24, 27, 31},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	proof, err := usefulwork.Execute(
+		task,
+		bob,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lastBlock := chain.Blocks[len(chain.Blocks)-1]
+
+	proposer, err := pos.SelectProposer(
+		lastBlock.Hash,
+		lastBlock.Height+1,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := chain.AddBlock(
+		nil,
+		[]usefulwork.Proof{
+			proof,
+		},
+		proposer.Address,
+		pos,
+	); err != nil {
+		t.Fatalf(
+			"failed to reward useful work task: %v",
+			err,
+		)
+	}
+
+	if !chain.HasRewardedUsefulWorkTask(
+		task.ID,
+	) {
+		t.Fatal(
+			"test setup did not reward useful work task",
+		)
+	}
+
+	dataPath := t.TempDir()
+
+	if err := storage.Save(
+		dataPath,
+		chain,
+		pos,
+		wallets,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	market, err :=
+		compute.NewPersistentMarketplace(
+			dataPath,
+		)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	registerComputeMarketplaceCleanup(
+		t,
+		market,
+	)
+
+	api := &apiServer{
+		dataPath:      dataPath,
+		computeMarket: market,
+	}
+
+	payload := apiComputeCreateJobRequest{
+		Type:      usefulwork.TaskTypeSumSquares,
+		Values:    []uint64{24, 27, 31},
+		Requester: "Alice",
+		Reward:    25,
+		Nonce:     48001,
+	}
+
+	body, err := json.Marshal(
+		payload,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/compute/jobs",
+		bytes.NewReader(body),
+	)
+
+	request.Header.Set(
+		"Content-Type",
+		"application/json",
+	)
+
+	recorder := httptest.NewRecorder()
+
+	api.handleComputeJobs(
+		recorder,
+		request,
+	)
+
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf(
+			"expected HTTP 409, got %d body=%s",
+			recorder.Code,
+			recorder.Body.String(),
+		)
+	}
+
+	if len(market.List()) != 0 {
+		t.Fatalf(
+			"rewarded task unexpectedly entered marketplace",
+		)
+	}
+
+	reserved, err := market.ReservedRewardFor(
+		"Alice",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if reserved != 0 {
+		t.Fatalf(
+			"rewarded task reserved %d PRISM",
+			reserved,
+		)
+	}
+}
