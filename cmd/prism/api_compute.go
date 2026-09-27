@@ -298,6 +298,17 @@ func (api *apiServer) createFundedComputeJob(
 			err
 	}
 
+	if chain.HasRewardedUsefulWorkTask(
+		task.ID,
+	) {
+		return compute.Job{},
+			http.StatusConflict,
+			fmt.Errorf(
+				"compute task already rewarded: %s",
+				task.ID,
+			)
+	}
+
 	requesterName, requesterWallet, err :=
 		resolveLocalWallet(
 			requester,
