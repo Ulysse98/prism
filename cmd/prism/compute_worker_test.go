@@ -189,3 +189,105 @@ func TestBuildComputeDiscoveryURL(
 		)
 	}
 }
+
+func TestBuildClaimedComputeDiscoveryURL(
+	t *testing.T,
+) {
+	raw, err := buildClaimedComputeDiscoveryURL(
+		"http://127.0.0.1:8080/api/v1",
+		"prism_bob",
+		25,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	query := parsed.Query()
+
+	if query.Get("status") != "CLAIMED" {
+		t.Fatalf(
+			"unexpected status: %s",
+			query.Get("status"),
+		)
+	}
+
+	if query.Get("worker") != "prism_bob" {
+		t.Fatalf(
+			"unexpected worker: %s",
+			query.Get("worker"),
+		)
+	}
+
+	if query.Get("limit") != "25" {
+		t.Fatalf(
+			"unexpected limit: %s",
+			query.Get("limit"),
+		)
+	}
+}
+
+func TestSelectRecoverableClaimedJob(
+	t *testing.T,
+) {
+	jobs := []compute.Job{
+		{
+			ID:     "b",
+			Status: compute.JobStatusClaimed,
+			Worker: "prism_bob",
+		},
+		{
+			ID:     "a",
+			Status: compute.JobStatusClaimed,
+			Worker: "prism_bob",
+		},
+		{
+			ID:     "other",
+			Status: compute.JobStatusClaimed,
+			Worker: "prism_charlie",
+		},
+	}
+
+	attempted := map[string]struct{}{
+		"a": {},
+	}
+
+	job, found :=
+		selectRecoverableClaimedJob(
+			jobs,
+			"prism_bob",
+			attempted,
+		)
+
+	if !found {
+		t.Fatal(
+			"expected recoverable claimed job",
+		)
+	}
+
+	if job.ID != "b" {
+		t.Fatalf(
+			"unexpected recovered job: %s",
+			job.ID,
+		)
+	}
+
+	attempted["b"] = struct{}{}
+
+	_, found =
+		selectRecoverableClaimedJob(
+			jobs,
+			"prism_bob",
+			attempted,
+		)
+
+	if found {
+		t.Fatal(
+			"expected all Bob claims to be quarantined",
+		)
+	}
+}

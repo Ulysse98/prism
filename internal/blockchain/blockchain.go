@@ -40,6 +40,24 @@ func NewBlockchain(
 	}, nil
 }
 
+func (bc *Blockchain) HasRewardedUsefulWorkTask(
+	taskID string,
+) bool {
+	if taskID == "" {
+		return false
+	}
+
+	for _, block := range bc.Blocks {
+		for _, proof := range block.UsefulWork {
+			if proof.Task.ID == taskID {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 func (bc *Blockchain) LockStake(
 	address string,
 	amount uint64,

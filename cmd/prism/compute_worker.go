@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -35,6 +36,18 @@ type apiComputeWorkerCompleteResponse struct {
 	Recovered      bool        `json:"recovered"`
 }
 
+type autonomousWorkerStats struct {
+	Cycles          uint64
+	RecoveredClaims uint64
+	OpenScans       uint64
+	StartedAt       time.Time
+}
+
+type autonomousComputeIterationResult struct {
+	Processed bool
+	JobID     string
+}
+
 func printComputeWorkerUsage() {
 	fmt.Println("Usage:")
 	fmt.Println(
@@ -48,6 +61,9 @@ func printComputeWorkerUsage() {
 	fmt.Println("  -task <type>")
 	fmt.Println("  -min-reward <PRISM>")
 	fmt.Println("  -limit <1..1000>")
+	fmt.Println(
+		"  -poll <duration>  continuous autonomous polling, e.g. 5s",
+	)
 }
 
 func runComputeWorkerCommand(args []string) {
@@ -94,6 +110,12 @@ func runComputeWorkerCommand(args []string) {
 		"maximum OPEN jobs considered in auto mode",
 	)
 
+	pollInterval := flags.Duration(
+		"poll",
+		0,
+		"poll interval for continuous autonomous mode (example: 5s)",
+	)
+
 	if err := flags.Parse(args); err != nil {
 		return
 	}
@@ -101,6 +123,20 @@ func runComputeWorkerCommand(args []string) {
 	if *limit < 1 || *limit > 1000 {
 		fmt.Println(
 			"Compute worker limit must be between 1 and 1000.",
+		)
+		return
+	}
+
+	if *pollInterval < 0 {
+		fmt.Println(
+			"Compute worker poll interval cannot be negative.",
+		)
+		return
+	}
+
+	if *pollInterval > 0 && !*autoMode {
+		fmt.Println(
+			"Compute worker -poll requires -auto.",
 		)
 		return
 	}
@@ -154,6 +190,43 @@ func runComputeWorkerCommand(args []string) {
 		*apiBase,
 		"/",
 	)
+
+	if *autoMode && *pollInterval > 0 {
+		fmt.Println(
+			"=== PRISM AUTONOMOUS COMPUTE WORKER ===",
+		)
+		fmt.Println(
+			"Worker:",
+			workerName,
+		)
+		fmt.Println(
+			"Address:",
+			worker.Address,
+		)
+		fmt.Println(
+			"API:",
+			baseURL,
+		)
+		fmt.Println(
+			"Poll interval:",
+			*pollInterval,
+		)
+		fmt.Println()
+	}
+
+	if *autoMode && *pollInterval > 0 {
+		runContinuousComputeWorker(
+			*apiBase,
+			*dataPath,
+			workerName,
+			worker.Address,
+			*taskFilter,
+			*minReward,
+			*limit,
+			*pollInterval,
+		)
+		return
+	}
 
 	status, err := fetchComputeStatus(
 		client,
@@ -916,4 +989,335 @@ func fetchComputeJob(
 	}
 
 	return payload.Job, nil
+}
+
+func runContinuousComputeWorker(
+	apiBase string,
+	dataPath string,
+	workerName string,
+	workerAddress string,
+	taskFilter string,
+	minReward uint64,
+	limit int,
+	pollInterval time.Duration,
+) {
+	cycle := uint64(0)
+
+	stats := autonomousWorkerStats{
+		StartedAt: time.Now(),
+	}
+
+	interrupts := make(
+		chan os.Signal,
+		1,
+	)
+
+	signal.Notify(
+		interrupts,
+		os.Interrupt,
+	)
+
+	defer signal.Stop(
+		interrupts,
+	)
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	attemptedClaimed := make(
+		map[string]struct{},
+	)
+
+	for {
+		select {
+		case <-interrupts:
+			printAutonomousWorkerSummary(
+				stats,
+			)
+			return
+		default:
+		}
+
+		cycle++
+		stats.Cycles = cycle
+
+		fmt.Println(
+			"------------------------------------",
+		)
+		fmt.Println(
+			"Autonomous cycle:",
+			cycle,
+		)
+		fmt.Println(
+			"Scanning marketplace at:",
+			time.Now().Format(time.RFC3339),
+		)
+		fmt.Println()
+
+		claimedURL, err :=
+			buildClaimedComputeDiscoveryURL(
+				apiBase,
+				workerAddress,
+				limit,
+			)
+
+		if err != nil {
+			fmt.Println(
+				"Unable to build claimed-job recovery request:",
+			)
+			fmt.Println(err)
+		} else {
+			claimedJobs, err :=
+				fetchComputeJobs(
+					client,
+					claimedURL,
+				)
+
+			if err != nil {
+				fmt.Println(
+					"Unable to fetch claimed jobs:",
+				)
+				fmt.Println(err)
+			} else {
+				claimedJob, found :=
+					selectRecoverableClaimedJob(
+						claimedJobs,
+						workerAddress,
+						attemptedClaimed,
+					)
+
+				if found {
+					stats.RecoveredClaims++
+
+					fmt.Println(
+						"Recovering claimed job:",
+						claimedJob.ID,
+					)
+					fmt.Println(
+						"Task:",
+						claimedJob.Task.Type,
+					)
+					fmt.Println(
+						"Task ID:",
+						claimedJob.Task.ID,
+					)
+					fmt.Println()
+
+					attemptedClaimed[claimedJob.ID] =
+						struct{}{}
+
+					runComputeWorkerCommand(
+						[]string{
+							"-api",
+							apiBase,
+							"-data",
+							dataPath,
+							workerName,
+							claimedJob.ID,
+						},
+					)
+
+					fmt.Println()
+					fmt.Println(
+						"Next marketplace scan in:",
+						pollInterval,
+					)
+
+					waitForNextComputePoll(
+						pollInterval,
+					)
+
+					continue
+				}
+			}
+		}
+
+		stats.OpenScans++
+
+		args := []string{
+			"-api",
+			apiBase,
+			"-data",
+			dataPath,
+			"-auto",
+			"-min-reward",
+			fmt.Sprintf(
+				"%d",
+				minReward,
+			),
+			"-limit",
+			fmt.Sprintf(
+				"%d",
+				limit,
+			),
+		}
+
+		if strings.TrimSpace(taskFilter) != "" {
+			args = append(
+				args,
+				"-task",
+				taskFilter,
+			)
+		}
+
+		args = append(
+			args,
+			workerName,
+		)
+
+		runComputeWorkerCommand(
+			args,
+		)
+
+		fmt.Println()
+		fmt.Println(
+			"Next marketplace scan in:",
+			pollInterval,
+		)
+
+		waitForNextComputePoll(
+			pollInterval,
+		)
+	}
+}
+
+func buildClaimedComputeDiscoveryURL(
+	baseURL string,
+	workerAddress string,
+	limit int,
+) (string, error) {
+	endpoint, err := url.Parse(
+		strings.TrimRight(
+			baseURL,
+			"/",
+		) + "/compute/jobs",
+	)
+	if err != nil {
+		return "", err
+	}
+
+	query := endpoint.Query()
+
+	query.Set(
+		"status",
+		string(compute.JobStatusClaimed),
+	)
+
+	query.Set(
+		"worker",
+		strings.TrimSpace(workerAddress),
+	)
+
+	query.Set(
+		"limit",
+		fmt.Sprintf(
+			"%d",
+			limit,
+		),
+	)
+
+	endpoint.RawQuery = query.Encode()
+
+	return endpoint.String(), nil
+}
+
+func selectRecoverableClaimedJob(
+	jobs []compute.Job,
+	workerAddress string,
+	attempted map[string]struct{},
+) (compute.Job, bool) {
+	bestIndex := -1
+
+	for index := range jobs {
+		job := jobs[index]
+
+		if job.Status !=
+			compute.JobStatusClaimed {
+
+			continue
+		}
+
+		if !strings.EqualFold(
+			job.Worker,
+			workerAddress,
+		) {
+			continue
+		}
+
+		if _, exists :=
+			attempted[job.ID]; exists {
+
+			continue
+		}
+
+		if bestIndex < 0 ||
+			job.ID < jobs[bestIndex].ID {
+
+			bestIndex = index
+		}
+	}
+
+	if bestIndex < 0 {
+		return compute.Job{}, false
+	}
+
+	return jobs[bestIndex], true
+}
+
+func waitForNextComputePollOrStop(
+	interval time.Duration,
+	interrupts <-chan os.Signal,
+) bool {
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		return true
+	case <-interrupts:
+		return false
+	}
+}
+
+func printAutonomousWorkerSummary(
+	stats autonomousWorkerStats,
+) {
+	uptime := time.Since(
+		stats.StartedAt,
+	).Round(time.Second)
+
+	fmt.Println()
+	fmt.Println(
+		"=== WORKER SESSION SUMMARY ===",
+	)
+	fmt.Println(
+		"Cycles:",
+		stats.Cycles,
+	)
+	fmt.Println(
+		"Recovered claims:",
+		stats.RecoveredClaims,
+	)
+	fmt.Println(
+		"OPEN scans:",
+		stats.OpenScans,
+	)
+	fmt.Println(
+		"Uptime:",
+		uptime,
+	)
+	fmt.Println()
+	fmt.Println(
+		"Shutting down gracefully.",
+	)
+}
+
+func waitForNextComputePoll(
+	interval time.Duration,
+) {
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+
+	<-timer.C
 }
