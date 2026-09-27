@@ -206,6 +206,19 @@ func runComputeWorkerCommand(args []string) {
 		fmt.Println()
 	}
 
+	if *autoMode && *pollInterval > 0 {
+		runContinuousComputeWorker(
+			*apiBase,
+			*dataPath,
+			workerName,
+			*taskFilter,
+			*minReward,
+			*limit,
+			*pollInterval,
+		)
+		return
+	}
+
 	status, err := fetchComputeStatus(
 		client,
 		baseURL+"/status",
@@ -967,6 +980,80 @@ func fetchComputeJob(
 	}
 
 	return payload.Job, nil
+}
+
+func runContinuousComputeWorker(
+	apiBase string,
+	dataPath string,
+	workerName string,
+	taskFilter string,
+	minReward uint64,
+	limit int,
+	pollInterval time.Duration,
+) {
+	cycle := uint64(0)
+
+	for {
+		cycle++
+
+		fmt.Println(
+			"------------------------------------",
+		)
+		fmt.Println(
+			"Autonomous cycle:",
+			cycle,
+		)
+		fmt.Println(
+			"Scanning marketplace at:",
+			time.Now().Format(time.RFC3339),
+		)
+		fmt.Println()
+
+		args := []string{
+			"-api",
+			apiBase,
+			"-data",
+			dataPath,
+			"-auto",
+			"-min-reward",
+			fmt.Sprintf(
+				"%d",
+				minReward,
+			),
+			"-limit",
+			fmt.Sprintf(
+				"%d",
+				limit,
+			),
+		}
+
+		if strings.TrimSpace(taskFilter) != "" {
+			args = append(
+				args,
+				"-task",
+				taskFilter,
+			)
+		}
+
+		args = append(
+			args,
+			workerName,
+		)
+
+		runComputeWorkerCommand(
+			args,
+		)
+
+		fmt.Println()
+		fmt.Println(
+			"Next marketplace scan in:",
+			pollInterval,
+		)
+
+		waitForNextComputePoll(
+			pollInterval,
+		)
+	}
 }
 
 func waitForNextComputePoll(

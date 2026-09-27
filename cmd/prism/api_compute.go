@@ -667,6 +667,18 @@ func handleComputeClaim(
 		return
 	}
 
+	currentJob, err := api.computeMarket.Get(
+		jobID,
+	)
+	if err != nil {
+		apiWriteError(
+			writer,
+			http.StatusNotFound,
+			err,
+		)
+		return
+	}
+
 	chain, _, _, err := api.loadState()
 	if err != nil {
 		apiWriteError(
@@ -685,6 +697,20 @@ func handleComputeClaim(
 			http.StatusInternalServerError,
 			fmt.Errorf(
 				"cannot verify compute claim without a genesis block",
+			),
+		)
+		return
+	}
+
+	if chain.HasRewardedUsefulWorkTask(
+		currentJob.Task.ID,
+	) {
+		apiWriteError(
+			writer,
+			http.StatusConflict,
+			fmt.Errorf(
+				"compute task already rewarded: %s",
+				currentJob.Task.ID,
 			),
 		)
 		return
