@@ -35,6 +35,11 @@ type apiComputeWorkerCompleteResponse struct {
 	Recovered      bool        `json:"recovered"`
 }
 
+type autonomousComputeIterationResult struct {
+	Processed bool
+	JobID     string
+}
+
 func printComputeWorkerUsage() {
 	fmt.Println("Usage:")
 	fmt.Println(
@@ -48,6 +53,9 @@ func printComputeWorkerUsage() {
 	fmt.Println("  -task <type>")
 	fmt.Println("  -min-reward <PRISM>")
 	fmt.Println("  -limit <1..1000>")
+	fmt.Println(
+		"  -poll <duration>  continuous autonomous polling, e.g. 5s",
+	)
 }
 
 func runComputeWorkerCommand(args []string) {
@@ -94,6 +102,12 @@ func runComputeWorkerCommand(args []string) {
 		"maximum OPEN jobs considered in auto mode",
 	)
 
+	pollInterval := flags.Duration(
+		"poll",
+		0,
+		"poll interval for continuous autonomous mode (example: 5s)",
+	)
+
 	if err := flags.Parse(args); err != nil {
 		return
 	}
@@ -101,6 +115,20 @@ func runComputeWorkerCommand(args []string) {
 	if *limit < 1 || *limit > 1000 {
 		fmt.Println(
 			"Compute worker limit must be between 1 and 1000.",
+		)
+		return
+	}
+
+	if *pollInterval < 0 {
+		fmt.Println(
+			"Compute worker poll interval cannot be negative.",
+		)
+		return
+	}
+
+	if *pollInterval > 0 && !*autoMode {
+		fmt.Println(
+			"Compute worker -poll requires -auto.",
 		)
 		return
 	}
@@ -154,6 +182,29 @@ func runComputeWorkerCommand(args []string) {
 		*apiBase,
 		"/",
 	)
+
+	if *autoMode && *pollInterval > 0 {
+		fmt.Println(
+			"=== PRISM AUTONOMOUS COMPUTE WORKER ===",
+		)
+		fmt.Println(
+			"Worker:",
+			workerName,
+		)
+		fmt.Println(
+			"Address:",
+			worker.Address,
+		)
+		fmt.Println(
+			"API:",
+			baseURL,
+		)
+		fmt.Println(
+			"Poll interval:",
+			*pollInterval,
+		)
+		fmt.Println()
+	}
 
 	status, err := fetchComputeStatus(
 		client,
@@ -916,4 +967,13 @@ func fetchComputeJob(
 	}
 
 	return payload.Job, nil
+}
+
+func waitForNextComputePoll(
+	interval time.Duration,
+) {
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+
+	<-timer.C
 }
