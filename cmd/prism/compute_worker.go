@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -33,6 +34,13 @@ type apiComputeWorkerCompleteResponse struct {
 	SettlementTxID string      `json:"settlementTxId"`
 	Block          uint64      `json:"block"`
 	Recovered      bool        `json:"recovered"`
+}
+
+type autonomousWorkerStats struct {
+	Cycles          uint64
+	RecoveredClaims uint64
+	OpenScans       uint64
+	StartedAt       time.Time
 }
 
 type autonomousComputeIterationResult struct {
@@ -995,6 +1003,24 @@ func runContinuousComputeWorker(
 ) {
 	cycle := uint64(0)
 
+	stats := autonomousWorkerStats{
+		StartedAt: time.Now(),
+	}
+
+	interrupts := make(
+		chan os.Signal,
+		1,
+	)
+
+	signal.Notify(
+		interrupts,
+		os.Interrupt,
+	)
+
+	defer signal.Stop(
+		interrupts,
+	)
+
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
@@ -1004,7 +1030,17 @@ func runContinuousComputeWorker(
 	)
 
 	for {
+		select {
+		case <-interrupts:
+			printAutonomousWorkerSummary(
+				stats,
+			)
+			return
+		default:
+		}
+
 		cycle++
+		stats.Cycles = cycle
 
 		fmt.Println(
 			"------------------------------------",
@@ -1052,6 +1088,8 @@ func runContinuousComputeWorker(
 					)
 
 				if found {
+					stats.RecoveredClaims++
+
 					fmt.Println(
 						"Recovering claimed job:",
 						claimedJob.ID,
@@ -1094,6 +1132,8 @@ func runContinuousComputeWorker(
 				}
 			}
 		}
+
+		stats.OpenScans++
 
 		args := []string{
 			"-api",
@@ -1223,6 +1263,54 @@ func selectRecoverableClaimedJob(
 	}
 
 	return jobs[bestIndex], true
+}
+
+func waitForNextComputePollOrStop(
+	interval time.Duration,
+	interrupts <-chan os.Signal,
+) bool {
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		return true
+	case <-interrupts:
+		return false
+	}
+}
+
+func printAutonomousWorkerSummary(
+	stats autonomousWorkerStats,
+) {
+	uptime := time.Since(
+		stats.StartedAt,
+	).Round(time.Second)
+
+	fmt.Println()
+	fmt.Println(
+		"=== WORKER SESSION SUMMARY ===",
+	)
+	fmt.Println(
+		"Cycles:",
+		stats.Cycles,
+	)
+	fmt.Println(
+		"Recovered claims:",
+		stats.RecoveredClaims,
+	)
+	fmt.Println(
+		"OPEN scans:",
+		stats.OpenScans,
+	)
+	fmt.Println(
+		"Uptime:",
+		uptime,
+	)
+	fmt.Println()
+	fmt.Println(
+		"Shutting down gracefully.",
+	)
 }
 
 func waitForNextComputePoll(
