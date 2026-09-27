@@ -1124,9 +1124,15 @@ func runContinuousComputeWorker(
 						pollInterval,
 					)
 
-					waitForNextComputePoll(
+					if !waitForNextComputePollOrStop(
 						pollInterval,
-					)
+						interrupts,
+					) {
+						printAutonomousWorkerSummary(
+							stats,
+						)
+						return
+					}
 
 					continue
 				}
@@ -1176,9 +1182,15 @@ func runContinuousComputeWorker(
 			pollInterval,
 		)
 
-		waitForNextComputePoll(
+		if !waitForNextComputePollOrStop(
 			pollInterval,
-		)
+			interrupts,
+		) {
+			printAutonomousWorkerSummary(
+				stats,
+			)
+			return
+		}
 	}
 }
 
@@ -1311,13 +1323,4 @@ func printAutonomousWorkerSummary(
 	fmt.Println(
 		"Shutting down gracefully.",
 	)
-}
-
-func waitForNextComputePoll(
-	interval time.Duration,
-) {
-	timer := time.NewTimer(interval)
-	defer timer.Stop()
-
-	<-timer.C
 }
