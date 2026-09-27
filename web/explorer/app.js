@@ -336,7 +336,7 @@ async function loadValidators() {
                 <td>${formatNumber(validator.stake || validator.Stake || 0)}</td>
                 <td>${formatNumber(validator.totalBalance || validator.TotalBalance || 0)}</td>
                 <td>${formatNumber(validator.availableBalance || validator.AvailableBalance || 0)}</td>
-                <td><span class="status-badge ${getUptimeStatus(validator)}">99.9%</span></td>
+                <td><span class="status-badge success">Registered</span></td>
             </tr>
         `).join('');
 
