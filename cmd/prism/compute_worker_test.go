@@ -297,9 +297,30 @@ func TestAutonomousWorkerStatsAccumulateRuntimeMetrics(
 ) {
 	stats := autonomousWorkerStats{}
 
-	stats.CompletedJobs++
-	stats.FailedJobs++
-	stats.BountyEarned += 25
+	recordAutonomousComputeIteration(
+		&stats,
+		autonomousComputeIterationResult{
+			Processed:    true,
+			Completed:    true,
+			JobID:        "completed-job",
+			BountyReward: 25,
+		},
+	)
+
+	recordAutonomousComputeIteration(
+		&stats,
+		autonomousComputeIterationResult{
+			Processed: true,
+			JobID:     "failed-job",
+		},
+	)
+
+	// No marketplace job was found:
+	// this must not count as a failure.
+	recordAutonomousComputeIteration(
+		&stats,
+		autonomousComputeIterationResult{},
+	)
 
 	if stats.CompletedJobs != 1 {
 		t.Fatalf(

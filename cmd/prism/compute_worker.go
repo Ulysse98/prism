@@ -47,8 +47,10 @@ type autonomousWorkerStats struct {
 }
 
 type autonomousComputeIterationResult struct {
-	Processed bool
-	JobID     string
+	Processed    bool
+	Completed    bool
+	JobID        string
+	BountyReward uint64
 }
 
 func printComputeWorkerUsage() {
@@ -69,7 +71,9 @@ func printComputeWorkerUsage() {
 	)
 }
 
-func runComputeWorkerCommand(args []string) {
+func runComputeWorkerCommand(
+	args []string,
+) (result autonomousComputeIterationResult) {
 	flags := flag.NewFlagSet(
 		"compute-worker",
 		flag.ContinueOnError,
@@ -344,6 +348,9 @@ func runComputeWorkerCommand(args []string) {
 		}
 	}
 
+	result.Processed = true
+	result.JobID = job.ID
+
 	if strings.EqualFold(
 		job.Requester,
 		worker.Address,
@@ -581,6 +588,9 @@ func runComputeWorkerCommand(args []string) {
 	}
 
 	fmt.Println()
+	result.Completed = true
+	result.BountyReward = completed.BountyReward
+
 	fmt.Println(
 		"=== COMPUTE JOB VERIFIED ===",
 	)
@@ -625,6 +635,25 @@ func runComputeWorkerCommand(args []string) {
 		"Recovered:",
 		completed.Recovered,
 	)
+
+	return
+}
+
+func recordAutonomousComputeIteration(
+	stats *autonomousWorkerStats,
+	result autonomousComputeIterationResult,
+) {
+	if stats == nil || !result.Processed {
+		return
+	}
+
+	if result.Completed {
+		stats.CompletedJobs++
+		stats.BountyEarned += result.BountyReward
+		return
+	}
+
+	stats.FailedJobs++
 }
 
 func buildComputeDiscoveryURL(
@@ -1110,15 +1139,21 @@ func runContinuousComputeWorker(
 					attemptedClaimed[claimedJob.ID] =
 						struct{}{}
 
-					runComputeWorkerCommand(
-						[]string{
-							"-api",
-							apiBase,
-							"-data",
-							dataPath,
-							workerName,
-							claimedJob.ID,
-						},
+					iteration :=
+						runComputeWorkerCommand(
+							[]string{
+								"-api",
+								apiBase,
+								"-data",
+								dataPath,
+								workerName,
+								claimedJob.ID,
+							},
+						)
+
+					recordAutonomousComputeIteration(
+						&stats,
+						iteration,
 					)
 
 					fmt.Println()
@@ -1175,8 +1210,14 @@ func runContinuousComputeWorker(
 			workerName,
 		)
 
-		runComputeWorkerCommand(
-			args,
+		iteration :=
+			runComputeWorkerCommand(
+				args,
+			)
+
+		recordAutonomousComputeIteration(
+			&stats,
+			iteration,
 		)
 
 		fmt.Println()
