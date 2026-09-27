@@ -211,6 +211,7 @@ func runComputeWorkerCommand(args []string) {
 			*apiBase,
 			*dataPath,
 			workerName,
+			worker.Address,
 			*taskFilter,
 			*minReward,
 			*limit,
@@ -986,12 +987,21 @@ func runContinuousComputeWorker(
 	apiBase string,
 	dataPath string,
 	workerName string,
+	workerAddress string,
 	taskFilter string,
 	minReward uint64,
 	limit int,
 	pollInterval time.Duration,
 ) {
 	cycle := uint64(0)
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	attemptedClaimed := make(
+		map[string]struct{},
+	)
 
 	for {
 		cycle++
@@ -1008,6 +1018,82 @@ func runContinuousComputeWorker(
 			time.Now().Format(time.RFC3339),
 		)
 		fmt.Println()
+
+		claimedURL, err :=
+			buildClaimedComputeDiscoveryURL(
+				apiBase,
+				workerAddress,
+				limit,
+			)
+
+		if err != nil {
+			fmt.Println(
+				"Unable to build claimed-job recovery request:",
+			)
+			fmt.Println(err)
+		} else {
+			claimedJobs, err :=
+				fetchComputeJobs(
+					client,
+					claimedURL,
+				)
+
+			if err != nil {
+				fmt.Println(
+					"Unable to fetch claimed jobs:",
+				)
+				fmt.Println(err)
+			} else {
+				claimedJob, found :=
+					selectRecoverableClaimedJob(
+						claimedJobs,
+						workerAddress,
+						attemptedClaimed,
+					)
+
+				if found {
+					fmt.Println(
+						"Recovering claimed job:",
+						claimedJob.ID,
+					)
+					fmt.Println(
+						"Task:",
+						claimedJob.Task.Type,
+					)
+					fmt.Println(
+						"Task ID:",
+						claimedJob.Task.ID,
+					)
+					fmt.Println()
+
+					attemptedClaimed[claimedJob.ID] =
+						struct{}{}
+
+					runComputeWorkerCommand(
+						[]string{
+							"-api",
+							apiBase,
+							"-data",
+							dataPath,
+							workerName,
+							claimedJob.ID,
+						},
+					)
+
+					fmt.Println()
+					fmt.Println(
+						"Next marketplace scan in:",
+						pollInterval,
+					)
+
+					waitForNextComputePoll(
+						pollInterval,
+					)
+
+					continue
+				}
+			}
+		}
 
 		args := []string{
 			"-api",
@@ -1054,6 +1140,89 @@ func runContinuousComputeWorker(
 			pollInterval,
 		)
 	}
+}
+
+func buildClaimedComputeDiscoveryURL(
+	baseURL string,
+	workerAddress string,
+	limit int,
+) (string, error) {
+	endpoint, err := url.Parse(
+		strings.TrimRight(
+			baseURL,
+			"/",
+		) + "/compute/jobs",
+	)
+	if err != nil {
+		return "", err
+	}
+
+	query := endpoint.Query()
+
+	query.Set(
+		"status",
+		string(compute.JobStatusClaimed),
+	)
+
+	query.Set(
+		"worker",
+		strings.TrimSpace(workerAddress),
+	)
+
+	query.Set(
+		"limit",
+		fmt.Sprintf(
+			"%d",
+			limit,
+		),
+	)
+
+	endpoint.RawQuery = query.Encode()
+
+	return endpoint.String(), nil
+}
+
+func selectRecoverableClaimedJob(
+	jobs []compute.Job,
+	workerAddress string,
+	attempted map[string]struct{},
+) (compute.Job, bool) {
+	bestIndex := -1
+
+	for index := range jobs {
+		job := jobs[index]
+
+		if job.Status !=
+			compute.JobStatusClaimed {
+
+			continue
+		}
+
+		if !strings.EqualFold(
+			job.Worker,
+			workerAddress,
+		) {
+			continue
+		}
+
+		if _, exists :=
+			attempted[job.ID]; exists {
+
+			continue
+		}
+
+		if bestIndex < 0 ||
+			job.ID < jobs[bestIndex].ID {
+
+			bestIndex = index
+		}
+	}
+
+	if bestIndex < 0 {
+		return compute.Job{}, false
+	}
+
+	return jobs[bestIndex], true
 }
 
 func waitForNextComputePoll(
