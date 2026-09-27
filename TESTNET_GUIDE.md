@@ -1,45 +1,45 @@
 # Prism Testnet Deployment Guide
 
-> **Guide complet pour dployer un testnet Prism public avec explorer et API**
+> **Guide complet pour deployer un testnet Prism public avec explorer et API**
 
 ---
 
-## 0 Table des matikres
+## 0 Table des matieres
 
-1. [Pr-requis](#1-pr-requis)
+1. [Pre-requis](#1-pre-requis)
 2. [Architecture du Testnet](#2-architecture-du-testnet)
-3. [Dploiement avec Docker Compose](#3-dploiement-avec-docker-compose)
+3. [Deploiement avec Docker Compose](#3-deploiement-avec-docker-compose)
 4. [Configuration](#4-configuration)
 5. [Endpoints API](#5-endpoints-api)
 6. [Utilisation de l'Explorer](#6-utilisation-de-l-explorer)
 7. [Soumettre des Jobs ML](#7-soumettre-des-jobs-ml)
 8. [Devenir un Worker](#8-devenir-un-worker)
-9. [Dpannage](#9-dpannage)
-10. [Mise  jour](#10-mise--jour)
+9. [Depannage](#9-depannage)
+10. [Mise e jour](#10-mise-e-jour)
 
 ---
 
-## 1. Pr-requis
+## 1. Pre-requis
 
-### Matriel
-- **Systme d'exploitation** : Linux (Ubuntu 22.04+ recommand), macOS, ou Windows (WSL2)
-- **Mmoire** : 8 Go minimum (16 Go recommand pour les jobs ML)
-- **CPU** : 4 curs minimum
+### Materiel
+- **Systeme d'exploitation** : Linux (Ubuntu 22.04+ recommande), macOS, ou Windows (WSL2)
+- **Memoire** : 8 Go minimum (16 Go recommande pour les jobs ML)
+- **CPU** : 4 coeurs minimum
 - **Stockage** : 50 Go SSD minimum
 - **Ports** : 7001-7003 (P2P), 8080 (API), 80 (Explorer)
 
 ### Logiciels
 - **Docker** : Version 20.10+ 
 - **Docker Compose** : Version 2.0+
-- **Git** : Pour cloner le dpt
+- **Git** : Pour cloner le depot
 
-### Vrification
+### Verification
 ```bash
-# Vrifier Docker
+# Verifier Docker
 docker --version
 docker compose version
 
-# Vrifier Git
+# Verifier Git
 git --version
 ```
 
@@ -63,7 +63,7 @@ git --version
 |  +------------+     +-------------------+                              |
 |                                                                  |
 |  +------------+                                                       |
-|  | Worker     |  (Optionnel - pour excuter des jobs ML)          |
+|  | Worker     |  (Optionnel - pour executer des jobs ML)          |
 |  | (Python)   |                                                       |
 |  +------------+                                                       |
 |                                                                  |
@@ -71,40 +71,40 @@ git --version
 ```
 
 ### Composants
-| Composant | Port | Rle |
+| Composant | Port | Role |
 |-----------|------|-------|
-| **Node 1** | 7001 | Nud principal (bootstrap) |
-| **Node 2** | 7002 | Nud pair |
-| **Node 3** | 7003 | Nud pair |
+| **Node 1** | 7001 | Noeud principal (bootstrap) |
+| **Node 2** | 7002 | Noeud pair |
+| **Node 3** | 7003 | Noeud pair |
 | **API** | 8080 | Serveur REST HTTP |
 | **Explorer** | 80 | Interface web |
-| **Worker** | - | Excuteur de jobs ML (optionnel) |
+| **Worker** | - | Executeur de jobs ML (optionnel) |
 
 ---
 
-## 3. Dploiement avec Docker Compose
+## 3. Deploiement avec Docker Compose
 
-### 0 Cloner le dpt
+### 0 Cloner le depot
 ```bash
 git clone https://github.com/Ulysse98/prism.git
 cd prism
 ```
 
-### 1 Construire les images
+### 1 Construire les images
 ```bash
 # Construire l'image du node Prism
-docker build -t prism-node:v0.48.0 .
+docker build -t prism-node:v0.48.1 .
 ```
 
-### 2 Dmarrer le testnet
+### 2 Demarrer le testnet
 ```bash
-# Dmarrer tous les services (nodes + API + explorer)
+# Demarrer tous les services (nodes + API + explorer)
 docker compose -f docker-compose.testnet.yaml up -d
 ```
 
-### 3 Vrifier le dploiement
+### 3 Verifier le deploiement
 ```bash
-# Voir l'tat des conteneurs
+# Voir l'etat des conteneurs
 docker ps
 
 # Voir les logs des nodes
@@ -119,7 +119,7 @@ docker logs prism-api
 docker logs prism-explorer
 ```
 
-### 4 Accder aux services
+### 4 Acceder aux services
 | Service | URL | Description |
 |---------|-----|-------------|
 | **Explorer** | [http://localhost](http://localhost) | Interface web |
@@ -133,7 +133,7 @@ docker logs prism-explorer
 ## 4. Configuration
 
 ### Configuration de base
-Le fichier `docker-compose.testnet.yaml` contient une configuration par dfaut. Vous pouvez personnaliser :
+Le fichier `docker-compose.testnet.yaml` contient une configuration par defaut. Vous pouvez personnaliser :
 
 ```yaml
 # Exemple de personnalisation
@@ -156,7 +156,7 @@ services:
       - "80:80"
 ```
 
-### Configuration avance
+### Configuration avancee
 
 #### Changer le nombre de nodes
 Modifiez le fichier `docker-compose.testnet.yaml` pour ajouter ou supprimer des nodes :
@@ -164,7 +164,7 @@ Modifiez le fichier `docker-compose.testnet.yaml` pour ajouter ou supprimer des 
 ```yaml
 services:
   node-4:
-    image: prism-node:v0.48.0
+    image: prism-node:v0.48.1
     container_name: prism-node-4
     command:
       - node
@@ -200,20 +200,20 @@ services:
 ### Health & Status
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/health` | Vrifie la sant du node |
-| GET | `/api/v1/status` | tat du rseau |
+| GET | `/api/v1/health` | Verifie la sante du node |
+| GET | `/api/v1/status` | otat du reseau |
 
 **Exemple :**
 ```bash
 curl http://localhost:8080/api/v1/health
 ```
 
-**Rponse :**
+**Reponse :**
 ```json
 {
   "status": "ok",
   "network": "Prism",
-  "version": "0.48.0",
+  "version": "0.48.1",
   "protocol": "0.36",
   "chainId": "prism-testnet",
   "height": 12345,
@@ -231,11 +231,11 @@ curl http://localhost:8080/api/v1/health
 curl http://localhost:8080/api/v1/status
 ```
 
-**Rponse :**
+**Reponse :**
 ```json
 {
   "network": "Prism",
-  "version": "0.48.0",
+  "version": "0.48.1",
   "protocol": "0.36",
   "chainId": "prism-testnet",
   "height": 12345,
@@ -259,7 +259,7 @@ curl http://localhost:8080/api/v1/status
 curl http://localhost:8080/api/v1/validators
 ```
 
-**Rponse :**
+**Reponse :**
 ```json
 [
   {
@@ -288,12 +288,12 @@ curl http://localhost:8080/api/v1/validators
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/v1/compute/jobs` | Liste tous les jobs |
-| GET | `/api/v1/compute/jobs/{id}` | Dtails d'un job |
-| POST | `/api/v1/compute/jobs` | Cre un nouveau job |
-| POST | `/api/v1/compute/jobs/{id}/claim` | Rclame un job |
-| POST | `/api/v1/compute/jobs/{id}/complete` | Complte un job |
+| GET | `/api/v1/compute/jobs/{id}` | Details d'un job |
+| POST | `/api/v1/compute/jobs` | Cree un nouveau job |
+| POST | `/api/v1/compute/jobs/{id}/claim` | Reclame un job |
+| POST | `/api/v1/compute/jobs/{id}/complete` | Complete un job |
 
-**Exemple - Crer un job :**
+**Exemple - Creer un job :**
 ```bash
 curl -X POST http://localhost:8080/api/v1/compute/jobs \
   -H "Content-Type: application/json" \
@@ -305,7 +305,7 @@ curl -X POST http://localhost:8080/api/v1/compute/jobs \
   }'
 ```
 
-**Rponse :**
+**Reponse :**
 ```json
 {
   "id": "job_abc123",
@@ -318,7 +318,7 @@ curl -X POST http://localhost:8080/api/v1/compute/jobs \
 }
 ```
 
-**Exemple - Rclamer un job :**
+**Exemple - Reclamer un job :**
 ```bash
 curl -X POST http://localhost:8080/api/v1/compute/jobs/job_abc123/claim \
   -H "Content-Type: application/json" \
@@ -328,7 +328,7 @@ curl -X POST http://localhost:8080/api/v1/compute/jobs/job_abc123/claim \
   }'
 ```
 
-**Exemple - Complter un job :**
+**Exemple - Completer un job :**
 ```bash
 curl -X POST http://localhost:8080/api/v1/compute/jobs/job_abc123/complete \
   -H "Content-Type: application/json" \
@@ -347,49 +347,49 @@ curl -X POST http://localhost:8080/api/v1/compute/jobs/job_abc123/complete \
 ### Useful Work
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/work` | Historique des t ches de calcul |
+| GET | `/api/v1/work` | Historique des taches de calcul |
 
 ### Humanity Verification
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/humanity` | Vrifications humanity |
+| GET | `/api/v1/humanity` | Verifications humanity |
 
 ### Reserved Transfers
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/reserved` | Transfers rservs |
+| GET | `/api/v1/reserved` | Transfers reserves |
 
 ### Mining
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/mine/tasks` | T ches de minage |
-| POST | `/api/v1/mine/start` | Dmarrer le minage |
+| GET | `/api/v1/mine/tasks` | Taches de minage |
+| POST | `/api/v1/mine/start` | Demarrer le minage |
 | POST | `/api/v1/mine/submit` | Soumettre une preuve |
 
 ### Cross-chain Settlements
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/v1/settlements` | Liste des settlements |
-| GET | `/api/v1/settlements/{registryId}` | Dtails d'un settlement |
+| GET | `/api/v1/settlements/{registryId}` | Details d'un settlement |
 
 ### Receipts
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/receipts/{jobId}` | Rçu d'un job |
+| GET | `/api/v1/receipts/{jobId}` | Reçu d'un job |
 
 ---
 
 ## 6. Utilisation de l'Explorer
 
-### Accs
-Ouvrez votre navigateur et allez sur [http://localhost](http://localhost) (ou le port que vous avez configur).
+### Acces
+Ouvrez votre navigateur et allez sur [http://localhost](http://localhost) (ou le port que vous avez configure).
 
-### Fonctionnalits
+### Fonctionnalites
 
 #### Dashboard
 - **Block Height** : Hauteur actuelle de la blockchain
 - **Validators** : Nombre de validateurs actifs
-- **Total Stake** : Montant total de PRISM stak
+- **Total Stake** : Montant total de PRISM stake
 - **ML Jobs** : Nombre de jobs de calcul en cours
 - **Chain Hash** : Hash du dernier block
 - **Protocol** : Version du protocole
@@ -397,17 +397,17 @@ Ouvrez votre navigateur et allez sur [http://localhost](http://localhost) (ou le
 #### Blocks
 - Liste des derniers blocks
 - Recherche de blocks par hash ou hauteur
-- Dtails de chaque block (proposer, transactions, useful work)
+- Details de chaque block (proposer, transactions, useful work)
 
 #### ML Jobs
 - Liste de tous les jobs de calcul
 - Filtres par statut (OPEN, CLAIMED, VERIFIED)
-- Cration de nouveaux jobs
-- Rclamation de jobs disponibles
+- Creation de nouveaux jobs
+- Reclamation de jobs disponibles
 
 #### Validators
 - Liste des validateurs
-- Tri par stake (du plus lev au plus bas)
+- Tri par stake (du plus eleve au plus bas)
 - Affichage des balances (stake, total, available)
 
 #### Compute
@@ -421,122 +421,129 @@ Ouvrez votre navigateur et allez sur [http://localhost](http://localhost) (ou le
 
 ### Via l'Explorer
 1. Allez dans la section **Compute** ou **ML Jobs**
-2. Cliquez sur **Crer un Job**
+2. Cliquez sur **Creer un Job**
 3. Remplissez le formulaire :
-   - **Type de t che** : Slectionnez le type (sum_squares, dot_product, prime_count, matrix_multiply, ml_inference_quantized)
-   - **Valeurs** : Entrez les valeurs au format JSON (ex: `[1, 2, 3, 4, 5]`)
-   - **Rcompense** : Montant en PRISM pour le worker
+   - **Type de tache** : Selectionnez le type (sum_squares, dot_product, prime_count, matrix_multiply, ml_inference_quantized)
+   - **Valeurs** : Entreez les valeurs au format JSON (ex: `[1, 2, 3, 4, 5]`)
+   - **Recompense** : Montant en PRISM pour le worker
    - **Requester** : Votre adresse ou nom
-4. Cliquez sur **Crr le Job**
+4. Cliquez sur **Crer le Job**
 
 ### Via l'API
 Voir la section [Endpoints API - Compute Jobs](#compute-jobs-ml-tasks).
 
-### Types de jobs supports
+### Types de jobs supportes
 
 | Type | Description | Exemple de valeurs |
 |------|-------------|-------------------|
-| `sum_squares` | Somme des carrs | `[1, 2, 3, 4, 5]` |
+| `sum_squares` | Somme des carres | `[1, 2, 3, 4, 5]` |
 | `dot_product` | Produit scalaire | `{"values": [1,2,3], "valuesB": [4,5,6]}` |
 | `prime_count` | Compter les nombres premiers | `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]` |
 | `matrix_multiply` | Multiplication matricielle | `{"rowsA": 2, "colsA": 3, "colsB": 2, "values": [...], "valuesB": [...]}` |
-| `ml_inference_quantized` | Infrence ML quantifie | Voir [Python Runtime](#python-runtime) |
+| `ml_inference_quantized` | Inference ML quantifiee | Voir [Python Runtime](#python-runtime) |
 
 ---
 
 ## 8. Devenir un Worker
 
-### Pr-requis
+### Pre-requis
 - Un **wallet Prism** avec des fonds (pour les frais de transaction)
-- Une **cl publique/prive** pour signer les preuves
+- Une **cle publique/privee** pour signer les preuves
 - **Python 3.10+** (pour le runtime ML)
 
 ### Configuration
 
-#### 0 Crer un wallet
+#### 0 Creer un wallet
 ```bash
 # Dans le conteneur du node
 docker exec -it prism-node-1 prism wallets
 ```
 
-#### 1 Installer les dpendances Python
+#### 1 Installer les dependances Python
 ```bash
-# Crer un environnement virtuel
+# Creer un environnement virtuel
 python -m venv .venv-prism
 source .venv-prism/bin/activate  # Linux/macOS
 # .\.venv-prism\Scripts\activate  # Windows
 
-# Installer les dpendances
+# Installer les dependances
 pip install -r tools/python/requirements-worker.txt
 ```
 
-#### 2 Configurer le worker
-Crez un fichier `worker-config.json` :
-```json
-{
-  "api_url": "http://localhost:8080",
-  "wallet_path": "/path/to/wallet.json",
-  "private_key_path": "/path/to/private_key.pem",
-  "poll_interval": 5,
-  "max_concurrent_jobs": 10
-}
-```
+#### 2 Lancer le worker
 
-#### 3 Lancer le worker
+Le worker utilise les wallets Prism stockes dans le data directory du node.
+Les options globales `--api`, `--data` et `--timeout` doivent etre placees
+avant la sous-commande.
+
+Exemple avec Bob en mode automatique :
+
 ```bash
-# Depuis le dpt
-python tools/python/prism_worker.py --config worker-config.json
+python tools/python/prism_ml_worker.py \
+  --api http://127.0.0.1:8080/api/v1 \
+  --data data \
+  watch \
+  --worker Bob \
+  --poll-interval 5
 ```
 
+Pour effectuer un seul passage sur la file puis quitter :
+
+```bash
+python tools/python/prism_ml_worker.py \
+  --api http://127.0.0.1:8080/api/v1 \
+  --data data \
+  watch \
+  --worker Bob \
+  --once
+```
 ### Fonctionnement
 1. Le worker **poll** l'API pour de nouveaux jobs (toutes les 5 secondes)
-2. Il **rcupre** un job OPEN
-3. Il **excute** le calcul
-4. Il **signe** la preuve avec sa cl prive
+2. Il **recupere** un job OPEN
+3. Il **execute** le calcul
+4. Il **signe** la preuve avec sa cle privee
 5. Il **soumet** la preuve via l'API
-6. Il **reoit** la rcompense en PRISM
+6. Il **recoit** la recompense en PRISM
 
 ### Docker Worker (Optionnel)
-Vous pouvez aussi lancer un worker dans un conteneur Docker :
+
+Le profil `worker` lance le worker Python automatique avec le wallet Bob :
 
 ```bash
-# Construire l'image du worker
-docker build -t prism-worker:v0.48.0 -f Dockerfile.worker .
+docker build -t prism-worker:v0.48.1 -f Dockerfile.worker .
 
-# Lancer le worker
-docker run -d \
-  --name prism-worker \
-  --network prism-testnet \
-  -v $(pwd)/worker-data:/app/data \
-  -e PRISM_API=http://prism-api:8080 \
-  prism-worker:v0.48.0
+docker compose \
+  -f docker-compose.testnet.yaml \
+  --profile worker \
+  up -d worker
+
+docker logs -f prism-worker
 ```
-
 ---
 
-## 9. Dpannage
+## 9. Depannage
 
-### Problmes courants
+### Problemes courants
 
-#### Les nodes ne dmarrent pas
+#### Les nodes ne demarrent pas
 ```bash
-# Vrifier les logs
+# Verifier les logs
 docker logs prism-node-1
 docker logs prism-node-2
 docker logs prism-node-3
 
-# Vrifier que les ports sont disponibles
+# Verifier que les ports sont disponibles
 netstat -tuln | grep 700
 ```
 
 **Solutions :**
-- Vrifier que Docker est en cours d'excution
-- Vrifier que les ports ne sont pas dj utiliss
-- Vrifier les permissions sur les volumes
+- Verifier que Docker est en cours d'execution
+- Verifier que les ports ne sont pas deja utilises
+- Verifier les permissions sur les volumes
 
-#### L'API ne rpond pas
+#### L'API ne repond pas
 ```bash
-# Vrifier que l'API est en cours d'excution
+# Verifier que l'API est en cours d'execution
 docker logs prism-api
 
 # Tester l'API directement
@@ -544,13 +551,13 @@ curl http://localhost:8080/api/v1/health
 ```
 
 **Solutions :**
-- Vrifier que le node 1 est en cours d'excution
-- Vrifier que le chemin du data directory est correct
-- Vrifier les permissions sur les fichiers
+- Verifier que le node 1 est en cours d'execution
+- Verifier que le chemin du data directory est correct
+- Verifier les permissions sur les fichiers
 
 #### L'explorer ne charge pas
 ```bash
-# Vrifier que NGINX est en cours d'excution
+# Verifier que NGINX est en cours d'execution
 docker logs prism-explorer
 
 # Tester NGINX directement
@@ -558,67 +565,67 @@ curl http://localhost
 ```
 
 **Solutions :**
-- Vrifier que les fichiers de l'explorer sont prsents dans `web/explorer/`
-- Vrifier que NGINX a les permissions pour lire les fichiers
+- Verifier que les fichiers de l'explorer sont presents dans `web/explorer/`
+- Verifier que NGINX a les permissions pour lire les fichiers
 
 #### Les nodes ne se connectent pas entre eux
 ```bash
-# Vrifier la connectivit entre les conteneurs
+# Verifier la connectivite entre les conteneurs
 docker exec -it prism-node-2 ping prism-node-1
 
-# Vrifier les logs de synchronisation
+# Verifier les logs de synchronisation
 docker logs prism-node-2 | grep -i sync
 ```
 
 **Solutions :**
-- Vrifier que tous les nodes utilisent le mme **Chain ID**
-- Vrifier que les nodes sont sur le mme rseau Docker
-- Redmarrer les nodes avec `--peer` pointant vers le node 1
+- Verifier que tous les nodes utilisent le meme **Chain ID**
+- Verifier que les nodes sont sur le meme reseau Docker
+- Redemarrer les nodes avec `--peer` pointant vers le node 1
 
 ### Commandes utiles
 
 ```bash
-# Redmarrer tous les services
+# Redemarrer tous les services
 docker compose -f docker-compose.testnet.yaml restart
 
-# Arrter tous les services
+# Arreter tous les services
 docker compose -f docker-compose.testnet.yaml down
 
-# Supprimer les volumes (ATTENTION: cela supprime toutes les donnes!)
+# Supprimer les volumes (ATTENTION: cela supprime toutes les donnees!)
 docker compose -f docker-compose.testnet.yaml down -v
 
-# Voir les logs en temps rel
+# Voir les logs en temps reel
 docker compose -f docker-compose.testnet.yaml logs -f
 
-# Voir les logs d'un service spcifique
+# Voir les logs d'un service specifique
 docker compose -f docker-compose.testnet.yaml logs -f node-1
 
-# Excuter une commande dans un conteneur
+# Executer une commande dans un conteneur
 docker exec -it prism-node-1 prism status
 ```
 
 ---
 
-## 10. Mise  jour
+## 10. Mise e jour
 
-### Mettre  jour le code
+### Mettre e jour le code
 ```bash
-# Dans le dpt
+# Dans le depot
 git pull origin master
 
 # Reconstruire les images
-docker build -t prism-node:v0.48.0 .
+docker build -t prism-node:v0.48.1 .
 
-# Redmarrer les services
+# Redemarrer les services
 docker compose -f docker-compose.testnet.yaml down
 docker compose -f docker-compose.testnet.yaml up -d
 ```
 
-### Mettre  jour la version
+### Mettre e jour la version
 Modifiez la version dans :
 - `cmd/prism/main.go` (constante `prismVersion`)
 - `docker-compose.testnet.yaml` (tag de l'image)
-- `Dockerfile` (si ncessaire)
+- `Dockerfile` (si necessaire)
 
 ---
 
@@ -626,23 +633,23 @@ Modifiez la version dans :
 
 ### A. Python Runtime
 
-Le runtime Python permet d'excuter des t ches ML de manire dterministe. Voir :
+Le runtime Python permet d'executer des taches ML de maniere deterministe. Voir :
 - `tools/python/README.md`
 - `tools/python/WORKER.md`
 - `tools/python/WATCH.md`
 
-### B. Configuration avance
+### B. Configuration avancee
 
 #### Changer la configuration de la chain
 Vous pouvez personnaliser la configuration de la blockchain en modifiant les fichiers dans `internal/blockchain/`.
 
-#### Changer les rcompenses
-Les rcompenses sont configures dans :
+#### Changer les recompenses
+Les recompenses sont configurees dans :
 - `internal/consensus/useful_work_reward.go`
 - `internal/consensus/pool_reward.go`
 
 #### Changer les limites
-Les limites (max jobs, max stake, etc.) sont configures dans :
+Les limites (max jobs, max stake, etc.) sont configurees dans :
 - `internal/compute/marketplace.go`
 - `internal/blockchain/blockchain.go`
 
@@ -656,4 +663,4 @@ Les limites (max jobs, max stake, etc.) sont configures dans :
 
 ---
 
-*Dernire mise  jour : v0.48.0*
+*Derniere mise e jour : v0.48.1*
