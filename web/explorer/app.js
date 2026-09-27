@@ -99,6 +99,7 @@ async function checkNetworkStatus() {
 // Dashboard
 // ============================================================================
 async function loadDashboard() {
+    loadRecentActivity();
     if (!await checkNetworkStatus()) {
         showToast('Impossible de se connecter à l\'API Prism', 'error');
         return;
@@ -120,7 +121,7 @@ async function loadDashboard() {
         // Load validators count
         const validatorsResponse = await fetch(`${API_BASE_URL}/api/v1/validators`);
         const validatorsData = await validatorsResponse.json();
-        document.getElementById('validator-count').textContent = validatorsData.length || 0;
+        document.getElementById('validator-count').textContent = validatorsData.validators?.length ?? 0;
 
         // Load jobs count
         const jobsResponse = await fetch(`${API_BASE_URL}/api/v1/compute/jobs`);
@@ -314,7 +315,11 @@ async function loadValidators() {
 
     try {
         const response = await fetch(`${API_BASE_URL}/api/v1/validators`);
-        const validators = await response.json();
+        const validatorsData = await response.json();
+
+        const validators = Array.isArray(validatorsData)
+            ? validatorsData
+            : (validatorsData.validators ?? []);
 
         if (!validators || validators.length === 0) {
             validatorsBody.innerHTML = '<tr><td colspan="6">Aucun validateur trouvé</td></tr>';
@@ -322,7 +327,7 @@ async function loadValidators() {
         }
 
         // Sort by stake (highest first)
-        validators.sort((a, b) => (b.Stake || 0) - (a.Stake || 0));
+        validators.sort((a, b) => (b.stake || b.Stake || 0) - (a.stake || a.Stake || 0));
 
         validatorsBody.innerHTML = validators.map((validator, index) => `
             <tr>
@@ -464,4 +469,115 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================================================
 function showDocs() {
     window.open('https://github.com/Ulysse98/prism', '_blank');
+}
+
+
+// ============================================================================
+// Recent activity - live Prism chain data
+// ============================================================================
+async function loadRecentActivity() {
+    const chart = document.querySelector('.activity-chart');
+
+    if (!chart) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/work`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        const entries = Array.isArray(data)
+            ? data
+            : (data.entries ?? []);
+
+        if (entries.length === 0) {
+            chart.innerHTML = `
+                <div class="recent-activity-empty">
+                    Aucune activité on-chain pour le moment.
+                </div>
+            `;
+            return;
+        }
+
+        const recent = [...entries]
+            .sort((a, b) => (b.block ?? 0) - (a.block ?? 0))
+            .slice(0, 6);
+
+        chart.innerHTML = `
+            <div class="recent-activity-list">
+                ${recent.map(entry => {
+                    const proofId = entry.proofId || '-';
+
+                    const shortProof = proofId.length > 20
+                        ? `${proofId.slice(0, 10)}...${proofId.slice(-8)}`
+                        : proofId;
+
+                    const result =
+                        Array.isArray(entry.resultValues) &&
+                        entry.resultValues.length > 0
+                            ? `[${entry.resultValues.join(', ')}]`
+                            : entry.result;
+
+                    return `
+                        <div class="recent-activity-item">
+
+                            <div class="recent-activity-icon">
+                                ${entry.verified ? '&#10003;' : '!'}
+                            </div>
+
+                            <div class="recent-activity-main">
+
+                                <div class="recent-activity-title">
+                                    <strong>Block #${entry.block ?? '-'}</strong>
+
+                                    <span class="recent-activity-badge ${
+                                        entry.verified ? 'verified' : 'invalid'
+                                    }">
+                                        ${
+                                            entry.verified
+                                                ? 'PoUW vérifié'
+                                                : 'Non vérifié'
+                                        }
+                                    </span>
+                                </div>
+
+                                <div class="recent-activity-meta">
+                                    ${entry.worker || 'Worker inconnu'}
+                                    &middot;
+                                    ${entry.task || '-'}
+                                    &middot;
+                                    résultat ${result ?? '-'}
+                                </div>
+
+                                <div class="recent-activity-proof">
+                                    Proof ${shortProof}
+                                </div>
+
+                            </div>
+
+                            <div class="recent-activity-reward">
+                                +${entry.reward ?? 0} PRISM
+                                <span>score ${entry.score ?? 0}</span>
+                            </div>
+
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+
+    } catch (error) {
+        console.error('Failed to load recent activity:', error);
+
+        chart.innerHTML = `
+            <div class="recent-activity-empty">
+                Impossible de charger l'activité récente.
+            </div>
+        `;
+    }
 }
