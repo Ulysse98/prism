@@ -6,6 +6,7 @@ The journal contains public job/receipt metadata only, never wallet secrets.
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import datetime, timezone
 import json
 import math
 import os
@@ -28,6 +29,102 @@ PHASES = {"pending", "submitting", "confirmed", "failed"}
 
 class JournalError(WorkerError):
     pass
+
+
+class HealthError(WorkerError):
+    pass
+
+
+class HealthFile:
+    STATES = {"starting", "healthy", "degraded", "stopped"}
+    LIMIT = 64 << 10
+
+    def __init__(self, path: Path, identity: dict, clock=time.time):
+        self.path = path.resolve()
+        self.identity = identity
+        self.clock = clock
+        now = self.clock()
+        self.started_at = self._timestamp(now)
+        self.data = {}
+
+    @staticmethod
+    def _timestamp(value: float) -> str:
+        if not math.isfinite(value) or value < 0:
+            raise HealthError("invalid health timestamp")
+        return (
+            datetime.fromtimestamp(value, timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+
+    def write(
+        self,
+        status: str,
+        *,
+        sweeps: int,
+        confirmed: int,
+        unresolved: int,
+        consecutive_errors: int,
+        last_error: str | None = None,
+    ):
+        if status not in self.STATES:
+            raise HealthError("invalid worker health state")
+
+        counters = (sweeps, confirmed, unresolved, consecutive_errors)
+        if any(type(value) is not int or value < 0 for value in counters):
+            raise HealthError("invalid worker health counter")
+
+        now = self.clock()
+
+        self.data = {
+            "version": 1,
+            "status": status,
+            "worker": self.identity["worker"],
+            "chainId": self.identity["chainId"],
+            "startedAt": self.started_at,
+            "updatedAt": self._timestamp(now),
+            "sweeps": sweeps,
+            "confirmed": confirmed,
+            "unresolved": unresolved,
+            "consecutiveErrors": consecutive_errors,
+            "lastError": None if last_error is None else str(last_error)[:400],
+        }
+
+        self.save()
+
+    def save(self):
+        raw = compact(self.data) + b"\n"
+
+        if len(raw) > self.LIMIT:
+            raise HealthError("worker health snapshot exceeds 64 KiB")
+
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = None
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=self.path.parent,
+                prefix=self.path.name + ".",
+                suffix=".tmp",
+                delete=False,
+            ) as stream:
+                temporary = Path(stream.name)
+                stream.write(raw)
+                stream.flush()
+                os.fsync(stream.fileno())
+
+            os.replace(temporary, self.path)
+            temporary = None
+
+        except OSError as error:
+            raise HealthError(
+                "cannot persist worker health snapshot"
+            ) from error
+
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
 
 
 def emit(event: str, **fields):
@@ -290,47 +387,226 @@ class Watcher:
 
 
 def run_watch(args) -> int:
+    health = None
+    journal = None
+    sweeps = 0
+    count = 0
+    failures = 0
+
+    def journal_counts():
+        if journal is None:
+            return 0, 0
+
+        confirmed = sum(
+            entry["phase"] == "confirmed"
+            for entry in journal.jobs.values()
+        )
+
+        unresolved = sum(
+            entry["phase"] != "confirmed"
+            for entry in journal.jobs.values()
+        )
+
+        return confirmed, unresolved
+
+    def update_health(status, last_error=None):
+        if health is None:
+            return
+
+        confirmed, unresolved = journal_counts()
+
+        health.write(
+            status,
+            sweeps=sweeps,
+            confirmed=confirmed,
+            unresolved=unresolved,
+            consecutive_errors=failures,
+            last_error=last_error,
+        )
+
     try:
-        if not math.isfinite(args.poll_interval) or not 0.1 <= args.poll_interval <= 300:
-            raise WorkerError("poll interval must be between 0.1 and 300 seconds")
+        if (
+            not math.isfinite(args.poll_interval)
+            or not 0.1 <= args.poll_interval <= 300
+        ):
+            raise WorkerError(
+                "poll interval must be between 0.1 and 300 seconds"
+            )
+
         if args.max_jobs < 0:
             raise WorkerError("max jobs must be non-negative")
+
         wallet = load_wallet(args.data, args.worker)
         api = API(args.api, args.timeout)
         identity = network_identity(api, wallet.address)
-        path = (args.journal or args.data / "python-worker" / (wallet.address + ".json")).resolve()
+
+        path = (
+            args.journal
+            or args.data
+            / "python-worker"
+            / (wallet.address + ".json")
+        ).resolve()
+
+        health_path = (
+            args.health
+            or args.data
+            / "python-worker"
+            / (wallet.address + ".health.json")
+        ).resolve()
+
+        if health_path == path:
+            raise HealthError(
+                "health path must differ from journal path"
+            )
+
         with journal_lock(path):
             journal = Journal(path, identity)
             journal.save()
+
             if args.retry_failed:
                 journal.retry_failed()
-            watcher = Watcher(api, wallet, journal, args.poll_interval)
-            emit("watch_started", worker=wallet.address, chainId=identity["chainId"], journal=str(path))
-            count = 0
-            failures = 0
+
+            health = HealthFile(
+                health_path,
+                identity,
+            )
+
+            update_health("starting")
+
+            watcher = Watcher(
+                api,
+                wallet,
+                journal,
+                args.poll_interval,
+            )
+
+            emit(
+                "watch_started",
+                worker=wallet.address,
+                chainId=identity["chainId"],
+                journal=str(path),
+                health=str(health_path),
+            )
+
             while True:
+                last_error = None
+
                 try:
-                    count += watcher.sweep(args.max_jobs - count if args.max_jobs else 0)
+                    remaining = (
+                        args.max_jobs - count
+                        if args.max_jobs
+                        else 0
+                    )
+
+                    count += watcher.sweep(remaining)
                     failures = 0
+
                 except JournalError:
                     raise
+
                 except HTTPStatusError as error:
-                    if error.status not in (408, 429) and error.status < 500:
+                    if (
+                        error.status not in (408, 429)
+                        and error.status < 500
+                    ):
                         raise
+
                     failures += 1
-                    emit("poll_error", error=str(error))
-                except (TransportError, ProtocolError, WorkerError) as error:
+                    last_error = str(error)
+
+                    emit(
+                        "poll_error",
+                        error=last_error,
+                    )
+
+                except (
+                    TransportError,
+                    ProtocolError,
+                    WorkerError,
+                ) as error:
                     failures += 1
-                    emit("poll_error", error=str(error))
-                if args.once or (args.max_jobs and count >= args.max_jobs):
-                    pending = sum(e["phase"] != "confirmed" for e in journal.jobs.values())
-                    emit("watch_stopped", confirmed=count, unresolved=pending)
-                    return 2 if failures or (args.once and pending) else 0
-                delay = min(60.0, args.poll_interval * 2 ** min(failures, 6)) if failures else args.poll_interval
+                    last_error = str(error)
+
+                    emit(
+                        "poll_error",
+                        error=last_error,
+                    )
+
+                sweeps += 1
+
+                update_health(
+                    "degraded" if failures else "healthy",
+                    last_error,
+                )
+
+                if args.once or (
+                    args.max_jobs
+                    and count >= args.max_jobs
+                ):
+                    _, pending = journal_counts()
+
+                    update_health("stopped")
+
+                    emit(
+                        "watch_stopped",
+                        confirmed=count,
+                        unresolved=pending,
+                    )
+
+                    return (
+                        2
+                        if failures
+                        or (args.once and pending)
+                        else 0
+                    )
+
+                delay = (
+                    min(
+                        60.0,
+                        args.poll_interval
+                        * 2 ** min(failures, 6),
+                    )
+                    if failures
+                    else args.poll_interval
+                )
+
                 time.sleep(delay)
+
     except KeyboardInterrupt:
-        emit("watch_stopped", reason="interrupted; pending jobs will be reconciled on restart")
+        update_health("stopped")
+
+        emit(
+            "watch_stopped",
+            reason=(
+                "interrupted; pending jobs will be "
+                "reconciled on restart"
+            ),
+        )
+
         return 130
-    except (OSError, ProtocolError, WorkerError) as error:
-        print(f"ERROR: {error}", file=sys.stderr)
+
+    except (
+        OSError,
+        ProtocolError,
+        WorkerError,
+    ) as error:
+        if health is not None and not isinstance(
+            error,
+            HealthError,
+        ):
+            failures = max(1, failures)
+
+            try:
+                update_health(
+                    "degraded",
+                    str(error),
+                )
+            except HealthError:
+                pass
+
+        print(
+            f"ERROR: {error}",
+            file=sys.stderr,
+        )
+
         return 1

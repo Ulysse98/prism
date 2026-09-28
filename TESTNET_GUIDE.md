@@ -93,7 +93,7 @@ cd prism
 ### 1 Construire les images
 ```bash
 # Construire l'image du node Prism
-docker build -t prism-node:v0.48.1 .
+docker build -t prism-node:v0.49.0 .
 ```
 
 ### 2 Demarrer le testnet
@@ -164,7 +164,7 @@ Modifiez le fichier `docker-compose.testnet.yaml` pour ajouter ou supprimer des 
 ```yaml
 services:
   node-4:
-    image: prism-node:v0.48.1
+    image: prism-node:v0.49.0
     container_name: prism-node-4
     command:
       - node
@@ -213,7 +213,7 @@ curl http://localhost:8080/api/v1/health
 {
   "status": "ok",
   "network": "Prism",
-  "version": "0.48.1",
+  "version": "0.49.0",
   "protocol": "0.36",
   "chainId": "prism-testnet",
   "height": 12345,
@@ -235,7 +235,7 @@ curl http://localhost:8080/api/v1/status
 ```json
 {
   "network": "Prism",
-  "version": "0.48.1",
+  "version": "0.49.0",
   "protocol": "0.36",
   "chainId": "prism-testnet",
   "height": 12345,
@@ -510,7 +510,7 @@ python tools/python/prism_ml_worker.py \
 Le profil `worker` lance le worker Python automatique avec le wallet Bob :
 
 ```bash
-docker build -t prism-worker:v0.48.1 -f Dockerfile.worker .
+docker build -t prism-worker:v0.49.0 -f Dockerfile.worker .
 
 docker compose \
   -f docker-compose.testnet.yaml \
@@ -614,7 +614,7 @@ docker exec -it prism-node-1 prism status
 git pull origin master
 
 # Reconstruire les images
-docker build -t prism-node:v0.48.1 .
+docker build -t prism-node:v0.49.0 .
 
 # Redemarrer les services
 docker compose -f docker-compose.testnet.yaml down
@@ -663,4 +663,4 @@ Les limites (max jobs, max stake, etc.) sont configurees dans :
 
 ---
 
-*Derniere mise e jour : v0.48.1*
+*Derniere mise e jour : v0.49.0*

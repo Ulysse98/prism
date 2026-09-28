@@ -3,7 +3,7 @@ services:
   # Prism Nodes (P2P Network)
   # ============================================================================
   node-1:
-    image: prism-node:v0.48.1
+    image: prism-node:v0.49.0
     build:
       context: .
       dockerfile: Dockerfile
@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
 
   node-2:
-    image: prism-node:v0.48.1
+    image: prism-node:v0.49.0
     container_name: prism-node-2
     command:
       - node
@@ -45,7 +45,7 @@ services:
     restart: unless-stopped
 
   node-3:
-    image: prism-node:v0.48.1
+    image: prism-node:v0.49.0
     container_name: prism-node-3
     command:
       - node
@@ -70,7 +70,7 @@ services:
   # Prism API Server (REST HTTP)
   # ============================================================================
   api:
-    image: prism-node:v0.48.1
+    image: prism-node:v0.49.0
     container_name: prism-api
     command:
       - api
@@ -113,7 +113,7 @@ services:
   # Prism Compute Worker (Optional - for ML tasks)
   # ============================================================================
   worker:
-    image: prism-worker:v0.48.1
+    image: prism-worker:v0.49.0
     build:
       context: .
       dockerfile: Dockerfile.worker
@@ -129,6 +129,28 @@ services:
       - Bob
       - --poll-interval
       - "5"
+      - --health
+      - /app/data/node-7001/python-worker/health.json
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import json, os, time
+          path = "/app/data/node-7001/python-worker/health.json"
+          try:
+              with open(path, encoding="utf-8") as stream:
+                  health = json.load(stream)
+              age = time.time() - os.path.getmtime(path)
+              healthy = health.get("status") == "healthy" and age <= 30
+          except Exception:
+              healthy = False
+          raise SystemExit(0 if healthy else 1)
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
     volumes:
       - node1-data:/app/data
     networks:
