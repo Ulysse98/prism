@@ -7,3 +7,32 @@ data
 Dockerfile*
 compose*.yaml
 docker-compose*.yml
+
+# Local dependency/build caches
+node_modules/
+**/node_modules/
+.venv/
+.venv-*/
+**/.venv/
+**/.venv-*/
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# Rust / Solana / Anchor artifacts
+target/
+**/target/
+
+# JS build artifacts
+dist/
+**/dist/
+build/
+**/build/
+coverage/
+**/coverage/
+
+# Local IDE/cache files
+.vscode/
+.idea/
+.pytest_cache/
+**/.pytest_cache/

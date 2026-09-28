@@ -129,6 +129,28 @@ services:
       - Bob
       - --poll-interval
       - "5"
+      - --health
+      - /app/data/node-7001/python-worker/health.json
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import json, os, time
+          path = "/app/data/node-7001/python-worker/health.json"
+          try:
+              with open(path, encoding="utf-8") as stream:
+                  health = json.load(stream)
+              age = time.time() - os.path.getmtime(path)
+              healthy = health.get("status") == "healthy" and age <= 30
+          except Exception:
+              healthy = False
+          raise SystemExit(0 if healthy else 1)
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
     volumes:
       - node1-data:/app/data
     networks:
