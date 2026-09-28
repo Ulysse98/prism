@@ -3,7 +3,7 @@ services:
   # Prism Nodes (P2P Network)
   # ============================================================================
   node-1:
-    image: prism-node:v0.49.0
+    image: prism-node:v0.50.0
     build:
       context: .
       dockerfile: Dockerfile
@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
 
   node-2:
-    image: prism-node:v0.49.0
+    image: prism-node:v0.50.0
     container_name: prism-node-2
     command:
       - node
@@ -45,7 +45,7 @@ services:
     restart: unless-stopped
 
   node-3:
-    image: prism-node:v0.49.0
+    image: prism-node:v0.50.0
     container_name: prism-node-3
     command:
       - node
@@ -70,7 +70,7 @@ services:
   # Prism API Server (REST HTTP)
   # ============================================================================
   api:
-    image: prism-node:v0.49.0
+    image: prism-node:v0.50.0
     container_name: prism-api
     command:
       - api
@@ -113,7 +113,7 @@ services:
   # Prism Compute Worker (Optional - for ML tasks)
   # ============================================================================
   worker:
-    image: prism-worker:v0.49.0
+    image: prism-worker:v0.50.0
     build:
       context: .
       dockerfile: Dockerfile.worker
@@ -131,6 +131,12 @@ services:
       - "5"
       - --health
       - /app/data/node-7001/python-worker/health.json
+      - --metrics-host
+      - 0.0.0.0
+      - --metrics-port
+      - "9100"
+    ports:
+      - "9100:9100"
     healthcheck:
       test:
         - CMD
@@ -162,12 +168,62 @@ services:
     profiles:
       - worker
 
+
+  # ============================================================================
+  # Prism Monitoring
+  # ============================================================================
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    container_name: prism-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - prism-testnet
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:13.2.2
+    container_name: prism-grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_DEFAULT_THEME: dark
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    networks:
+      - prism-testnet
+    depends_on:
+      prometheus:
+        condition: service_started
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
 volumes:
   node1-data:
     driver: local
   node2-data:
     driver: local
   node3-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
     driver: local
 
 networks:

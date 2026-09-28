@@ -36,3 +36,6 @@ coverage/
 .idea/
 .pytest_cache/
 **/.pytest_cache/
+
+# Runtime monitoring configuration
+monitoring/

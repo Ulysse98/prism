@@ -17,7 +17,7 @@ set -euo pipefail
 # ============================================================================
 
 # Version
-PRISM_VERSION="v0.49.0"
+PRISM_VERSION="v0.50.0"
 
 # Colors for output
 RED='\033[0;31m'
