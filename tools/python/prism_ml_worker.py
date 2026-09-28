@@ -294,6 +294,17 @@ def main() -> int:
         type=Path,
         help="write machine-readable worker health snapshot",
     )
+    watch.add_argument(
+        "--metrics-host",
+        default="127.0.0.1",
+        help="Prometheus metrics bind host",
+    )
+    watch.add_argument(
+        "--metrics-port",
+        type=int,
+        default=0,
+        help="Prometheus metrics port; 0 disables the exporter",
+    )
     watch.add_argument("--max-jobs", type=int, default=0, help="stop after N new confirmations; 0 means unlimited")
     watch.add_argument("--once", action="store_true", help="perform one queue sweep and exit")
     watch.add_argument("--retry-failed", action="store_true", help="reconsider jobs previously stopped by a permanent error")

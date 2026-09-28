@@ -131,6 +131,12 @@ services:
       - "5"
       - --health
       - /app/data/node-7001/python-worker/health.json
+      - --metrics-host
+      - 0.0.0.0
+      - --metrics-port
+      - "9100"
+    ports:
+      - "9100:9100"
     healthcheck:
       test:
         - CMD

@@ -388,6 +388,7 @@ class Watcher:
 
 def run_watch(args) -> int:
     health = None
+    metrics_server = None
     journal = None
     sweeps = 0
     count = 0
@@ -436,6 +437,11 @@ def run_watch(args) -> int:
         if args.max_jobs < 0:
             raise WorkerError("max jobs must be non-negative")
 
+        if not 0 <= args.metrics_port <= 65535:
+            raise WorkerError(
+                "metrics port must be between 0 and 65535"
+            )
+
         wallet = load_wallet(args.data, args.worker)
         api = API(args.api, args.timeout)
         identity = network_identity(api, wallet.address)
@@ -473,6 +479,17 @@ def run_watch(args) -> int:
 
             update_health("starting")
 
+            if args.metrics_port:
+                from prism_ml_metrics import WorkerMetricsServer
+
+                metrics_server = WorkerMetricsServer(
+                    health_path,
+                    args.metrics_host,
+                    args.metrics_port,
+                )
+
+                metrics_server.start()
+
             watcher = Watcher(
                 api,
                 wallet,
@@ -486,6 +503,11 @@ def run_watch(args) -> int:
                 chainId=identity["chainId"],
                 journal=str(path),
                 health=str(health_path),
+                metricsPort=(
+                    metrics_server.port
+                    if metrics_server is not None
+                    else None
+                ),
             )
 
             while True:
@@ -610,3 +632,7 @@ def run_watch(args) -> int:
         )
 
         return 1
+
+    finally:
+        if metrics_server is not None:
+            metrics_server.close()
