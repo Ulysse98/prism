@@ -3,7 +3,7 @@ services:
   # Prism Nodes (P2P Network)
   # ============================================================================
   node-1:
-    image: prism-node:v0.49.0
+    image: prism-node:v0.50.0
     build:
       context: .
       dockerfile: Dockerfile
@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
 
   node-2:
-    image: prism-node:v0.49.0
+    image: prism-node:v0.50.0
     container_name: prism-node-2
     command:
       - node
@@ -45,7 +45,7 @@ services:
     restart: unless-stopped
 
   node-3:
-    image: prism-node:v0.49.0
+    image: prism-node:v0.50.0
     container_name: prism-node-3
     command:
       - node
@@ -70,7 +70,7 @@ services:
   # Prism API Server (REST HTTP)
   # ============================================================================
   api:
-    image: prism-node:v0.49.0
+    image: prism-node:v0.50.0
     container_name: prism-api
     command:
       - api
@@ -113,7 +113,7 @@ services:
   # Prism Compute Worker (Optional - for ML tasks)
   # ============================================================================
   worker:
-    image: prism-worker:v0.49.0
+    image: prism-worker:v0.50.0
     build:
       context: .
       dockerfile: Dockerfile.worker
