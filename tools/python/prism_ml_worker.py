@@ -289,6 +289,11 @@ def main() -> int:
     watch.add_argument("--worker", required=True)
     watch.add_argument("--poll-interval", type=float, default=2.0)
     watch.add_argument("--journal", type=Path)
+    watch.add_argument(
+        "--health",
+        type=Path,
+        help="write machine-readable worker health snapshot",
+    )
     watch.add_argument("--max-jobs", type=int, default=0, help="stop after N new confirmations; 0 means unlimited")
     watch.add_argument("--once", action="store_true", help="perform one queue sweep and exit")
     watch.add_argument("--retry-failed", action="store_true", help="reconsider jobs previously stopped by a permanent error")

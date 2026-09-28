@@ -20,7 +20,9 @@ from unittest.mock import patch
 
 from check_go_proofs import test_wallet
 from prism_ml_protocol import compact, decode_json, job_id, make_proof, make_task, verify_proof
-from prism_ml_watch import Journal, JournalError, Watcher, journal_lock, network_identity
+from prism_ml_watch import (
+    HealthFile, Journal, JournalError, Watcher, journal_lock, network_identity,
+)
 from prism_ml_worker import API, demo_payload
 from test_prism_ml_worker import new_job, record
 
@@ -386,6 +388,98 @@ class JournalTests(unittest.TestCase):
                 pass
 
 
+class HealthTests(unittest.TestCase):
+    identity = {
+        "api": "http://localhost/api/v1",
+        "chainId": "test",
+        "genesisHash": "a" * 64,
+        "worker": "prism_" + "1" * 40,
+    }
+
+    def test_health_snapshot_tracks_worker_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            now = [1000.0]
+            path = Path(directory) / "health.json"
+
+            health = HealthFile(
+                path,
+                self.identity,
+                clock=lambda: now[0],
+            )
+
+            health.write(
+                "starting",
+                sweeps=0,
+                confirmed=0,
+                unresolved=0,
+                consecutive_errors=0,
+            )
+
+            now[0] = 1005.0
+
+            health.write(
+                "healthy",
+                sweeps=2,
+                confirmed=3,
+                unresolved=1,
+                consecutive_errors=0,
+            )
+
+            payload = json.loads(
+                path.read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(payload["version"], 1)
+            self.assertEqual(payload["status"], "healthy")
+            self.assertEqual(payload["worker"], self.identity["worker"])
+            self.assertEqual(payload["chainId"], "test")
+            self.assertEqual(payload["sweeps"], 2)
+            self.assertEqual(payload["confirmed"], 3)
+            self.assertEqual(payload["unresolved"], 1)
+            self.assertEqual(payload["consecutiveErrors"], 0)
+            self.assertIsNone(payload["lastError"])
+            self.assertEqual(
+                payload["startedAt"],
+                "1970-01-01T00:16:40Z",
+            )
+            self.assertEqual(
+                payload["updatedAt"],
+                "1970-01-01T00:16:45Z",
+            )
+
+    def test_failed_atomic_health_replace_preserves_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "health.json"
+            health = HealthFile(path, self.identity)
+
+            health.write(
+                "starting",
+                sweeps=0,
+                confirmed=0,
+                unresolved=0,
+                consecutive_errors=0,
+            )
+
+            before = path.read_bytes()
+
+            with patch(
+                "prism_ml_watch.os.replace",
+                side_effect=OSError("disk full"),
+            ):
+                with self.assertRaises(Exception):
+                    health.write(
+                        "degraded",
+                        sweeps=1,
+                        confirmed=0,
+                        unresolved=1,
+                        consecutive_errors=1,
+                        last_error="boom",
+                    )
+
+            self.assertEqual(path.read_bytes(), before)
+            self.assertFalse(list(path.parent.glob("*.tmp")))
+
+
 class CLIWatchTests(unittest.TestCase):
     def command(self, api, directory, *args):
         return [sys.executable, str(Path(__file__).with_name("prism_ml_worker.py")),
@@ -432,6 +526,40 @@ class CLIWatchTests(unittest.TestCase):
             receipt = next(e for e in events if e["event"] == "confirmed")
             self.assertTrue(receipt["recovered"])
             self.assertEqual(len(node.payments), 1)
+
+    def test_once_writes_stopped_health_snapshot(self):
+        with queue_server(0) as (node, api), tempfile.TemporaryDirectory() as directory:
+            self.wallets(directory)
+            health_path = Path(directory) / "worker-health.json"
+
+            result = subprocess.run(
+                self.command(
+                    api,
+                    directory,
+                    "watch",
+                    "--worker",
+                    "Bob",
+                    "--once",
+                    "--health",
+                    str(health_path),
+                ),
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+            snapshot = json.loads(
+                health_path.read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(snapshot["version"], 1)
+            self.assertEqual(snapshot["status"], "stopped")
+            self.assertEqual(snapshot["sweeps"], 1)
+            self.assertEqual(snapshot["unresolved"], 0)
+            self.assertEqual(snapshot["consecutiveErrors"], 0)
+            self.assertIsNone(snapshot["lastError"])
 
     def test_invalid_options_fail_before_queue_mutations(self):
         with queue_server(0) as (node, api), tempfile.TemporaryDirectory() as directory:
