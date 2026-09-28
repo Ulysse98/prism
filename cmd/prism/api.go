@@ -192,6 +192,10 @@ func runAPICommand(args []string) {
 	)
 
 	mux.HandleFunc(
+		"/metrics",
+		api.handleMetrics,
+	)
+	mux.HandleFunc(
 		"/api/v1/validators",
 		api.handleValidators,
 	)
@@ -276,6 +280,7 @@ func runAPICommand(args []string) {
 	fmt.Println("Endpoints:")
 	fmt.Println("  GET /api/v1/health")
 	fmt.Println("  GET /api/v1/status")
+	fmt.Println("  GET /metrics")
 	fmt.Println("  GET /api/v1/validators")
 	fmt.Println("  GET /api/v1/participation")
 	fmt.Println("  GET /api/v1/work")
