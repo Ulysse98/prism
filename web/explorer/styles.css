@@ -900,3 +900,113 @@ html, body {
 ::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
 }
+
+/* ============================================================================
+   Wallet & Faucet
+   ============================================================================ */
+.wallet-search-card,
+.wallet-identity-card,
+.wallet-address-card,
+.faucet-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+}
+
+.wallet-search-card {
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.wallet-search-row {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.wallet-search-row input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.75rem 1rem;
+    background: var(--surface-light);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    color: var(--text);
+    font-family: monospace;
+    font-size: 0.9rem;
+}
+
+.wallet-search-row input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.wallet-help {
+    margin-top: 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.wallet-identity-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.wallet-identity-card h3 {
+    margin-top: 0.25rem;
+    font-size: 1.35rem;
+}
+
+.wallet-label {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.wallet-address-card {
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.wallet-address-card code {
+    display: block;
+    margin-top: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    overflow-wrap: anywhere;
+    direction: ltr;
+    unicode-bidi: isolate;
+}
+
+.wallet-stats {
+    margin-bottom: 1.5rem;
+}
+
+.faucet-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2rem;
+    padding: 1.5rem;
+}
+
+.faucet-card h3 {
+    margin: 0.3rem 0 0.5rem;
+}
+
+.faucet-card p {
+    max-width: 680px;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    transform: none;
+}

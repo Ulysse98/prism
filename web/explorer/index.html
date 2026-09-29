@@ -119,6 +119,7 @@
                 <a href="#" class="nav-link" data-section="blocks">Blocks</a>
                 <a href="#" class="nav-link" data-section="jobs">ML Jobs</a>
                 <a href="#" class="nav-link" data-section="validators">Validators</a>
+                <a href="#" class="nav-link" data-section="wallet">Wallet</a>
                 <a href="#" class="nav-link" data-section="compute">Compute</a>
             </nav>
             <div class="network-status">
@@ -161,7 +162,7 @@
                             <h3>Total Stake</h3>
                         </div>
                         <div class="stat-value" id="total-stake">-</div>
-                        <div class="stat-label">PRISM stakés</div>
+                        <div class="stat-label">PRISM stak&eacute;s</div>
                     </div>
 
                     <div class="stat-card">
@@ -317,6 +318,117 @@
                 </div>
             </section>
 
+            <!-- Wallet Section -->
+            <section id="wallet" class="section">
+                <div class="section-header">
+                    <h2>Wallet</h2>
+                    <p class="section-subtitle">
+                        Consultez un wallet Prism et utilisez le faucet testnet.
+                    </p>
+                </div>
+
+                <div class="wallet-search-card">
+                    <form id="wallet-search-form" onsubmit="lookupWallet(event)">
+                        <div class="wallet-search-row">
+                            <input
+                                id="wallet-address-input"
+                                type="text"
+                                placeholder="Alice ou prism_..."
+                                autocomplete="off"
+                                spellcheck="false"
+                                required
+                            >
+                            <button class="btn btn-primary" type="submit">
+                                Rechercher
+                            </button>
+                        </div>
+                    </form>
+
+                    <p class="wallet-help">
+                        Nom local ou adresse Prism compl&egrave;te.
+                    </p>
+                </div>
+
+                <div id="wallet-result" hidden>
+                    <div class="wallet-identity-card">
+                        <div>
+                            <span class="wallet-label">Wallet</span>
+                            <h3 id="wallet-name">-</h3>
+                        </div>
+
+                        <span
+                            id="wallet-humanity"
+                            class="status-badge error"
+                        >
+                            Non v&eacute;rifi&eacute;
+                        </span>
+                    </div>
+
+                    <div class="wallet-address-card">
+                        <span class="wallet-label">Adresse</span>
+                        <code id="wallet-address">-</code>
+                    </div>
+
+                    <div class="stats-grid wallet-stats">
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <span class="stat-icon">&#128176;</span>
+                                <h3>Total</h3>
+                            </div>
+                            <div class="stat-value" id="wallet-total">-</div>
+                            <div class="stat-label">PRISM</div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <span class="stat-icon">&#9889;</span>
+                                <h3>Disponible</h3>
+                            </div>
+                            <div class="stat-value" id="wallet-available">-</div>
+                            <div class="stat-label">PRISM disponibles</div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <span class="stat-icon">&#128274;</span>
+                                <h3>Stake verrouill&eacute;</h3>
+                            </div>
+                            <div class="stat-value" id="wallet-locked">-</div>
+                            <div class="stat-label">PRISM stak&eacute;s</div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <span class="stat-icon">&#128220;</span>
+                                <h3>Nonce</h3>
+                            </div>
+                            <div class="stat-value" id="wallet-nonce">-</div>
+                            <div class="stat-label">Transactions &eacute;mises</div>
+                        </div>
+                    </div>
+
+                    <div class="faucet-card">
+                        <div>
+                            <span class="wallet-label">Testnet Faucet</span>
+                            <h3>Recevez 100 PRISM</h3>
+                            <p>
+                                Une distribution par adresse sur ce testnet.
+                                Le transfert est sign&eacute; et enregistr&eacute; on-chain.
+                            </p>
+                        </div>
+
+                        <button
+                            id="faucet-claim-button"
+                            class="btn btn-primary"
+                            type="button"
+                            onclick="claimFaucet()"
+                        >
+                            Claim 100 PRISM
+                        </button>
+                    </div>
+                </div>
+            </section>
+
             <!-- Compute Section -->
             <section id="compute" class="section">
                 <div class="section-header">
@@ -454,7 +566,7 @@
         <!-- Footer -->
         <footer class="footer">
             <div class="footer-content">
-                <p>Prism Testnet Explorer v0.50.0</p>
+                <p>Prism Testnet Explorer v0.52.0</p>
                 <div class="footer-links">
                     <a href="https://github.com/Ulysse98/prism" target="_blank">GitHub</a>
                     <a href="#" onclick="showDocs()">Documentation</a>

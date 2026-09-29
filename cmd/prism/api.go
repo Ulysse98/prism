@@ -22,6 +22,9 @@ type apiServer struct {
 	stateMu       sync.Mutex
 	computeMarket *compute.Marketplace
 	settlements   *crosschain.SettlementStore
+	faucetEnabled bool
+	faucetWallet  string
+	faucetAmount  uint64
 }
 
 type apiStatusResponse struct {
@@ -119,6 +122,24 @@ func runAPICommand(args []string) {
 		"Prism node data directory exposed by the API",
 	)
 
+	faucetEnabled := flags.Bool(
+		"faucet-enabled",
+		false,
+		"enable the Prism testnet faucet",
+	)
+
+	faucetWallet := flags.String(
+		"faucet-wallet",
+		"Alice",
+		"local wallet used to fund testnet faucet requests",
+	)
+
+	faucetAmount := flags.Uint64(
+		"faucet-amount",
+		100,
+		"fixed PRISM amount distributed by the testnet faucet",
+	)
+
 	if err := flags.Parse(args); err != nil {
 		return
 	}
@@ -127,6 +148,13 @@ func runAPICommand(args []string) {
 		fmt.Println(
 			"Invalid API port:",
 			*port,
+		)
+		return
+	}
+
+	if *faucetEnabled && *faucetAmount == 0 {
+		fmt.Println(
+			"Invalid faucet amount: must be greater than zero",
 		)
 		return
 	}
@@ -177,6 +205,9 @@ func runAPICommand(args []string) {
 		dataPath:      *nodeData,
 		computeMarket: computeMarket,
 		settlements:   settlements,
+		faucetEnabled: *faucetEnabled,
+		faucetWallet:  *faucetWallet,
+		faucetAmount:  *faucetAmount,
 	}
 
 	mux := http.NewServeMux()
@@ -198,6 +229,16 @@ func runAPICommand(args []string) {
 	mux.HandleFunc(
 		"/api/v1/validators",
 		api.handleValidators,
+	)
+
+	mux.HandleFunc(
+		"/api/v1/wallets/",
+		api.handleWalletByAddress,
+	)
+
+	mux.HandleFunc(
+		"/api/v1/faucet",
+		api.handleFaucet,
 	)
 
 	mux.HandleFunc(
@@ -282,6 +323,8 @@ func runAPICommand(args []string) {
 	fmt.Println("  GET /api/v1/status")
 	fmt.Println("  GET /metrics")
 	fmt.Println("  GET /api/v1/validators")
+	fmt.Println("  GET /api/v1/wallets/{address}")
+	fmt.Println("  POST /api/v1/faucet")
 	fmt.Println("  GET /api/v1/participation")
 	fmt.Println("  GET /api/v1/work")
 	fmt.Println("  GET /api/v1/humanity")
