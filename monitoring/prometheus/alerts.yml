@@ -1,0 +1,42 @@
+groups:
+  - name: prism-testnet
+    rules:
+      - alert: PrismAPIDown
+        expr: up{job="prism-api"} == 0
+        for: 15s
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: Prism API is down
+          description: Prometheus has been unable to scrape the Prism API for more than 15 seconds.
+
+      - alert: PrismWorkerDown
+        expr: up{job="prism-worker"} == 0
+        for: 15s
+        labels:
+          severity: critical
+          component: worker
+        annotations:
+          summary: Prism compute worker is down
+          description: Prometheus has been unable to scrape the Prism compute worker for more than 15 seconds.
+
+      - alert: PrismChainInvalid
+        expr: prism_chain_valid == 0
+        for: 10s
+        labels:
+          severity: critical
+          component: chain
+        annotations:
+          summary: Prism chain validation failed
+          description: The local Prism blockchain is reporting an invalid chain state.
+
+      - alert: PrismNoValidators
+        expr: prism_validators < 1
+        for: 30s
+        labels:
+          severity: warning
+          component: consensus
+        annotations:
+          summary: Prism has no active validators
+          description: The Prism node is reporting zero active validators.
