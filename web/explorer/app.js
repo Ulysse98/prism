@@ -14,6 +14,7 @@ let statsInterval;
 let blocksInterval;
 let jobsInterval;
 let validatorsInterval;
+let currentWalletAddress = '';
 
 // DOM Elements
 const sections = document.querySelectorAll('.section');
@@ -65,6 +66,8 @@ function switchSection(sectionId) {
             break;
         case 'validators':
             loadValidators();
+            break;
+        case 'wallet':
             break;
         case 'compute':
             // Compute section doesn't need data loading
@@ -346,6 +349,171 @@ async function loadValidators() {
     }
 }
 // ============================================================================
+// Wallet & Faucet
+// ============================================================================
+async function readAPIError(response) {
+    try {
+        const payload = await response.json();
+
+        if (payload && payload.error) {
+            return payload.error;
+        }
+    } catch (_) {
+        // Fall through to the generic HTTP message.
+    }
+
+    return `HTTP ${response.status}`;
+}
+
+async function lookupWallet(event) {
+    if (event) {
+        event.preventDefault();
+    }
+
+    const input = document.getElementById('wallet-address-input');
+    const result = document.getElementById('wallet-result');
+    const identifier = input.value.trim();
+
+    if (!identifier) {
+        showToast('Entrez un wallet ou une adresse Prism', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            `${API_BASE_URL}/api/v1/wallets/${encodeURIComponent(identifier)}`
+        );
+
+        if (!response.ok) {
+            throw new Error(await readAPIError(response));
+        }
+
+        const wallet = await response.json();
+
+        currentWalletAddress = wallet.address;
+
+        document.getElementById('wallet-name').textContent =
+            wallet.name || 'Wallet Prism';
+
+        document.getElementById('wallet-address').textContent =
+            wallet.address || '-';
+
+        document.getElementById('wallet-total').textContent =
+            formatNumber(wallet.totalBalance || 0);
+
+        document.getElementById('wallet-available').textContent =
+            formatNumber(wallet.availableBalance || 0);
+
+        document.getElementById('wallet-locked').textContent =
+            formatNumber(wallet.lockedStake || 0);
+
+        document.getElementById('wallet-nonce').textContent =
+            formatNumber(wallet.nonce || 0);
+
+        const humanity =
+            document.getElementById('wallet-humanity');
+
+        humanity.textContent = wallet.humanityVerified
+            ? 'Humanit\u00e9 v\u00e9rifi\u00e9e'
+            : 'Non v\u00e9rifi\u00e9';
+
+        humanity.classList.toggle(
+            'verified',
+            Boolean(wallet.humanityVerified)
+        );
+
+        humanity.classList.toggle(
+            'error',
+            !wallet.humanityVerified
+        );
+
+        const claimButton =
+            document.getElementById('faucet-claim-button');
+
+        claimButton.disabled = false;
+        claimButton.textContent = 'Claim 100 PRISM';
+
+        result.hidden = false;
+
+    } catch (error) {
+        currentWalletAddress = '';
+        result.hidden = true;
+
+        showToast(
+            `Wallet introuvable : ${error.message}`,
+            'error'
+        );
+    }
+}
+
+async function claimFaucet() {
+    if (!currentWalletAddress) {
+        showToast(
+            "Recherchez d'abord un wallet Prism",
+            'error'
+        );
+        return;
+    }
+
+    const button =
+        document.getElementById('faucet-claim-button');
+
+    button.disabled = true;
+    button.textContent = 'Distribution...';
+
+    let keepDisabled = false;
+
+    try {
+        const response = await fetch(
+            `${API_BASE_URL}/api/v1/faucet`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    address: currentWalletAddress
+                })
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(await readAPIError(response));
+        }
+
+        const claim = await response.json();
+
+        showToast(
+            `+${claim.amount} PRISM re\u00e7us dans le bloc #${claim.block}`,
+            'success'
+        );
+
+        await lookupWallet();
+
+        button.textContent = 'Faucet r\u00e9clam\u00e9';
+        button.disabled = true;
+        keepDisabled = true;
+
+    } catch (error) {
+        const message = error.message || 'Faucet indisponible';
+
+        if (message.includes('already claimed')) {
+            button.textContent = 'Faucet d\u00e9j\u00e0 r\u00e9clam\u00e9';
+            button.disabled = true;
+            keepDisabled = true;
+        }
+
+        showToast(message, 'error');
+
+    } finally {
+        if (!keepDisabled) {
+            button.disabled = false;
+            button.textContent = 'Claim 100 PRISM';
+        }
+    }
+}
+
+// ============================================================================
 // Worker Info Modal
 // ============================================================================
 function showWorkerInfo() {
@@ -535,7 +703,7 @@ async function loadRecentActivity() {
                                         ${
                                             entry.verified
                                                 ? 'PoUW vérifié'
-                                                : 'Non vérifié'
+                                                : 'Non v\u00e9rifi\u00e9'
                                         }
                                     </span>
                                 </div>
