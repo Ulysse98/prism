@@ -18,6 +18,7 @@ const (
 	TaskTypeImageConvolution     = "image_convolution"
 	TaskTypeMLInferenceBatch     = "ml_inference_batch"
 	TaskTypeMLInferenceQuantized = "ml_inference_quantized"
+	TaskTypeQuantumSimulation    = "quantum_simulation"
 )
 
 type Task struct {
@@ -195,6 +196,16 @@ func ValidateTask(
 				task,
 			)
 
+	case TaskTypeQuantumSimulation:
+		if err = validateQuantumSimulationTask(task); err != nil {
+			return err
+		}
+
+		expectedInputHash, err =
+			calculateInputHash(
+				task.Values,
+			)
+
 	default:
 		return fmt.Errorf(
 			"unsupported useful work task type: %s",
@@ -311,6 +322,8 @@ func scoreForTask(
 	case TaskTypeMLInferenceBatch:
 		return mlInferenceWorkUnits(task)
 
+	case TaskTypeQuantumSimulation:
+		return quantumSimulationWorkUnits(task)
 	default:
 		return uint64(len(task.Values))
 	}
@@ -406,7 +419,8 @@ func Execute(
 	if task.Type == TaskTypeMatrixMultiply ||
 		task.Type == TaskTypeImageConvolution ||
 		task.Type == TaskTypeMLInferenceBatch ||
-		task.Type == TaskTypeMLInferenceQuantized {
+		task.Type == TaskTypeMLInferenceQuantized ||
+		task.Type == TaskTypeQuantumSimulation {
 
 		var resultValues []uint64
 		var err error
@@ -427,6 +441,10 @@ func Execute(
 		case TaskTypeMLInferenceBatch:
 			resultValues, err =
 				ComputeMLInferenceBatch(task)
+
+		case TaskTypeQuantumSimulation:
+			resultValues, err =
+				ComputeQuantumSimulation(task)
 		}
 		if err != nil {
 			return Proof{}, err
@@ -558,7 +576,8 @@ func VerifyProof(
 	if proof.Task.Type == TaskTypeMatrixMultiply ||
 		proof.Task.Type == TaskTypeImageConvolution ||
 		proof.Task.Type == TaskTypeMLInferenceBatch ||
-		proof.Task.Type == TaskTypeMLInferenceQuantized {
+		proof.Task.Type == TaskTypeMLInferenceQuantized ||
+		proof.Task.Type == TaskTypeQuantumSimulation {
 
 		if proof.Result != 0 {
 			return fmt.Errorf(
@@ -593,6 +612,27 @@ func VerifyProof(
 				ComputeMLInferenceBatch(
 					proof.Task,
 				)
+
+		case TaskTypeQuantumSimulation:
+			_, shots, quantumErr :=
+				QuantumSimulationParameters(proof.Task)
+			if quantumErr != nil {
+				return quantumErr
+			}
+
+			if quantumErr = VerifyBellCounts(
+				proof.ResultValues,
+				shots,
+			); quantumErr != nil {
+				return quantumErr
+			}
+
+			// Quantum measurement is probabilistic. The proof
+			// commits to the observed, statistically valid counts.
+			expectedValues = append(
+				[]uint64(nil),
+				proof.ResultValues...,
+			)
 		}
 		if err != nil {
 			return err

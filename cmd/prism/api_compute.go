@@ -95,6 +95,17 @@ func (payload apiComputeCreateJobRequest) buildTask() (
 			payload.ValuesB,
 		)
 
+	case usefulwork.TaskTypeQuantumSimulation:
+		if len(payload.Values) != 2 {
+			return usefulwork.Task{}, fmt.Errorf(
+				"quantum_simulation requires values [qubits, shots]",
+			)
+		}
+
+		return usefulwork.NewQuantumSimulationTask(
+			payload.Values[0],
+			payload.Values[1],
+		)
 	case "":
 		return usefulwork.Task{}, fmt.Errorf(
 			"compute task type cannot be empty",
