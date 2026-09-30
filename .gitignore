@@ -9,3 +9,5 @@ data-backup*/
 *.exe~
 
 integrations/arbitrum/ignition/deployments/chain-31337/
+
+.venv-cudaq/
