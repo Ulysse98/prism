@@ -494,7 +494,7 @@
         <div id="create-job-modal" class="modal">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h3>Crer un Job ML</h3>
+                    <h3>Cr?er un job de compute</h3>
                     <button class="modal-close" onclick="closeCreateJobModal()">&times;</button>
                 </div>
                 <form id="create-job-form" onsubmit="createJob(event)">
@@ -507,12 +507,13 @@
                             <option value="prime_count">Prime Count</option>
                             <option value="matrix_multiply">Matrix Multiply</option>
                             <option value="ml_inference_quantized">ML Inference (Quantized)</option>
+                            <option value="quantum_simulation">Quantum Simulation ? Bell</option>
                         </select>
                     </div>
 
                     <div class="form-group">
                         <label for="job-values">Valeurs (JSON)</label>
-                        <textarea id="job-values" rows="3" placeholder="[1, 2, 3, 4, 5]"></textarea>
+                        <textarea id="job-values" rows="3" placeholder="Quantum Bell: [2, 4096] | autres t?ches: [1, 2, 3]"></textarea>
                     </div>
 
                     <div class="form-group">
@@ -530,7 +531,7 @@
                             Annuler
                         </button>
                         <button type="submit" class="btn btn-primary">
-                            Crer le Job
+                            Cr?er le Job
                         </button>
                     </div>
                 </form>
