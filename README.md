@@ -1,4 +1,4 @@
-# Prism v0.41 — cross-chain compute receipts
+# Prism v0.54 — Quantum PoUW marketplace
 
 > **Proof of Stake secures. Proof of Useful Work computes.
 > Proof of Useful Participation rewards contribution.**
@@ -14,7 +14,7 @@ It combines three complementary mechanisms:
 
 ## Current status
 
-**Node software version:** Prism v0.50.0
+**Node software version:** Prism v0.54.0
 
 **Status:** Active development
 
@@ -37,6 +37,20 @@ Proof v2 settlements. Each receipt binds the compute Job ID, Proof ID,
 worker identity hash and Prism chain identity to a canonical Keccak-256
 Registry ID. The same receipt can be anchored and independently verified
 on Arbitrum Sepolia and Solana Devnet.
+
+Prism v0.53 introduced experimental **Quantum PoUW** through the
+`quantum_simulation` task type. The first workload is a two-qubit Bell
+circuit with bounded shot counts. Execution can use the deterministic
+built-in backend or an external NVIDIA CUDA-Q backend.
+
+Prism v0.54 connects Quantum PoUW to the complete compute-marketplace
+lifecycle. Quantum jobs can be funded, discovered and claimed by an
+autonomous worker, executed through CUDA-Q, committed as context-bound
+Proof v2 proofs, settled on the Prism chain, rewarded in PRISM and exposed
+through canonical cross-chain receipts.
+
+The v0.54 Explorer supports the current `{count, jobs}` response,
+Quantum Bell job creation, Proof IDs and verified receipt context.
 
 - [Python setup and numerical parity](tools/python/README.md)
 - [Signed HTTP worker](tools/python/WORKER.md)

@@ -198,39 +198,133 @@ async function loadJobs() {
     if (!await checkNetworkStatus()) return;
 
     const jobsBody = document.getElementById('jobs-body');
-    jobsBody.innerHTML = '<tr class="loading-row"><td colspan="7">Chargement des jobs...</td></tr>';
+
+    jobsBody.innerHTML =
+        '<tr class="loading-row"><td colspan="7">Chargement des jobs...</td></tr>';
 
     try {
-        const response = await fetch(`${API_BASE_URL}/api/v1/compute/jobs`);
-        const jobs = await response.json();
+        const response = await fetch(
+            `${API_BASE_URL}/api/v1/compute/jobs`
+        );
 
-        if (!jobs || jobs.length === 0) {
-            jobsBody.innerHTML = '<tr><td colspan="7">Aucun job trouvé</td></tr>';
+        const payload = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                payload?.error || `HTTP ${response.status}`
+            );
+        }
+
+        // v0.54:
+        // Prism API returns { count, jobs }.
+        // Keep array support for older nodes.
+        const jobs = Array.isArray(payload)
+            ? payload
+            : (payload.jobs ?? []);
+
+        if (jobs.length === 0) {
+            jobsBody.innerHTML =
+                '<tr><td colspan="7">Aucun job trouv?</td></tr>';
             return;
         }
 
-        // Sort by creation date (newest first)
-        jobs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        jobs.sort(
+            (a, b) =>
+                (b.createdAt || 0) -
+                (a.createdAt || 0)
+        );
 
-        jobsBody.innerHTML = jobs.map(job => `
-            <tr>
-                <td class="hash">${job.id ? job.id.substring(0, 16) + '...' : '-'}</td>
-                <td>${job.task?.type || job.type || '-'}</td>
-                <td>${job.requester || '-'}</td>
-                <td>${job.worker || '-'}</td>
-                <td>${formatNumber(job.reward || 0)}</td>
-                <td><span class="status-badge ${job.status || 'open'}">${job.status || 'open'}</span></td>
-                <td>
-                    ${job.status === 'open' ? 
-                        `<button class="btn btn-primary" onclick="claimJob('${job.id}')">Réclamer</button>` : ''}
-                    <button class="btn btn-secondary" onclick="viewJob('${job.id}')">Voir</button>
-                </td>
-            </tr>
-        `).join('');
+        jobsBody.innerHTML = jobs.map(job => {
+            const taskType =
+                job.task?.type ||
+                job.type ||
+                '-';
+
+            const taskLabel =
+                taskType === 'quantum_simulation'
+                    ? 'Quantum Bell'
+                    : taskType;
+
+            const proof =
+                job.proofId
+                    ? `
+                        <div
+                            class="hash"
+                            title="${job.proofId}"
+                        >
+                            Proof ${formatHash(job.proofId)}
+                        </div>
+                    `
+                    : '';
+
+            const status =
+                String(
+                    job.status || 'OPEN'
+                ).toUpperCase();
+
+            return `
+                <tr>
+                    <td class="hash">
+                        ${
+                            job.id
+                                ? job.id.substring(0, 16) + '...'
+                                : '-'
+                        }
+                    </td>
+
+                    <td>
+                        ${taskLabel}
+                        ${proof}
+                    </td>
+
+                    <td>${job.requester || '-'}</td>
+                    <td>${job.worker || '-'}</td>
+
+                    <td>
+                        ${formatNumber(job.reward || 0)}
+                    </td>
+
+                    <td>
+                        <span
+                            class="status-badge ${status.toLowerCase()}"
+                        >
+                            ${status}
+                        </span>
+                    </td>
+
+                    <td>
+                        ${
+                            status === 'OPEN'
+                                ? `
+                                    <button
+                                        class="btn btn-primary"
+                                        onclick="claimJob('${job.id}')"
+                                    >
+                                        R?clamer
+                                    </button>
+                                `
+                                : ''
+                        }
+
+                        <button
+                            class="btn btn-secondary"
+                            onclick="viewJob('${job.id}')"
+                        >
+                            Voir
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
 
     } catch (error) {
-        console.error('Failed to load jobs:', error);
-        jobsBody.innerHTML = '<tr><td colspan="7">Erreur lors du chargement</td></tr>';
+        console.error(
+            'Failed to load jobs:',
+            error
+        );
+
+        jobsBody.innerHTML =
+            '<tr><td colspan="7">Erreur lors du chargement</td></tr>';
     }
 }
 
@@ -251,45 +345,128 @@ function closeCreateJobModal() {
 async function createJob(event) {
     event.preventDefault();
 
-    const jobType = document.getElementById('job-type').value;
-    const jobValues = document.getElementById('job-values').value;
-    const jobReward = document.getElementById('job-reward').value;
-    const jobRequester = document.getElementById('job-requester').value;
+    const jobType =
+        document.getElementById('job-type').value;
 
-    if (!jobType || !jobReward || !jobRequester) {
-        showToast('Veuillez remplir tous les champs obligatoires', 'error');
+    const jobValues =
+        document.getElementById('job-values').value;
+
+    const jobReward =
+        document.getElementById('job-reward').value;
+
+    const jobRequester =
+        document.getElementById('job-requester').value;
+
+    if (
+        !jobType ||
+        !jobReward ||
+        !jobRequester
+    ) {
+        showToast(
+            'Veuillez remplir tous les champs obligatoires',
+            'error'
+        );
         return;
     }
 
     try {
+        let values;
+
+        try {
+            values =
+                JSON.parse(
+                    jobValues || '[]'
+                );
+        } catch (_) {
+            throw new Error(
+                'Les valeurs doivent ?tre un tableau JSON valide.'
+            );
+        }
+
+        if (!Array.isArray(values)) {
+            throw new Error(
+                'Les valeurs doivent ?tre un tableau JSON.'
+            );
+        }
+
+        if (
+            jobType === 'quantum_simulation' &&
+            (
+                values.length !== 2 ||
+                Number(values[0]) !== 2 ||
+                Number(values[1]) <= 0
+            )
+        ) {
+            throw new Error(
+                'Quantum Bell attend [2, shots], par exemple [2, 4096].'
+            );
+        }
+
         const payload = {
             type: jobType,
-            values: JSON.parse(jobValues || '[]'),
-            reward: parseInt(jobReward),
+            values,
+            reward: parseInt(
+                jobReward,
+                10
+            ),
             requester: jobRequester,
-            nonce: Math.floor(Date.now() / 1000)
+            nonce: Math.floor(
+                Date.now() / 1000
+            )
         };
 
-        const response = await fetch(`${API_BASE_URL}/api/v1/compute/jobs`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
+        const response = await fetch(
+            `${API_BASE_URL}/api/v1/compute/jobs`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type':
+                        'application/json'
+                },
+                body: JSON.stringify(
+                    payload
+                )
+            }
+        );
 
-        if (response.ok) {
-            const data = await response.json();
-            showToast('Job créé avec succès! ID: ' + data.id, 'success');
-            closeCreateJobModal();
-            loadJobs();
-        } else {
-            const error = await response.text();
-            showToast('Erreur: ' + error, 'error');
+        if (!response.ok) {
+            throw new Error(
+                await readAPIError(response)
+            );
         }
+
+        const data =
+            await response.json();
+
+        // v0.54 API response:
+        // { job: {...} }
+        const createdJob =
+            data.job ?? data;
+
+        const createdJobId =
+            createdJob.id || '-';
+
+        showToast(
+            'Job cr?? avec succ?s ! ID: ' +
+                createdJobId,
+            'success'
+        );
+
+        closeCreateJobModal();
+
+        await loadJobs();
+
     } catch (error) {
-        console.error('Failed to create job:', error);
-        showToast('Erreur lors de la création du job', 'error');
+        console.error(
+            'Failed to create job:',
+            error
+        );
+
+        showToast(
+            error.message ||
+                'Erreur lors de la cr?ation du job',
+            'error'
+        );
     }
 }
 
@@ -298,8 +475,95 @@ function claimJob(jobId) {
     // In a full implementation, this would call the API
 }
 
-function viewJob(jobId) {
-    showToast('Affichage du job: ' + jobId, 'info');
+async function viewJob(jobId) {
+    try {
+        const response = await fetch(
+            `${API_BASE_URL}/api/v1/compute/jobs/${encodeURIComponent(jobId)}`
+        );
+
+        if (!response.ok) {
+            throw new Error(
+                await readAPIError(response)
+            );
+        }
+
+        const payload =
+            await response.json();
+
+        const job =
+            payload.job ?? payload;
+
+        const taskType =
+            job.task?.type ||
+            job.type ||
+            '-';
+
+        const taskLabel =
+            taskType === 'quantum_simulation'
+                ? 'Quantum Bell'
+                : taskType;
+
+        const status =
+            String(
+                job.status || '-'
+            ).toUpperCase();
+
+        let message =
+            `${taskLabel} ? ${status} ? ` +
+            `${formatNumber(job.reward || 0)} PRISM`;
+
+        if (job.proofId) {
+            message +=
+                ` ? Proof ${formatHash(job.proofId)}`;
+        }
+
+        if (status === 'VERIFIED') {
+            const receiptResponse =
+                await fetch(
+                    `${API_BASE_URL}/api/v1/receipts/${encodeURIComponent(jobId)}`
+                );
+
+            if (receiptResponse.ok) {
+                const receipt =
+                    await receiptResponse.json();
+
+                const registryId =
+                    receipt
+                        .crossChainReceipt
+                        ?.registryId;
+
+                if (registryId) {
+                    message +=
+                        ` ? Receipt ${formatHash(registryId)}`;
+                }
+
+                if (
+                    receipt
+                        .prism
+                        ?.contextVerified
+                ) {
+                    message +=
+                        ' ? Context ?';
+                }
+            }
+        }
+
+        showToast(
+            message,
+            'success'
+        );
+
+    } catch (error) {
+        console.error(
+            'Failed to load compute job details:',
+            error
+        );
+
+        showToast(
+            `Impossible de charger le job : ${error.message}`,
+            'error'
+        );
+    }
 }
 
 function loadMyJobs() {

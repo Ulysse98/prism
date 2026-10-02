@@ -284,7 +284,7 @@ curl http://localhost:8080/api/v1/validators
 |--------|----------|-------------|
 | GET | `/api/v1/participation` | Scores de participation |
 
-### Compute Jobs (ML Tasks)
+### Compute Jobs (PoUW)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/v1/compute/jobs` | Liste tous les jobs |
@@ -390,7 +390,7 @@ Ouvrez votre navigateur et allez sur [http://localhost](http://localhost) (ou le
 - **Block Height** : Hauteur actuelle de la blockchain
 - **Validators** : Nombre de validateurs actifs
 - **Total Stake** : Montant total de PRISM stake
-- **ML Jobs** : Nombre de jobs de calcul en cours
+- **Compute Jobs** : Nombre de jobs de calcul en cours
 - **Chain Hash** : Hash du dernier block
 - **Protocol** : Version du protocole
 
@@ -399,7 +399,7 @@ Ouvrez votre navigateur et allez sur [http://localhost](http://localhost) (ou le
 - Recherche de blocks par hash ou hauteur
 - Details de chaque block (proposer, transactions, useful work)
 
-#### ML Jobs
+#### Compute Jobs
 - Liste de tous les jobs de calcul
 - Filtres par statut (OPEN, CLAIMED, VERIFIED)
 - Creation de nouveaux jobs
@@ -417,13 +417,13 @@ Ouvrez votre navigateur et allez sur [http://localhost](http://localhost) (ou le
 
 ---
 
-## 7. Soumettre des Jobs ML
+## 7. Soumettre des Jobs Compute
 
 ### Via l'Explorer
 1. Allez dans la section **Compute** ou **ML Jobs**
 2. Cliquez sur **Creer un Job**
 3. Remplissez le formulaire :
-   - **Type de tache** : Selectionnez le type (sum_squares, dot_product, prime_count, matrix_multiply, ml_inference_quantized)
+   - **Type de tache** : Selectionnez le type (sum_squares, dot_product, prime_count, matrix_multiply, ml_inference_quantized, quantum_simulation)
    - **Valeurs** : Entreez les valeurs au format JSON (ex: `[1, 2, 3, 4, 5]`)
    - **Recompense** : Montant en PRISM pour le worker
    - **Requester** : Votre adresse ou nom
@@ -441,6 +441,7 @@ Voir la section [Endpoints API - Compute Jobs](#compute-jobs-ml-tasks).
 | `prime_count` | Compter les nombres premiers | `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]` |
 | `matrix_multiply` | Multiplication matricielle | `{"rowsA": 2, "colsA": 3, "colsB": 2, "values": [...], "valuesB": [...]}` |
 | `ml_inference_quantized` | Inference ML quantifiee | Voir [Python Runtime](#python-runtime) |
+| `quantum_simulation` | Simulation quantique Bell (2 qubits) | `[2, 4096]` |
 
 ---
 
