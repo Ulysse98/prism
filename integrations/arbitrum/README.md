@@ -43,7 +43,7 @@ Arbitrum Sepolia
 
 ```
 
-## Deployed Contract
+## Legacy V1 Deployment (Historical)
 
 Network:
 
@@ -52,13 +52,13 @@ Arbitrum Sepolia
 Chain ID: 421614
 ```
 
-PrismProofRegistry:
+Original PrismProofRegistry (V1):
 
 ```text
 0x8B4Cc27E3ACaF6b6deBC2c96462240eC196EfBC0
 ```
 
-## Verified End-to-End Demo
+## Legacy V1 End-to-End Demo
 
 A real Prism v0.40 Proof v2 has been successfully anchored on Arbitrum Sepolia.
 
@@ -225,7 +225,7 @@ The script:
 
 Running it again for an already anchored job does not submit a duplicate transaction.
 
-### 6. Check the deployed registry
+### 6. Check the legacy V1 registry
 
 ```shell
 npx hardhat run scripts/checkPrismProofRegistry.ts --network arbitrumSepolia
@@ -252,7 +252,7 @@ npx hardhat test solidity
 Current result:
 
 ```text
-18 passing
+24 passing
 ```
 
 ## Repository Layout
@@ -274,7 +274,7 @@ scripts/
   anchorLatestComputeProof.ts
 ```
 
-## Status
+## Historical V1 Status
 
 ```text
 Prism v0.40
@@ -284,11 +284,11 @@ Arbitrum Sepolia
 End-to-end anchor confirmed
 ```
 
-The current integration demonstrates a complete Prism compute proof lifecycle from useful computation to a publicly queryable EVM anchor.
+This historical V1 milestone demonstrates a complete Prism compute proof lifecycle from useful computation to a publicly queryable EVM anchor.
 
-## Arbitrum Sepolia deployment
+## Current Arbitrum Sepolia Deployment - Registry V2
 
-Prism Proof Registry V2 is deployed and live on Arbitrum Sepolia.
+Prism Proof Registry V2 is the current documented deployment on Arbitrum Sepolia. The current Prism codebase is v0.54.
 
 - Network: Arbitrum Sepolia
 - Chain ID: `421614`

@@ -1,0 +1,39 @@
+name: Arbitrum Registry CI
+
+on:
+  push:
+    paths:
+      - "integrations/arbitrum/**"
+      - ".github/workflows/arbitrum.yml"
+  pull_request:
+    paths:
+      - "integrations/arbitrum/**"
+      - ".github/workflows/arbitrum.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: integrations/arbitrum
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: integrations/arbitrum/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile contracts
+        run: npm run compile
+
+      - name: Run Arbitrum registry tests
+        run: npm test
