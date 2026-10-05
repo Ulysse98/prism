@@ -124,3 +124,88 @@ func TestSettlementStoreRejectsIncompleteConfirmation(
 		)
 	}
 }
+
+func TestSettlementStorePersistsConfirmedMonad(
+	t *testing.T,
+) {
+	dataDir := t.TempDir()
+
+	store, err :=
+		NewSettlementStore(
+			dataDir,
+		)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	txHash :=
+		settlementTestHex32("de")
+
+	input := Settlement{
+		RegistryID: settlementTestHex32("ef"),
+		Chain:      SettlementChainMonad,
+		Status:     SettlementStatusConfirmed,
+		TxHash:     txHash,
+		RegistryAddress: "0x" +
+			strings.Repeat(
+				"34",
+				20,
+			),
+		BlockNumber: 42,
+		ExplorerURL: "https://testnet.monadscan.com/tx/" +
+			txHash,
+	}
+
+	saved, err :=
+		store.Upsert(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if saved.Chain !=
+		SettlementChainMonad {
+
+		t.Fatalf(
+			"unexpected settlement chain: %s",
+			saved.Chain,
+		)
+	}
+
+	reloaded, err :=
+		NewSettlementStore(
+			dataDir,
+		)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	settlements, err :=
+		reloaded.ForRegistry(
+			input.RegistryID,
+		)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(settlements) != 1 {
+		t.Fatalf(
+			"expected 1 settlement, got %d",
+			len(settlements),
+		)
+	}
+
+	got := settlements[0]
+
+	if got.Chain != SettlementChainMonad ||
+		got.TxHash != input.TxHash ||
+		got.RegistryAddress !=
+			input.RegistryAddress ||
+		got.BlockNumber !=
+			input.BlockNumber {
+
+		t.Fatalf(
+			"persisted Monad settlement mismatch: %+v",
+			got,
+		)
+	}
+}

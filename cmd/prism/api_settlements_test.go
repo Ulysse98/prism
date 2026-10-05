@@ -212,3 +212,114 @@ func TestSettlementAPIRejectsRemoteWriter(
 		)
 	}
 }
+
+func TestSettlementAPIStoresAndReturnsMonadConfirmation(
+	t *testing.T,
+) {
+	api :=
+		newSettlementTestAPI(t)
+
+	payload :=
+		crosschain.Settlement{
+			RegistryID: apiSettlementHex32("ef"),
+			Chain: crosschain.
+				SettlementChainMonad,
+			Status: crosschain.
+				SettlementStatusConfirmed,
+			TxHash: apiSettlementHex32("de"),
+			RegistryAddress: "0x" +
+				strings.Repeat(
+					"34",
+					20,
+				),
+			BlockNumber: 42,
+			ExplorerURL: "https://testnet.monadscan.com/tx/" +
+				apiSettlementHex32("de"),
+		}
+
+	body, err :=
+		json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	request :=
+		httptest.NewRequest(
+			http.MethodPost,
+			"/api/v1/settlements",
+			bytes.NewReader(body),
+		)
+
+	request.RemoteAddr =
+		"127.0.0.1:12345"
+
+	response :=
+		httptest.NewRecorder()
+
+	api.handleSettlements(
+		response,
+		request,
+	)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf(
+			"expected HTTP 200, got %d: %s",
+			response.Code,
+			response.Body.String(),
+		)
+	}
+
+	getRequest :=
+		httptest.NewRequest(
+			http.MethodGet,
+			"/api/v1/settlements/"+
+				payload.RegistryID,
+			nil,
+		)
+
+	getResponse :=
+		httptest.NewRecorder()
+
+	api.handleSettlementByRegistry(
+		getResponse,
+		getRequest,
+	)
+
+	if getResponse.Code != http.StatusOK {
+		t.Fatalf(
+			"expected HTTP 200, got %d: %s",
+			getResponse.Code,
+			getResponse.Body.String(),
+		)
+	}
+
+	var result struct {
+		RegistryID string `json:"registryId"`
+
+		Settlements []crosschain.Settlement `json:"settlements"`
+	}
+
+	if err :=
+		json.NewDecoder(
+			getResponse.Body,
+		).Decode(&result); err != nil {
+
+		t.Fatal(err)
+	}
+
+	if len(result.Settlements) != 1 {
+		t.Fatalf(
+			"expected 1 settlement, got %d",
+			len(result.Settlements),
+		)
+	}
+
+	if result.Settlements[0].Chain !=
+		crosschain.SettlementChainMonad {
+
+		t.Fatalf(
+			"unexpected settlement chain: %s",
+			result.Settlements[0].Chain,
+		)
+	}
+}
