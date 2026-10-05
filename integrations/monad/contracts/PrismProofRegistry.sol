@@ -2,7 +2,7 @@
 pragma solidity ^0.8.34;
 
 /// @title PrismProofRegistry
-/// @notice Anchors verified Prism Proof v2 compute proofs on Arbitrum.
+/// @notice Anchors verified Prism Proof v2 compute proofs on Monad.
 contract PrismProofRegistry {
     struct ProofRecord {
         bytes32 proofId;

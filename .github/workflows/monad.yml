@@ -1,0 +1,42 @@
+name: Monad Registry CI
+
+on:
+  push:
+    paths:
+      - "integrations/monad/**"
+      - ".github/workflows/monad.yml"
+  pull_request:
+    paths:
+      - "integrations/monad/**"
+      - ".github/workflows/monad.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: integrations/monad
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: integrations/monad/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check integration
+        run: npx tsc --noEmit
+
+      - name: Compile contracts
+        run: npm run compile
+
+      - name: Run Monad registry tests
+        run: npm test
