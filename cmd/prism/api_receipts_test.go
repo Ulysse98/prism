@@ -255,9 +255,9 @@ func TestReceiptAPIReconstructsVerifiedCrossChainReceipt(
 		)
 	}
 
-	if len(decoded.Anchors) != 2 {
+	if len(decoded.Anchors) != 3 {
 		t.Fatalf(
-			"expected 2 anchors, got %d",
+			"expected 3 anchors, got %d",
 			len(decoded.Anchors),
 		)
 	}
@@ -295,6 +295,81 @@ func TestReceiptAPIReconstructsVerifiedCrossChainReceipt(
 		t.Fatalf(
 			"unexpected Solana status: %s",
 			decoded.Anchors[1].Status,
+		)
+	}
+}
+
+func TestReceiptAnchorsIncludesMonad(
+	t *testing.T,
+) {
+	txHash :=
+		"0x" +
+			strings.Repeat(
+				"de",
+				32,
+			)
+
+	settlements :=
+		[]crosschain.Settlement{
+			{
+				RegistryID: "0x" +
+					strings.Repeat(
+						"ef",
+						32,
+					),
+				Chain: crosschain.
+					SettlementChainMonad,
+				Status: crosschain.
+					SettlementStatusConfirmed,
+				TxHash: txHash,
+				RegistryAddress: "0x" +
+					strings.Repeat(
+						"34",
+						20,
+					),
+				BlockNumber: 42,
+				ExplorerURL: "https://testnet.monadscan.com/tx/" +
+					txHash,
+			},
+		}
+
+	anchors :=
+		apiReceiptAnchors(
+			settlements,
+		)
+
+	if len(anchors) != 3 {
+		t.Fatalf(
+			"expected 3 receipt anchors, got %d",
+			len(anchors),
+		)
+	}
+
+	monad :=
+		anchors[2]
+
+	if monad.Chain !=
+		crosschain.SettlementChainMonad {
+
+		t.Fatalf(
+			"unexpected Monad chain: %s",
+			monad.Chain,
+		)
+	}
+
+	if monad.Status !=
+		apiReceiptStatusVerified {
+
+		t.Fatalf(
+			"unexpected Monad status: %s",
+			monad.Status,
+		)
+	}
+
+	if monad.TxHash != txHash {
+		t.Fatalf(
+			"unexpected Monad tx hash: %s",
+			monad.TxHash,
 		)
 	}
 }

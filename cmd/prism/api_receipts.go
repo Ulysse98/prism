@@ -83,6 +83,7 @@ func apiReceiptAnchors(
 	chains := []string{
 		crosschain.SettlementChainArbitrum,
 		crosschain.SettlementChainSolana,
+		crosschain.SettlementChainMonad,
 	}
 
 	anchors := make(
