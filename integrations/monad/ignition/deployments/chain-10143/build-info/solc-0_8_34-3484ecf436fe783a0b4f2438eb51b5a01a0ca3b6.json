@@ -1,0 +1,49 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_34-3484ecf436fe783a0b4f2438eb51b5a01a0ca3b6",
+  "solcVersion": "0.8.34",
+  "solcLongVersion": "0.8.34+commit.80d5c536",
+  "compilerType": "solc",
+  "toolVersions": {
+    "hardhat": "3.18.1"
+  },
+  "userSourceNameMap": {
+    "contracts/PrismProofRegistry.sol": "project/contracts/PrismProofRegistry.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "osaka",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode.linkReferences",
+            "evm.bytecode.object",
+            "evm.bytecode.opcodes",
+            "evm.bytecode.sourceMap",
+            "evm.deployedBytecode.immutableReferences",
+            "evm.deployedBytecode.linkReferences",
+            "evm.deployedBytecode.object",
+            "evm.deployedBytecode.opcodes",
+            "evm.deployedBytecode.sourceMap",
+            "evm.methodIdentifiers"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/PrismProofRegistry.sol": {
+        "content": "// SPDX-License-Identifier: MIT\r\npragma solidity ^0.8.34;\r\n\r\n/// @title PrismProofRegistry\r\n/// @notice Anchors verified Prism Proof v2 compute proofs on Arbitrum.\r\ncontract PrismProofRegistry {\r\n    struct ProofRecord {\r\n        bytes32 proofId;\r\n        bytes32 workerIdHash;\r\n        address submitter;\r\n        uint64 registeredAt;\r\n        bool exists;\r\n    }\r\n\r\n    address public owner;\r\n\r\n    mapping(address => bool) public recorders;\r\n\r\n    mapping(bytes32 => ProofRecord) private proofsByJobId;\r\n    mapping(bytes32 => bytes32) private jobByProofId;\r\n\r\n    // Prism Proof Registry V2 metadata.\r\n    mapping(bytes32 => bytes32) private prismChainIdByJobId;\r\n    mapping(bytes32 => bytes32) private registryIdByJobId;\r\n    mapping(bytes32 => bytes32) private jobByRegistryId;\r\n\r\n    uint256 public proofCount;\r\n\r\n    error Unauthorized();\r\n    error InvalidJobId();\r\n    error InvalidProofId();\r\n    error InvalidWorkerIdHash();\r\n    error InvalidPrismChainIdHash();\r\n\r\n    error JobAlreadyRegistered(bytes32 jobId);\r\n    error ProofAlreadyRegistered(bytes32 proofId);\r\n    error RegistryAlreadyRegistered(bytes32 registryId);\r\n\r\n    event RecorderUpdated(\r\n        address indexed recorder,\r\n        bool allowed\r\n    );\r\n\r\n    /// @notice Original Prism proof event.\r\n    /// @dev Kept unchanged for backwards compatibility.\r\n    event ProofRegistered(\r\n        bytes32 indexed jobId,\r\n        bytes32 indexed proofId,\r\n        bytes32 indexed workerIdHash,\r\n        address submitter,\r\n        uint64 registeredAt\r\n    );\r\n\r\n    /// @notice Emitted when a Proof v2 anchor is bound to a Prism chain.\r\n    event ProofAnchorRegistered(\r\n        bytes32 indexed registryId,\r\n        bytes32 indexed jobId,\r\n        bytes32 indexed proofId,\r\n        bytes32 prismChainIdHash\r\n    );\r\n\r\n    constructor() {\r\n        owner = msg.sender;\r\n        recorders[msg.sender] = true;\r\n\r\n        emit RecorderUpdated(msg.sender, true);\r\n    }\r\n\r\n    modifier onlyOwner() {\r\n        if (msg.sender != owner) {\r\n            revert Unauthorized();\r\n        }\r\n\r\n        _;\r\n    }\r\n\r\n    modifier onlyRecorder() {\r\n        if (!recorders[msg.sender]) {\r\n            revert Unauthorized();\r\n        }\r\n\r\n        _;\r\n    }\r\n\r\n    function setRecorder(\r\n        address recorder,\r\n        bool allowed\r\n    ) external onlyOwner {\r\n        recorders[recorder] = allowed;\r\n\r\n        emit RecorderUpdated(recorder, allowed);\r\n    }\r\n\r\n    /// @notice Legacy proof registration entrypoint.\r\n    /// @dev Preserved so existing Prism tooling remains compatible.\r\n    function registerProof(\r\n        bytes32 jobId,\r\n        bytes32 proofId,\r\n        bytes32 workerIdHash\r\n    ) external onlyRecorder {\r\n        _registerProof(\r\n            jobId,\r\n            proofId,\r\n            workerIdHash,\r\n            bytes32(0)\r\n        );\r\n    }\r\n\r\n    /// @notice Register a Prism Proof v2 anchor bound to a Prism chain.\r\n    /// @return registryId Deterministic identifier for the cross-chain anchor.\r\n    function registerProofV2(\r\n        bytes32 jobId,\r\n        bytes32 proofId,\r\n        bytes32 workerIdHash,\r\n        bytes32 prismChainIdHash\r\n    ) external onlyRecorder returns (bytes32 registryId) {\r\n        if (prismChainIdHash == bytes32(0)) {\r\n            revert InvalidPrismChainIdHash();\r\n        }\r\n\r\n        registryId = computeRegistryId(\r\n            jobId,\r\n            prismChainIdHash,\r\n            proofId\r\n        );\r\n\r\n        _registerProof(\r\n            jobId,\r\n            proofId,\r\n            workerIdHash,\r\n            prismChainIdHash\r\n        );\r\n    }\r\n\r\n    function _registerProof(\r\n        bytes32 jobId,\r\n        bytes32 proofId,\r\n        bytes32 workerIdHash,\r\n        bytes32 prismChainIdHash\r\n    ) internal {\r\n        if (jobId == bytes32(0)) {\r\n            revert InvalidJobId();\r\n        }\r\n\r\n        if (proofId == bytes32(0)) {\r\n            revert InvalidProofId();\r\n        }\r\n\r\n        if (workerIdHash == bytes32(0)) {\r\n            revert InvalidWorkerIdHash();\r\n        }\r\n\r\n        if (proofsByJobId[jobId].exists) {\r\n            revert JobAlreadyRegistered(jobId);\r\n        }\r\n\r\n        if (jobByProofId[proofId] != bytes32(0)) {\r\n            revert ProofAlreadyRegistered(proofId);\r\n        }\r\n\r\n        bytes32 registryId;\r\n\r\n        if (prismChainIdHash != bytes32(0)) {\r\n            registryId = computeRegistryId(\r\n                jobId,\r\n                prismChainIdHash,\r\n                proofId\r\n            );\r\n\r\n            if (jobByRegistryId[registryId] != bytes32(0)) {\r\n                revert RegistryAlreadyRegistered(registryId);\r\n            }\r\n        }\r\n\r\n        uint64 registeredAt = uint64(block.timestamp);\r\n\r\n        proofsByJobId[jobId] = ProofRecord({\r\n            proofId: proofId,\r\n            workerIdHash: workerIdHash,\r\n            submitter: msg.sender,\r\n            registeredAt: registeredAt,\r\n            exists: true\r\n        });\r\n\r\n        jobByProofId[proofId] = jobId;\r\n\r\n        if (prismChainIdHash != bytes32(0)) {\r\n            prismChainIdByJobId[jobId] = prismChainIdHash;\r\n            registryIdByJobId[jobId] = registryId;\r\n            jobByRegistryId[registryId] = jobId;\r\n\r\n            emit ProofAnchorRegistered(\r\n                registryId,\r\n                jobId,\r\n                proofId,\r\n                prismChainIdHash\r\n            );\r\n        }\r\n\r\n        proofCount++;\r\n\r\n        emit ProofRegistered(\r\n            jobId,\r\n            proofId,\r\n            workerIdHash,\r\n            msg.sender,\r\n            registeredAt\r\n        );\r\n    }\r\n\r\n    function getProof(\r\n        bytes32 jobId\r\n    ) external view returns (ProofRecord memory) {\r\n        return proofsByJobId[jobId];\r\n    }\r\n\r\n    function getJobForProof(\r\n        bytes32 proofId\r\n    ) external view returns (bytes32) {\r\n        return jobByProofId[proofId];\r\n    }\r\n\r\n    function hasProof(\r\n        bytes32 jobId\r\n    ) external view returns (bool) {\r\n        return proofsByJobId[jobId].exists;\r\n    }\r\n\r\n    function getPrismChainIdHash(\r\n        bytes32 jobId\r\n    ) external view returns (bytes32) {\r\n        return prismChainIdByJobId[jobId];\r\n    }\r\n\r\n    function getRegistryId(\r\n        bytes32 jobId\r\n    ) external view returns (bytes32) {\r\n        return registryIdByJobId[jobId];\r\n    }\r\n\r\n    function getJobForRegistry(\r\n        bytes32 registryId\r\n    ) external view returns (bytes32) {\r\n        return jobByRegistryId[registryId];\r\n    }\r\n\r\n    function computeRegistryId(\r\n        bytes32 jobId,\r\n        bytes32 prismChainIdHash,\r\n        bytes32 proofId\r\n    ) public pure returns (bytes32) {\r\n        return keccak256(\r\n            abi.encode(\r\n                jobId,\r\n                prismChainIdHash,\r\n                proofId\r\n            )\r\n        );\r\n    }\r\n}\r\n"
+      }
+    }
+  }
+}
