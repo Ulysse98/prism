@@ -1,4 +1,4 @@
-﻿data/
+data/
 prism.exe
 
 integrations/world-agentkit/.env
@@ -11,3 +11,4 @@ data-backup*/
 integrations/arbitrum/ignition/deployments/chain-31337/
 
 .venv-cudaq/
+prism-v*.exe

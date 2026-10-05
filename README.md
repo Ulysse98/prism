@@ -1,4 +1,4 @@
-# Prism v0.54 — Quantum PoUW marketplace
+# Prism v0.55 — Monad cross-chain settlement
 
 > **Proof of Stake secures. Proof of Useful Work computes.
 > Proof of Useful Participation rewards contribution.**
@@ -14,7 +14,7 @@ It combines three complementary mechanisms:
 
 ## Current status
 
-**Node software version:** Prism v0.54.0
+**Node software version:** Prism v0.55.0
 
 **Status:** Active development
 
@@ -51,6 +51,20 @@ through canonical cross-chain receipts.
 
 The v0.54 Explorer supports the current `{count, jobs}` response,
 Quantum Bell job creation, Proof IDs and verified receipt context.
+
+Prism v0.55 adds **Monad Testnet** as an EVM cross-chain settlement
+target for canonical Proof v2 receipts. The Monad integration validates
+recorder authorization and deterministic Registry IDs, waits for
+transaction confirmation, and publishes the confirmed settlement back
+to the Prism receipt API.
+
+The PrismProofRegistry deployment on Monad Testnet uses chain ID `10143`
+and address `0xc013BDeb0E20F73d613ed95FD3902802d73626d6`.
+
+The first v0.55 end-to-end Quantum PoUW settlement anchored Registry ID
+`0xf367a0f5f7f480f347041dda02da926dd970bef456fc679d06e60ced901fade8`
+in Monad Testnet block `68444327` and returned a verified Monad anchor
+through `/api/v1/receipts/{jobId}`.
 
 - [Python setup and numerical parity](tools/python/README.md)
 - [Signed HTTP worker](tools/python/WORKER.md)

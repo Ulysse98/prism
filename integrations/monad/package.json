@@ -1,0 +1,20 @@
+{
+  "name": "prism-monad",
+  "version": "0.55.0",
+  "private": true,
+  "description": "Prism Proof v2 settlement integration for Monad",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test solidity"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ignition": "^3.1.8",
+    "@nomicfoundation/hardhat-toolbox-viem": "^5.0.7",
+    "@types/node": "^22.20.2",
+    "forge-std": "github:foundry-rs/forge-std#v1.16.2",
+    "hardhat": "^3.16.0",
+    "typescript": "~6.0.3",
+    "viem": "^2.56.5"
+  },
+  "type": "module"
+}

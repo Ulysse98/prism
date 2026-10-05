@@ -18,6 +18,7 @@ const settlementFilename = "crosschain-settlements.json"
 const (
 	SettlementChainArbitrum = "arbitrum"
 	SettlementChainSolana   = "solana"
+	SettlementChainMonad    = "monad"
 
 	SettlementStatusPending   = "pending"
 	SettlementStatusConfirmed = "confirmed"
@@ -96,7 +97,8 @@ func validateSettlement(
 
 	switch value.Chain {
 	case SettlementChainArbitrum,
-		SettlementChainSolana:
+		SettlementChainSolana,
+		SettlementChainMonad:
 	default:
 		return fmt.Errorf(
 			"unsupported settlement chain: %s",
@@ -133,15 +135,15 @@ func validateSettlement(
 		}
 	}
 
-	if value.Chain ==
-		SettlementChainArbitrum {
+	if value.Chain == SettlementChainArbitrum ||
+		value.Chain == SettlementChainMonad {
 
 		if value.TxHash != "" {
 			if _, err := decodeBytes32(
 				value.TxHash,
 			); err != nil {
 				return fmt.Errorf(
-					"invalid Arbitrum transaction hash: %w",
+					"invalid EVM transaction hash: %w",
 					err,
 				)
 			}
@@ -153,7 +155,7 @@ func validateSettlement(
 			) {
 
 			return fmt.Errorf(
-				"invalid Arbitrum registry address",
+				"invalid EVM registry address",
 			)
 		}
 	}
