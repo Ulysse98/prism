@@ -52,6 +52,10 @@ func ValidateQuantumSimulationInput(raw json.RawMessage) error {
 		return errors.New("shots must be positive")
 	}
 
+	if input.Shots > 1_000_000 {
+		return errors.New("quantum simulation shots exceed maximum")
+	}
+
 	return nil
 }
 
@@ -81,6 +85,13 @@ func VerifyQuantumSimulationResult(result QuantumSimulationResult) error {
 }
 
 func VerifyBellResult(result QuantumSimulationResult) error {
+	for _, state := range []string{"00", "01", "10", "11"} {
+		p, ok := result.Counts[state]
+		if !ok || math.IsNaN(p) || math.IsInf(p, 0) || p < 0 || p > 1 {
+			return fmt.Errorf("invalid Bell probability for %s: %v", state, p)
+		}
+	}
+
 	const tolerance = 0.08
 
 	p00 := result.Counts["00"]
