@@ -2,6 +2,7 @@ package usefulwork
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 
 	"prism/internal/wallet"
@@ -492,5 +493,66 @@ func TestQuantumSimulationExecuteComputeWrongContextRejected(t *testing.T) {
 		t.Fatal(
 			"expected wrong quantum job context to be rejected",
 		)
+	}
+}
+
+func TestQuantumSimulationInputRejectsExcessiveShots(t *testing.T) {
+	raw := json.RawMessage(`{
+        "circuit": "bell",
+        "qubits": 2,
+        "shots": 1000001
+    }`)
+
+	if err := ValidateQuantumSimulationInput(raw); err == nil {
+		t.Fatal("expected excessive shots to be rejected")
+	}
+}
+
+func TestVerifyBellResultRejectsNonFinite(t *testing.T) {
+	cases := []struct {
+		name  string
+		value float64
+	}{
+		{"NaN", math.NaN()},
+		{"PositiveInfinity", math.Inf(1)},
+		{"NegativeInfinity", math.Inf(-1)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := QuantumSimulationResult{
+				Backend:  "cuda-q",
+				Workload: "bell",
+				Shots:    4096,
+				Counts: map[string]float64{
+					"00": tc.value,
+					"01": 0,
+					"10": 0,
+					"11": 0.5,
+				},
+			}
+
+			if err := VerifyBellResult(result); err == nil {
+				t.Fatal("expected invalid probability to be rejected")
+			}
+		})
+	}
+}
+
+func TestVerifyBellResultRejectsNegativeProbability(t *testing.T) {
+	result := QuantumSimulationResult{
+		Backend:  "cuda-q",
+		Workload: "bell",
+		Shots:    4096,
+		Counts: map[string]float64{
+			"00": 0.5,
+			"01": -0.01,
+			"10": 0.01,
+			"11": 0.5,
+		},
+	}
+
+	if err := VerifyBellResult(result); err == nil {
+		t.Fatal("expected negative probability to be rejected")
 	}
 }

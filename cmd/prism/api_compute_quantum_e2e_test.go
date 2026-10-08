@@ -332,5 +332,76 @@ func TestQuantumMarketplaceEndToEndSettlement(
 		)
 	}
 
-	_ = alice
+	heightBeforeRetry := finalChain.Blocks[len(finalChain.Blocks)-1].Height
+
+	supplyBeforeRetry, err := finalChain.TotalSupply()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	aliceBeforeRetry, err := finalChain.BalanceOf(alice.Address)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bobBeforeRetry, err := finalChain.BalanceOf(bob.Address)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	retry, err := settleComputeJob(api, job.ID, proof)
+	if err != nil {
+		t.Fatalf("quantum settlement retry failed: %v", err)
+	}
+
+	if !retry.Recovered {
+		t.Fatal("quantum retry must use recovery")
+	}
+
+	if retry.SettlementTxID != settlement.SettlementTxID {
+		t.Fatal("quantum retry changed settlement transaction")
+	}
+
+	if retry.Block != settlement.Block {
+		t.Fatal("quantum retry changed settlement block")
+	}
+
+	if retry.BountyReward != settlement.BountyReward {
+		t.Fatal("quantum retry changed bounty reward")
+	}
+
+	afterRetry, _, _, err := api.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	heightAfterRetry := afterRetry.Blocks[len(afterRetry.Blocks)-1].Height
+	if heightAfterRetry != heightBeforeRetry {
+		t.Fatal("quantum retry created another block")
+	}
+
+	supplyAfterRetry, err := afterRetry.TotalSupply()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if supplyAfterRetry != supplyBeforeRetry {
+		t.Fatal("quantum retry changed total supply")
+	}
+
+	aliceAfterRetry, err := afterRetry.BalanceOf(alice.Address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if aliceAfterRetry != aliceBeforeRetry {
+		t.Fatal("quantum retry changed requester balance")
+	}
+
+	bobAfterRetry, err := afterRetry.BalanceOf(bob.Address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bobAfterRetry != bobBeforeRetry {
+		t.Fatal("quantum retry changed worker balance")
+	}
+
 }
