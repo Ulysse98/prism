@@ -259,6 +259,15 @@ func runAPICommand(args []string) {
 		return
 	}
 
+	if err := configureQuantumAuditEpoch(
+		*nodeData,
+		quantumAuditPolicy,
+		*quantumAuditEpochFlag,
+	); err != nil {
+		fmt.Println("Quantum audit startup refused:", err)
+		return
+	}
+
 	api := &apiServer{
 		dataPath:              *nodeData,
 		computeMarket:         computeMarket,

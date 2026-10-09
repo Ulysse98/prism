@@ -67,6 +67,14 @@ func quantumAuditPolicyFingerprint(
 	return hex.EncodeToString(hash[:]), nil
 }
 
+// QuantumAuditPolicyFingerprint computes the canonical policy ID.
+// Verifier ordering does not affect the fingerprint.
+func QuantumAuditPolicyFingerprint(
+	policy QuantumQuorumPolicy,
+) (string, error) {
+	return quantumAuditPolicyFingerprint(policy)
+}
+
 // AuditQuantumVerification is observational only.
 // It does not alter marketplace, blockchain or settlement state.
 func AuditQuantumVerification(
