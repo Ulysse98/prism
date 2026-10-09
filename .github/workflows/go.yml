@@ -9,6 +9,47 @@ permissions:
 
 jobs:
   test:
+    name: Go tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify Linux symlink support
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          tempdir="$(mktemp -d)"
+          trap 'rm -rf "$tempdir"' EXIT
+          printf 'protected' > "$tempdir/target"
+          ln -s "$tempdir/target" "$tempdir/link"
+          test -L "$tempdir/link"
+
+      - name: Full Go tests
+        run: go test ./... -count=1
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Commit whitespace check
+        run: git show --format= --check HEAD
+
+  race:
+    name: Go race detector (Ubuntu)
     runs-on: ubuntu-latest
 
     steps:
@@ -21,11 +62,15 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Test
-        run: go test ./...
+      - name: Verify race detector dependencies
+        shell: bash
+        run: |
+          test "$(go env GOOS)" = "linux"
+          command -v gcc
+          go version
+          gcc --version | head -n 1
 
-      - name: Vet
-        run: go vet ./...
-
-      - name: Diff check
-        run: git diff --check
+      - name: Quantum audit race tests
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race -count=1 ./cmd/prism ./internal/usefulwork
