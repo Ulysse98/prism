@@ -225,6 +225,30 @@ func runAPICommand(args []string) {
 
 		quantumAuditTokenHash = &tokenHash
 	}
+	runtimeLock, err := acquirePrismAPIRuntimeLock(*nodeData)
+	if err != nil {
+		fmt.Println("Prism API startup refused:", err)
+		return
+	}
+
+	releaseRuntimeLock := true
+
+	defer func() {
+		if !releaseRuntimeLock {
+			fmt.Println(
+				"Prism API runtime lock retained after unclean shutdown.",
+			)
+			return
+		}
+
+		if err := runtimeLock.Release(); err != nil {
+			fmt.Println(
+				"Unable to release Prism API runtime lock:",
+				err,
+			)
+		}
+	}()
+
 	computeMarket, err :=
 		compute.NewPersistentMarketplace(
 			*nodeData,
@@ -416,12 +440,15 @@ func runAPICommand(args []string) {
 		"Prism API running. Press Ctrl+C to stop.",
 	)
 
-	if err := server.ListenAndServe(); err != nil {
+	cleanShutdown, serveErr := servePrismAPIWithSignals(server)
+
+	if !cleanShutdown {
+		releaseRuntimeLock = false
+	}
+
+	if serveErr != nil {
 		fmt.Println()
-		fmt.Println(
-			"Prism API stopped:",
-			err,
-		)
+		fmt.Println("Prism API stopped:", serveErr)
 	}
 }
 

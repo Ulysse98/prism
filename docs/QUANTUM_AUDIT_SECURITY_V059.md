@@ -31,10 +31,16 @@ On Windows, inspect the effective NTFS ACLs of both the
 directory and the journal. Go's `0600` creation mode does
 not replace NTFS ACL verification.
 
-The directory lock serializes journal updates, but does not
-hold a lifetime lock for the entire running API process.
-Operators must independently prevent overlapping old and
-new audit instances when rotating an epoch.
+The short-lived journal lock serializes epoch updates.
+A separate `prism-api-active.lock` directory excludes
+cooperating API instances sharing the same data directory.
+
+The runtime lock is held until successful graceful HTTP
+shutdown. If shutdown fails or the process crashes, the
+lock remains and requires manual recovery.
+
+Older Prism versions do not honor this runtime lock.
+Operators must stop older instances before starting v0.59.
 
 Durability during sudden power loss depends on filesystem
 and storage guarantees. Synchronizing the journal file
