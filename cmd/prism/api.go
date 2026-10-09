@@ -18,13 +18,14 @@ import (
 )
 
 type apiServer struct {
-	dataPath      string
-	stateMu       sync.Mutex
-	computeMarket *compute.Marketplace
-	settlements   *crosschain.SettlementStore
-	faucetEnabled bool
-	faucetWallet  string
-	faucetAmount  uint64
+	dataPath           string
+	stateMu            sync.Mutex
+	computeMarket      *compute.Marketplace
+	settlements        *crosschain.SettlementStore
+	quantumAuditPolicy *usefulwork.QuantumQuorumPolicy
+	faucetEnabled      bool
+	faucetWallet       string
+	faucetAmount       uint64
 }
 
 type apiStatusResponse struct {
@@ -140,6 +141,11 @@ func runAPICommand(args []string) {
 		"fixed PRISM amount distributed by the testnet faucet",
 	)
 
+	quantumAuditPolicyPath := flags.String(
+		"quantum-audit-policy",
+		"",
+		"local quantum audit verifier policy JSON",
+	)
 	if err := flags.Parse(args); err != nil {
 		return
 	}
@@ -167,6 +173,16 @@ func runAPICommand(args []string) {
 		return
 	}
 
+	var quantumAuditPolicy *usefulwork.QuantumQuorumPolicy
+
+	if *quantumAuditPolicyPath != "" {
+		value, err := loadQuantumAuditPolicy(*quantumAuditPolicyPath)
+		if err != nil {
+			fmt.Println("Invalid quantum audit policy:", err)
+			return
+		}
+		quantumAuditPolicy = &value
+	}
 	computeMarket, err :=
 		compute.NewPersistentMarketplace(
 			*nodeData,
@@ -202,12 +218,13 @@ func runAPICommand(args []string) {
 	}
 
 	api := &apiServer{
-		dataPath:      *nodeData,
-		computeMarket: computeMarket,
-		settlements:   settlements,
-		faucetEnabled: *faucetEnabled,
-		faucetWallet:  *faucetWallet,
-		faucetAmount:  *faucetAmount,
+		dataPath:           *nodeData,
+		computeMarket:      computeMarket,
+		settlements:        settlements,
+		quantumAuditPolicy: quantumAuditPolicy,
+		faucetEnabled:      *faucetEnabled,
+		faucetWallet:       *faucetWallet,
+		faucetAmount:       *faucetAmount,
 	}
 
 	mux := http.NewServeMux()
@@ -299,6 +316,8 @@ func runAPICommand(args []string) {
 		"/api/v1/compute/jobs/",
 		api.handleComputeJobAction,
 	)
+
+	mux.HandleFunc("/api/v1/compute/jobs/{id}/quantum-audit", api.handleQuantumAudit)
 	listenAddress := fmt.Sprintf(
 		"%s:%d",
 		*host,
