@@ -99,7 +99,8 @@ func (api *apiServer) handleQuantumAudit(
 	}
 
 	if api == nil || api.computeMarket == nil ||
-		api.quantumAuditPolicy == nil {
+		api.quantumAuditPolicy == nil ||
+		api.quantumAuditEpoch == 0 {
 		apiWriteError(
 			writer,
 			http.StatusServiceUnavailable,
@@ -178,7 +179,7 @@ func (api *apiServer) handleQuantumAudit(
 	)
 
 	var payload struct {
-		Reports []usefulwork.QuantumVerificationReport `json:"reports"`
+		Reports []usefulwork.QuantumPolicyBoundReport `json:"reports"`
 	}
 
 	decoder := json.NewDecoder(request.Body)
@@ -300,11 +301,37 @@ func (api *apiServer) handleQuantumAudit(
 		return
 	}
 
+	verifiedReports := make(
+		[]usefulwork.QuantumVerificationReport,
+		0,
+		len(payload.Reports),
+	)
+
+	for _, bound := range payload.Reports {
+		if err := usefulwork.VerifyQuantumPolicyBoundReport(
+			bound,
+			proof,
+			policy,
+			api.quantumAuditEpoch,
+		); err != nil {
+			apiWriteError(
+				writer,
+				http.StatusBadRequest,
+				fmt.Errorf("invalid policy-bound report: %w", err),
+			)
+			return
+		}
+
+		verifiedReports = append(verifiedReports, bound.Report)
+	}
+
 	audit, auditErr := usefulwork.AuditQuantumVerification(
 		proof,
-		payload.Reports,
+		verifiedReports,
 		policy,
 	)
+
+	audit.PolicyEpoch = api.quantumAuditEpoch
 
 	if auditErr != nil && audit.Reason == "" {
 		apiWriteError(

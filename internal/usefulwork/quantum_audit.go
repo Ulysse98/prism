@@ -22,6 +22,7 @@ type QuantumAuditResult struct {
 	ProofID           string `json:"proof_id"`
 	ChainID           string `json:"chain_id"`
 	PolicyFingerprint string `json:"policy_fingerprint"`
+	PolicyEpoch       uint64 `json:"policy_epoch"`
 	Status            string `json:"status"`
 	QuorumSatisfied   bool   `json:"quorum_satisfied"`
 	AllReportsPresent bool   `json:"all_reports_present"`

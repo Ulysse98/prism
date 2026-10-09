@@ -129,6 +129,8 @@ func quantumAuditHTTPFixture(
 
 	tokenHash := sha256.Sum256(rawToken)
 	api.quantumAuditTokenHash = &tokenHash
+	api.quantumAuditEpoch = 7
+
 	mux := http.NewServeMux()
 	mux.HandleFunc(
 		"/api/v1/compute/jobs/{id}/quantum-audit",
@@ -198,12 +200,12 @@ func snapshotQuantumAuditHTTP(
 
 func quantumAuditHTTPBody(
 	t *testing.T,
-	reports []usefulwork.QuantumVerificationReport,
+	reports []usefulwork.QuantumPolicyBoundReport,
 ) []byte {
 	t.Helper()
 
 	data, err := json.Marshal(struct {
-		Reports []usefulwork.QuantumVerificationReport `json:"reports"`
+		Reports []usefulwork.QuantumPolicyBoundReport `json:"reports"`
 	}{
 		Reports: reports,
 	})
@@ -218,22 +220,25 @@ func quantumAuditHTTPBody(
 func TestQuantumAuditHTTPReadOnly(t *testing.T) {
 	api, job, proof, verifiers, mux := quantumAuditHTTPFixture(t)
 
-	first, err := usefulwork.SignQuantumVerificationReport(
+	first, err := usefulwork.SignQuantumPolicyBoundReport(
 		proof, verifiers[0],
+		*api.quantumAuditPolicy, api.quantumAuditEpoch,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	second, err := usefulwork.SignQuantumVerificationReport(
+	second, err := usefulwork.SignQuantumPolicyBoundReport(
 		proof, verifiers[1],
+		*api.quantumAuditPolicy, api.quantumAuditEpoch,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	third, err := usefulwork.SignQuantumVerificationReport(
+	third, err := usefulwork.SignQuantumPolicyBoundReport(
 		proof, verifiers[2],
+		*api.quantumAuditPolicy, api.quantumAuditEpoch,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -244,8 +249,18 @@ func TestQuantumAuditHTTPReadOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	strangerVote, err := usefulwork.SignQuantumVerificationReport(
-		proof, outsider,
+	alternatePolicy := usefulwork.QuantumQuorumPolicy{
+		Model: "bell-ideal-v1",
+		AuthorizedVerifiers: []string{
+			verifiers[0].Address,
+			outsider.Address,
+			verifiers[2].Address,
+		},
+		RequiredApprovals: 2,
+	}
+
+	strangerVote, err := usefulwork.SignQuantumPolicyBoundReport(
+		proof, outsider, alternatePolicy, api.quantumAuditEpoch,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -280,14 +295,14 @@ func TestQuantumAuditHTTPReadOnly(t *testing.T) {
 
 	twoVotes := quantumAuditHTTPBody(
 		t,
-		[]usefulwork.QuantumVerificationReport{
+		[]usefulwork.QuantumPolicyBoundReport{
 			first, second,
 		},
 	)
 
 	threeVotes := quantumAuditHTTPBody(
 		t,
-		[]usefulwork.QuantumVerificationReport{
+		[]usefulwork.QuantumPolicyBoundReport{
 			first, second, third,
 		},
 	)
@@ -334,12 +349,11 @@ func TestQuantumAuditHTTPReadOnly(t *testing.T) {
 			url:    validURL,
 			body: quantumAuditHTTPBody(
 				t,
-				[]usefulwork.QuantumVerificationReport{
+				[]usefulwork.QuantumPolicyBoundReport{
 					first, tampered,
 				},
 			),
-			wantCode:   200,
-			wantStatus: usefulwork.QuantumAuditNotAccepted,
+			wantCode: 400,
 		},
 		{
 			name:   "UnauthorizedVerifier",
@@ -347,12 +361,11 @@ func TestQuantumAuditHTTPReadOnly(t *testing.T) {
 			url:    validURL,
 			body: quantumAuditHTTPBody(
 				t,
-				[]usefulwork.QuantumVerificationReport{
+				[]usefulwork.QuantumPolicyBoundReport{
 					first, strangerVote,
 				},
 			),
-			wantCode:   200,
-			wantStatus: usefulwork.QuantumAuditNotAccepted,
+			wantCode: 400,
 		},
 		{
 			name:     "MalformedJSON",

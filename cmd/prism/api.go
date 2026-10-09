@@ -27,6 +27,7 @@ type apiServer struct {
 	quantumAuditTokenHash *[32]byte
 	quantumAuditBusy      atomic.Bool
 	quantumAuditRate      quantumAuditRateLimiter
+	quantumAuditEpoch     uint64
 	faucetEnabled         bool
 	faucetWallet          string
 	faucetAmount          uint64
@@ -155,6 +156,11 @@ func runAPICommand(args []string) {
 		"",
 		"local file containing the quantum audit bearer token",
 	)
+	quantumAuditEpochFlag := flags.Uint64(
+		"quantum-audit-epoch",
+		0,
+		"positive epoch of the configured quantum audit policy",
+	)
 	if err := flags.Parse(args); err != nil {
 		return
 	}
@@ -166,6 +172,15 @@ func runAPICommand(args []string) {
 
 	if *quantumAuditPolicyPath != "" && *host != "127.0.0.1" {
 		fmt.Println("Quantum audit requires -host 127.0.0.1")
+		return
+	}
+	if *quantumAuditPolicyPath != "" && *quantumAuditEpochFlag == 0 {
+		fmt.Println("Quantum audit requires a positive policy epoch")
+		return
+	}
+
+	if *quantumAuditPolicyPath == "" && *quantumAuditEpochFlag != 0 {
+		fmt.Println("Quantum audit epoch requires an audit policy")
 		return
 	}
 	if *port < 1 || *port > 65535 {
@@ -250,6 +265,7 @@ func runAPICommand(args []string) {
 		settlements:           settlements,
 		quantumAuditPolicy:    quantumAuditPolicy,
 		quantumAuditTokenHash: quantumAuditTokenHash,
+		quantumAuditEpoch:     *quantumAuditEpochFlag,
 		faucetEnabled:         *faucetEnabled,
 		faucetWallet:          *faucetWallet,
 		faucetAmount:          *faucetAmount,
