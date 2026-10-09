@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"prism/internal/compute"
@@ -24,6 +25,8 @@ type apiServer struct {
 	settlements           *crosschain.SettlementStore
 	quantumAuditPolicy    *usefulwork.QuantumQuorumPolicy
 	quantumAuditTokenHash *[32]byte
+	quantumAuditBusy      atomic.Bool
+	quantumAuditRate      quantumAuditRateLimiter
 	faucetEnabled         bool
 	faucetWallet          string
 	faucetAmount          uint64

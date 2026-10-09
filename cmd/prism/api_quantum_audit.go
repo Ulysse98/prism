@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"prism/internal/compute"
 	"prism/internal/p2p"
@@ -132,6 +133,34 @@ func (api *apiServer) handleQuantumAudit(
 		)
 		return
 	}
+	if !api.quantumAuditBusy.CompareAndSwap(false, true) {
+		writer.Header().Set("Retry-After", "1")
+		apiWriteError(
+			writer,
+			http.StatusTooManyRequests,
+			fmt.Errorf("quantum audit already running"),
+		)
+		return
+	}
+
+	defer api.quantumAuditBusy.Store(false)
+
+	allowed, retry := api.quantumAuditRate.allow(time.Now())
+	if !allowed {
+		seconds := int64((retry + time.Second - 1) / time.Second)
+		if seconds < 1 {
+			seconds = 1
+		}
+
+		writer.Header().Set("Retry-After", fmt.Sprint(seconds))
+		apiWriteError(
+			writer,
+			http.StatusTooManyRequests,
+			fmt.Errorf("quantum audit rate limit exceeded"),
+		)
+		return
+	}
+
 	jobID := request.PathValue("id")
 	if strings.TrimSpace(jobID) == "" {
 		apiWriteError(
@@ -182,10 +211,10 @@ func (api *apiServer) handleQuantumAudit(
 	}
 
 	api.stateMu.Lock()
-	defer api.stateMu.Unlock()
 
 	job, err := api.computeMarket.Get(jobID)
 	if err != nil {
+		api.stateMu.Unlock()
 		apiWriteError(writer, http.StatusNotFound, err)
 		return
 	}
@@ -193,6 +222,7 @@ func (api *apiServer) handleQuantumAudit(
 	if job.Status != compute.JobStatusVerified ||
 		job.ProofID == "" ||
 		job.Task.Type != usefulwork.TaskTypeQuantumSimulation {
+		api.stateMu.Unlock()
 		apiWriteError(
 			writer,
 			http.StatusConflict,
@@ -202,6 +232,7 @@ func (api *apiServer) handleQuantumAudit(
 	}
 
 	chain, _, _, err := api.loadState()
+	api.stateMu.Unlock()
 	if err != nil {
 		apiWriteError(writer, http.StatusInternalServerError, err)
 		return

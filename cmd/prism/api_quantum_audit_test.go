@@ -407,6 +407,11 @@ func TestQuantumAuditHTTPReadOnly(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			// Each HTTP scenario must start with a fresh rate
+			// window. Rate-limit behavior has separate tests.
+			api.quantumAuditRate.mu.Lock()
+			api.quantumAuditRate.arrivals = nil
+			api.quantumAuditRate.mu.Unlock()
 			before := snapshotQuantumAuditHTTP(t, api)
 
 			savedPolicy := api.quantumAuditPolicy
