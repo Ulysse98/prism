@@ -107,6 +107,31 @@ func (api *apiServer) handleQuantumAudit(
 		return
 	}
 
+	if api.quantumAuditTokenHash == nil {
+		apiWriteError(
+			writer,
+			http.StatusServiceUnavailable,
+			fmt.Errorf("quantum audit authentication unavailable"),
+		)
+		return
+	}
+
+	if !verifyQuantumAuditBearer(
+		request,
+		api.quantumAuditTokenHash,
+	) {
+		writer.Header().Set(
+			"WWW-Authenticate",
+			`Bearer realm="prism-quantum-audit"`,
+		)
+
+		apiWriteError(
+			writer,
+			http.StatusUnauthorized,
+			fmt.Errorf("quantum audit authorization required"),
+		)
+		return
+	}
 	jobID := request.PathValue("id")
 	if strings.TrimSpace(jobID) == "" {
 		apiWriteError(

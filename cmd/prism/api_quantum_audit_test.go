@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +19,8 @@ import (
 	"prism/internal/usefulwork"
 	"prism/internal/wallet"
 )
+
+const quantumAuditTestToken = "7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c"
 
 func quantumAuditHTTPFixture(
 	t *testing.T,
@@ -118,6 +122,13 @@ func quantumAuditHTTPFixture(
 		RequiredApprovals:   2,
 	}
 
+	rawToken, err := hex.DecodeString(quantumAuditTestToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tokenHash := sha256.Sum256(rawToken)
+	api.quantumAuditTokenHash = &tokenHash
 	mux := http.NewServeMux()
 	mux.HandleFunc(
 		"/api/v1/compute/jobs/{id}/quantum-audit",
@@ -412,6 +423,7 @@ func TestQuantumAuditHTTPReadOnly(t *testing.T) {
 				bytes.NewReader(tc.body),
 			)
 			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Authorization", "Bearer "+quantumAuditTestToken)
 
 			recorder := httptest.NewRecorder()
 			mux.ServeHTTP(recorder, request)

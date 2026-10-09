@@ -18,14 +18,15 @@ import (
 )
 
 type apiServer struct {
-	dataPath           string
-	stateMu            sync.Mutex
-	computeMarket      *compute.Marketplace
-	settlements        *crosschain.SettlementStore
-	quantumAuditPolicy *usefulwork.QuantumQuorumPolicy
-	faucetEnabled      bool
-	faucetWallet       string
-	faucetAmount       uint64
+	dataPath              string
+	stateMu               sync.Mutex
+	computeMarket         *compute.Marketplace
+	settlements           *crosschain.SettlementStore
+	quantumAuditPolicy    *usefulwork.QuantumQuorumPolicy
+	quantumAuditTokenHash *[32]byte
+	faucetEnabled         bool
+	faucetWallet          string
+	faucetAmount          uint64
 }
 
 type apiStatusResponse struct {
@@ -146,10 +147,24 @@ func runAPICommand(args []string) {
 		"",
 		"local quantum audit verifier policy JSON",
 	)
+	quantumAuditTokenPath := flags.String(
+		"quantum-audit-token-file",
+		"",
+		"local file containing the quantum audit bearer token",
+	)
 	if err := flags.Parse(args); err != nil {
 		return
 	}
 
+	if (*quantumAuditPolicyPath == "") != (*quantumAuditTokenPath == "") {
+		fmt.Println("Quantum audit policy and token file must both be configured")
+		return
+	}
+
+	if *quantumAuditPolicyPath != "" && *host != "127.0.0.1" {
+		fmt.Println("Quantum audit requires -host 127.0.0.1")
+		return
+	}
 	if *port < 1 || *port > 65535 {
 		fmt.Println(
 			"Invalid API port:",
@@ -173,6 +188,7 @@ func runAPICommand(args []string) {
 		return
 	}
 
+	var quantumAuditTokenHash *[32]byte
 	var quantumAuditPolicy *usefulwork.QuantumQuorumPolicy
 
 	if *quantumAuditPolicyPath != "" {
@@ -182,6 +198,14 @@ func runAPICommand(args []string) {
 			return
 		}
 		quantumAuditPolicy = &value
+
+		tokenHash, err := loadQuantumAuditToken(*quantumAuditTokenPath)
+		if err != nil {
+			fmt.Println("Invalid quantum audit token file:", err)
+			return
+		}
+
+		quantumAuditTokenHash = &tokenHash
 	}
 	computeMarket, err :=
 		compute.NewPersistentMarketplace(
@@ -218,13 +242,14 @@ func runAPICommand(args []string) {
 	}
 
 	api := &apiServer{
-		dataPath:           *nodeData,
-		computeMarket:      computeMarket,
-		settlements:        settlements,
-		quantumAuditPolicy: quantumAuditPolicy,
-		faucetEnabled:      *faucetEnabled,
-		faucetWallet:       *faucetWallet,
-		faucetAmount:       *faucetAmount,
+		dataPath:              *nodeData,
+		computeMarket:         computeMarket,
+		settlements:           settlements,
+		quantumAuditPolicy:    quantumAuditPolicy,
+		quantumAuditTokenHash: quantumAuditTokenHash,
+		faucetEnabled:         *faucetEnabled,
+		faucetWallet:          *faucetWallet,
+		faucetAmount:          *faucetAmount,
 	}
 
 	mux := http.NewServeMux()
