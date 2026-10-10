@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"prism/internal/compute"
 	"prism/internal/p2p"
@@ -98,11 +99,65 @@ func (api *apiServer) handleQuantumAudit(
 	}
 
 	if api == nil || api.computeMarket == nil ||
-		api.quantumAuditPolicy == nil {
+		api.quantumAuditPolicy == nil ||
+		api.quantumAuditEpoch == 0 {
 		apiWriteError(
 			writer,
 			http.StatusServiceUnavailable,
 			fmt.Errorf("quantum audit unavailable"),
+		)
+		return
+	}
+
+	if api.quantumAuditTokenHash == nil {
+		apiWriteError(
+			writer,
+			http.StatusServiceUnavailable,
+			fmt.Errorf("quantum audit authentication unavailable"),
+		)
+		return
+	}
+
+	if !verifyQuantumAuditBearer(
+		request,
+		api.quantumAuditTokenHash,
+	) {
+		writer.Header().Set(
+			"WWW-Authenticate",
+			`Bearer realm="prism-quantum-audit"`,
+		)
+
+		apiWriteError(
+			writer,
+			http.StatusUnauthorized,
+			fmt.Errorf("quantum audit authorization required"),
+		)
+		return
+	}
+	if !api.quantumAuditBusy.CompareAndSwap(false, true) {
+		writer.Header().Set("Retry-After", "1")
+		apiWriteError(
+			writer,
+			http.StatusTooManyRequests,
+			fmt.Errorf("quantum audit already running"),
+		)
+		return
+	}
+
+	defer api.quantumAuditBusy.Store(false)
+
+	allowed, retry := api.quantumAuditRate.allow(time.Now())
+	if !allowed {
+		seconds := int64((retry + time.Second - 1) / time.Second)
+		if seconds < 1 {
+			seconds = 1
+		}
+
+		writer.Header().Set("Retry-After", fmt.Sprint(seconds))
+		apiWriteError(
+			writer,
+			http.StatusTooManyRequests,
+			fmt.Errorf("quantum audit rate limit exceeded"),
 		)
 		return
 	}
@@ -124,7 +179,7 @@ func (api *apiServer) handleQuantumAudit(
 	)
 
 	var payload struct {
-		Reports []usefulwork.QuantumVerificationReport `json:"reports"`
+		Reports []usefulwork.QuantumPolicyBoundReport `json:"reports"`
 	}
 
 	decoder := json.NewDecoder(request.Body)
@@ -157,10 +212,10 @@ func (api *apiServer) handleQuantumAudit(
 	}
 
 	api.stateMu.Lock()
-	defer api.stateMu.Unlock()
 
 	job, err := api.computeMarket.Get(jobID)
 	if err != nil {
+		api.stateMu.Unlock()
 		apiWriteError(writer, http.StatusNotFound, err)
 		return
 	}
@@ -168,6 +223,7 @@ func (api *apiServer) handleQuantumAudit(
 	if job.Status != compute.JobStatusVerified ||
 		job.ProofID == "" ||
 		job.Task.Type != usefulwork.TaskTypeQuantumSimulation {
+		api.stateMu.Unlock()
 		apiWriteError(
 			writer,
 			http.StatusConflict,
@@ -177,6 +233,7 @@ func (api *apiServer) handleQuantumAudit(
 	}
 
 	chain, _, _, err := api.loadState()
+	api.stateMu.Unlock()
 	if err != nil {
 		apiWriteError(writer, http.StatusInternalServerError, err)
 		return
@@ -244,11 +301,37 @@ func (api *apiServer) handleQuantumAudit(
 		return
 	}
 
+	verifiedReports := make(
+		[]usefulwork.QuantumVerificationReport,
+		0,
+		len(payload.Reports),
+	)
+
+	for _, bound := range payload.Reports {
+		if err := usefulwork.VerifyQuantumPolicyBoundReport(
+			bound,
+			proof,
+			policy,
+			api.quantumAuditEpoch,
+		); err != nil {
+			apiWriteError(
+				writer,
+				http.StatusBadRequest,
+				fmt.Errorf("invalid policy-bound report: %w", err),
+			)
+			return
+		}
+
+		verifiedReports = append(verifiedReports, bound.Report)
+	}
+
 	audit, auditErr := usefulwork.AuditQuantumVerification(
 		proof,
-		payload.Reports,
+		verifiedReports,
 		policy,
 	)
+
+	audit.PolicyEpoch = api.quantumAuditEpoch
 
 	if auditErr != nil && audit.Reason == "" {
 		apiWriteError(

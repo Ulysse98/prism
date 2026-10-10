@@ -22,7 +22,7 @@ import (
 
 const (
 	dataDir      = "data"
-	prismVersion = "0.55.0"
+	prismVersion = "0.59.0"
 )
 
 func main() {
@@ -94,7 +94,9 @@ func main() {
 	}
 
 	if command == "api" {
-		runAPICommand(os.Args[2:])
+		if code := runAPICommand(os.Args[2:]); code != 0 {
+			os.Exit(code)
+		}
 		return
 	}
 

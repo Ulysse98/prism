@@ -22,6 +22,7 @@ type QuantumAuditResult struct {
 	ProofID           string `json:"proof_id"`
 	ChainID           string `json:"chain_id"`
 	PolicyFingerprint string `json:"policy_fingerprint"`
+	PolicyEpoch       uint64 `json:"policy_epoch"`
 	Status            string `json:"status"`
 	QuorumSatisfied   bool   `json:"quorum_satisfied"`
 	AllReportsPresent bool   `json:"all_reports_present"`
@@ -64,6 +65,14 @@ func quantumAuditPolicyFingerprint(
 
 	hash := sha256.Sum256(preimage)
 	return hex.EncodeToString(hash[:]), nil
+}
+
+// QuantumAuditPolicyFingerprint computes the canonical policy ID.
+// Verifier ordering does not affect the fingerprint.
+func QuantumAuditPolicyFingerprint(
+	policy QuantumQuorumPolicy,
+) (string, error) {
+	return quantumAuditPolicyFingerprint(policy)
 }
 
 // AuditQuantumVerification is observational only.

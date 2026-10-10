@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"prism/internal/compute"
@@ -18,14 +19,18 @@ import (
 )
 
 type apiServer struct {
-	dataPath           string
-	stateMu            sync.Mutex
-	computeMarket      *compute.Marketplace
-	settlements        *crosschain.SettlementStore
-	quantumAuditPolicy *usefulwork.QuantumQuorumPolicy
-	faucetEnabled      bool
-	faucetWallet       string
-	faucetAmount       uint64
+	dataPath              string
+	stateMu               sync.Mutex
+	computeMarket         *compute.Marketplace
+	settlements           *crosschain.SettlementStore
+	quantumAuditPolicy    *usefulwork.QuantumQuorumPolicy
+	quantumAuditTokenHash *[32]byte
+	quantumAuditBusy      atomic.Bool
+	quantumAuditRate      quantumAuditRateLimiter
+	quantumAuditEpoch     uint64
+	faucetEnabled         bool
+	faucetWallet          string
+	faucetAmount          uint64
 }
 
 type apiStatusResponse struct {
@@ -97,7 +102,8 @@ type apiHumanityResponse struct {
 	NullifierHash string `json:"nullifierHash"`
 }
 
-func runAPICommand(args []string) {
+func runAPICommand(args []string) (exitCode int) {
+	exitCode = 1
 	flags := flag.NewFlagSet(
 		"api",
 		flag.ContinueOnError,
@@ -146,10 +152,38 @@ func runAPICommand(args []string) {
 		"",
 		"local quantum audit verifier policy JSON",
 	)
+	quantumAuditTokenPath := flags.String(
+		"quantum-audit-token-file",
+		"",
+		"local file containing the quantum audit bearer token",
+	)
+	quantumAuditEpochFlag := flags.Uint64(
+		"quantum-audit-epoch",
+		0,
+		"positive epoch of the configured quantum audit policy",
+	)
 	if err := flags.Parse(args); err != nil {
 		return
 	}
 
+	if (*quantumAuditPolicyPath == "") != (*quantumAuditTokenPath == "") {
+		fmt.Println("Quantum audit policy and token file must both be configured")
+		return
+	}
+
+	if *quantumAuditPolicyPath != "" && *host != "127.0.0.1" {
+		fmt.Println("Quantum audit requires -host 127.0.0.1")
+		return
+	}
+	if *quantumAuditPolicyPath != "" && *quantumAuditEpochFlag == 0 {
+		fmt.Println("Quantum audit requires a positive policy epoch")
+		return
+	}
+
+	if *quantumAuditPolicyPath == "" && *quantumAuditEpochFlag != 0 {
+		fmt.Println("Quantum audit epoch requires an audit policy")
+		return
+	}
 	if *port < 1 || *port > 65535 {
 		fmt.Println(
 			"Invalid API port:",
@@ -173,6 +207,7 @@ func runAPICommand(args []string) {
 		return
 	}
 
+	var quantumAuditTokenHash *[32]byte
 	var quantumAuditPolicy *usefulwork.QuantumQuorumPolicy
 
 	if *quantumAuditPolicyPath != "" {
@@ -182,7 +217,40 @@ func runAPICommand(args []string) {
 			return
 		}
 		quantumAuditPolicy = &value
+
+		tokenHash, err := loadQuantumAuditToken(*quantumAuditTokenPath)
+		if err != nil {
+			fmt.Println("Invalid quantum audit token file:", err)
+			return
+		}
+
+		quantumAuditTokenHash = &tokenHash
 	}
+	runtimeLock, err := acquirePrismAPIRuntimeLock(*nodeData)
+	if err != nil {
+		fmt.Println("Prism API startup refused:", err)
+		return
+	}
+
+	releaseRuntimeLock := true
+
+	defer func() {
+		if !releaseRuntimeLock {
+			fmt.Println(
+				"Prism API runtime lock retained after unclean shutdown.",
+			)
+			return
+		}
+
+		if err := runtimeLock.Release(); err != nil {
+			exitCode = 1
+			fmt.Println(
+				"Unable to release Prism API runtime lock:",
+				err,
+			)
+		}
+	}()
+
 	computeMarket, err :=
 		compute.NewPersistentMarketplace(
 			*nodeData,
@@ -197,6 +265,7 @@ func runAPICommand(args []string) {
 
 	defer func() {
 		if err := computeMarket.Close(); err != nil {
+			exitCode = 1
 			fmt.Println(
 				"Unable to close Prism Compute marketplace:",
 				err,
@@ -217,14 +286,25 @@ func runAPICommand(args []string) {
 		return
 	}
 
+	if err := configureQuantumAuditEpoch(
+		*nodeData,
+		quantumAuditPolicy,
+		*quantumAuditEpochFlag,
+	); err != nil {
+		fmt.Println("Quantum audit startup refused:", err)
+		return
+	}
+
 	api := &apiServer{
-		dataPath:           *nodeData,
-		computeMarket:      computeMarket,
-		settlements:        settlements,
-		quantumAuditPolicy: quantumAuditPolicy,
-		faucetEnabled:      *faucetEnabled,
-		faucetWallet:       *faucetWallet,
-		faucetAmount:       *faucetAmount,
+		dataPath:              *nodeData,
+		computeMarket:         computeMarket,
+		settlements:           settlements,
+		quantumAuditPolicy:    quantumAuditPolicy,
+		quantumAuditTokenHash: quantumAuditTokenHash,
+		quantumAuditEpoch:     *quantumAuditEpochFlag,
+		faucetEnabled:         *faucetEnabled,
+		faucetWallet:          *faucetWallet,
+		faucetAmount:          *faucetAmount,
 	}
 
 	mux := http.NewServeMux()
@@ -363,13 +443,20 @@ func runAPICommand(args []string) {
 		"Prism API running. Press Ctrl+C to stop.",
 	)
 
-	if err := server.ListenAndServe(); err != nil {
-		fmt.Println()
-		fmt.Println(
-			"Prism API stopped:",
-			err,
-		)
+	cleanShutdown, serveErr := servePrismAPIWithSignals(server)
+
+	if !cleanShutdown {
+		releaseRuntimeLock = false
 	}
+
+	if serveErr != nil {
+		fmt.Println()
+		fmt.Println("Prism API stopped:", serveErr)
+	}
+	if cleanShutdown && serveErr == nil {
+		exitCode = 0
+	}
+	return
 }
 
 func (api *apiServer) handleHealth(
