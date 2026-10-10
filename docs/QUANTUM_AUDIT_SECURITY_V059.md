@@ -49,25 +49,43 @@ filesystem, especially at initial file creation.
 
 ## Stale-lock recovery
 
-A crash can leave the directory:
+Two independent lock directories may remain after a crash:
 
-`quantum-audit-epochs.jsonl.lock`
+- `prism-api-active.lock`: exclusive API runtime lock
+- `quantum-audit-epochs.jsonl.lock`: epoch journal lock
 
-Never remove it while an audit process may still be using
-the same data directory.
+Neither lock may be automatically deleted on startup.
 
-Recovery procedure:
+Safe recovery procedure:
 
-1. Stop all Prism API instances using the affected directory.
-2. Confirm no such process remains active.
-3. Back up the complete data directory, including the journal.
-4. Inspect the journal and record its last verified epoch.
-5. If the journal is valid and only the stale lock remains,
-   remove that lock directory manually.
-6. Restart with the same policy/epoch, or advance the epoch
-   when changing policy.
-7. Confirm startup and inspect the new journal state.
+1. Identify the exact Prism node data directory.
+2. Stop all API processes using it, including Docker or WSL.
+3. Verify that no relevant process remains active.
+4. Back up the entire data directory and journal.
+5. Inspect the journal for corruption or incomplete records.
+6. Confirm the last trusted policy epoch and fingerprint.
+7. Identify which lock directories are stale.
+8. Remove only confirmed stale lock directories, manually.
+9. Never delete or reset the journal during lock recovery.
+10. Restart with the same approved policy and epoch, or
+    advance the epoch when changing policy.
+11. Verify successful startup and journal consistency.
 
+If lock ownership or journal integrity cannot be established,
+stop recovery and investigate. Never guess that a lock is stale.
+
+Older Prism versions do not honor the API runtime lock.
+
+## API exit status
+
+The `prism api` CLI exits with status 0 only after a
+successful graceful shutdown and resource cleanup.
+
+Failed startup validation, journal rejection, listener
+failure, incomplete HTTP shutdown, SQLite close failure,
+or runtime lock release failure results in nonzero status.
+
+An error exit does not authorize automatic lock deletion.
 ## Corrupt or truncated journal
 
 Do not automatically truncate or rewrite journal history.

@@ -102,7 +102,8 @@ type apiHumanityResponse struct {
 	NullifierHash string `json:"nullifierHash"`
 }
 
-func runAPICommand(args []string) {
+func runAPICommand(args []string) (exitCode int) {
+	exitCode = 1
 	flags := flag.NewFlagSet(
 		"api",
 		flag.ContinueOnError,
@@ -242,6 +243,7 @@ func runAPICommand(args []string) {
 		}
 
 		if err := runtimeLock.Release(); err != nil {
+			exitCode = 1
 			fmt.Println(
 				"Unable to release Prism API runtime lock:",
 				err,
@@ -263,6 +265,7 @@ func runAPICommand(args []string) {
 
 	defer func() {
 		if err := computeMarket.Close(); err != nil {
+			exitCode = 1
 			fmt.Println(
 				"Unable to close Prism Compute marketplace:",
 				err,
@@ -450,6 +453,10 @@ func runAPICommand(args []string) {
 		fmt.Println()
 		fmt.Println("Prism API stopped:", serveErr)
 	}
+	if cleanShutdown && serveErr == nil {
+		exitCode = 0
+	}
+	return
 }
 
 func (api *apiServer) handleHealth(

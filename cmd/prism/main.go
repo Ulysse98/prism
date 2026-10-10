@@ -94,7 +94,9 @@ func main() {
 	}
 
 	if command == "api" {
-		runAPICommand(os.Args[2:])
+		if code := runAPICommand(os.Args[2:]); code != 0 {
+			os.Exit(code)
+		}
 		return
 	}
 
