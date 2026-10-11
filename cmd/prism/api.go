@@ -19,18 +19,19 @@ import (
 )
 
 type apiServer struct {
-	dataPath              string
-	stateMu               sync.Mutex
-	computeMarket         *compute.Marketplace
-	settlements           *crosschain.SettlementStore
-	quantumAuditPolicy    *usefulwork.QuantumQuorumPolicy
-	quantumAuditTokenHash *[32]byte
-	quantumAuditBusy      atomic.Bool
-	quantumAuditRate      quantumAuditRateLimiter
-	quantumAuditEpoch     uint64
-	faucetEnabled         bool
-	faucetWallet          string
-	faucetAmount          uint64
+	dataPath               string
+	stateMu                sync.Mutex
+	computeMarket          *compute.Marketplace
+	settlements            *crosschain.SettlementStore
+	quantumAuditPolicy     *usefulwork.QuantumQuorumPolicy
+	quantumAuditTokenHash  *[32]byte
+	quantumAuditBusy       atomic.Bool
+	quantumAuditRate       quantumAuditRateLimiter
+	quantumAuditEpoch      uint64
+	faucetEnabled          bool
+	faucetWallet           string
+	faucetAmount           uint64
+	walletTransfersEnabled bool
 }
 
 type apiStatusResponse struct {
@@ -146,6 +147,11 @@ func runAPICommand(args []string) (exitCode int) {
 		100,
 		"fixed PRISM amount distributed by the testnet faucet",
 	)
+	walletTransfersEnabled := flags.Bool(
+		"wallet-transfers-enabled",
+		false,
+		"allow experimental locally signed wallet transfers (local testnet only)",
+	)
 
 	quantumAuditPolicyPath := flags.String(
 		"quantum-audit-policy",
@@ -199,6 +205,10 @@ func runAPICommand(args []string) (exitCode int) {
 		return
 	}
 
+	if *walletTransfersEnabled && *host != "127.0.0.1" {
+		fmt.Println("Experimental wallet transfers require -host 127.0.0.1")
+		return
+	}
 	if !storage.Exists(*nodeData) && !storage.ExistsPublic(*nodeData) {
 		fmt.Println(
 			"Prism API state not found:",
@@ -296,15 +306,16 @@ func runAPICommand(args []string) (exitCode int) {
 	}
 
 	api := &apiServer{
-		dataPath:              *nodeData,
-		computeMarket:         computeMarket,
-		settlements:           settlements,
-		quantumAuditPolicy:    quantumAuditPolicy,
-		quantumAuditTokenHash: quantumAuditTokenHash,
-		quantumAuditEpoch:     *quantumAuditEpochFlag,
-		faucetEnabled:         *faucetEnabled,
-		faucetWallet:          *faucetWallet,
-		faucetAmount:          *faucetAmount,
+		dataPath:               *nodeData,
+		computeMarket:          computeMarket,
+		settlements:            settlements,
+		quantumAuditPolicy:     quantumAuditPolicy,
+		quantumAuditTokenHash:  quantumAuditTokenHash,
+		quantumAuditEpoch:      *quantumAuditEpochFlag,
+		faucetEnabled:          *faucetEnabled,
+		faucetWallet:           *faucetWallet,
+		faucetAmount:           *faucetAmount,
+		walletTransfersEnabled: *walletTransfersEnabled,
 	}
 
 	mux := http.NewServeMux()
@@ -331,6 +342,10 @@ func runAPICommand(args []string) (exitCode int) {
 	mux.HandleFunc(
 		"/api/v1/wallets/",
 		api.handleWalletByAddress,
+	)
+	mux.HandleFunc(
+		"/api/v1/transactions",
+		api.handleWalletTransactions,
 	)
 
 	mux.HandleFunc(
@@ -423,6 +438,8 @@ func runAPICommand(args []string) (exitCode int) {
 	fmt.Println("  GET /metrics")
 	fmt.Println("  GET /api/v1/validators")
 	fmt.Println("  GET /api/v1/wallets/{address}")
+	fmt.Println("  GET /api/v1/transactions?address={address}")
+	fmt.Println("  POST /api/v1/transactions (opt-in local testnet)")
 	fmt.Println("  POST /api/v1/faucet")
 	fmt.Println("  GET /api/v1/participation")
 	fmt.Println("  GET /api/v1/work")
