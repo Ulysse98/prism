@@ -347,6 +347,10 @@ func runAPICommand(args []string) (exitCode int) {
 		"/api/v1/transactions",
 		api.handleWalletTransactions,
 	)
+	mux.HandleFunc(
+		"/api/v1/transactions/context",
+		api.handleWalletSigningContext,
+	)
 
 	mux.HandleFunc(
 		"/api/v1/faucet",
@@ -439,6 +443,7 @@ func runAPICommand(args []string) (exitCode int) {
 	fmt.Println("  GET /api/v1/validators")
 	fmt.Println("  GET /api/v1/wallets/{address}")
 	fmt.Println("  GET /api/v1/transactions?address={address}")
+	fmt.Println("  GET /api/v1/transactions/context")
 	fmt.Println("  POST /api/v1/transactions (opt-in local testnet)")
 	fmt.Println("  POST /api/v1/faucet")
 	fmt.Println("  GET /api/v1/participation")

@@ -1,5 +1,10 @@
 # Prism v0.60 — experimental local wallet transfers (phase 1)
 
+> **Phase 2 update:** New POST submissions require network-bound V2 transactions.
+> See [WALLET_SIGNING_V060_PHASE2.md](WALLET_SIGNING_V060_PHASE2.md) for
+> the new transaction format and signing context endpoint. Phase 1 JSON
+> examples below describe the historical V1 prototype only.
+
 This branch introduces a **local testnet prototype**. It does not implement a
 network transaction gossip protocol or consensus finality. Its transfer POST
 endpoint is **off by default** and requires a loopback-bound API.

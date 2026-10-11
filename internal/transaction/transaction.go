@@ -11,13 +11,16 @@ import (
 )
 
 type Transaction struct {
-	ID        string `json:"id"`
-	From      string `json:"from"`
-	To        string `json:"to"`
-	Amount    uint64 `json:"amount"`
-	Nonce     uint64 `json:"nonce"`
-	PublicKey string `json:"public_key,omitempty"`
-	Signature string `json:"signature,omitempty"`
+	ID          string `json:"id"`
+	From        string `json:"from"`
+	To          string `json:"to"`
+	Amount      uint64 `json:"amount"`
+	Nonce       uint64 `json:"nonce"`
+	PublicKey   string `json:"public_key,omitempty"`
+	Signature   string `json:"signature,omitempty"`
+	Version     uint8  `json:"version,omitempty"`
+	ChainID     string `json:"chain_id,omitempty"`
+	GenesisHash string `json:"genesis_hash,omitempty"`
 }
 
 func New(
@@ -70,10 +73,11 @@ func signingPayload(tx Transaction) string {
 }
 
 func CalculateID(tx Transaction) string {
-	hash := sha256.Sum256(
-		[]byte(signingPayload(tx)),
-	)
-
+	payload := signingPayload(tx)
+	if tx.Version == VersionV2 {
+		payload = signingPayloadV2(tx)
+	}
+	hash := sha256.Sum256([]byte(payload))
 	return hex.EncodeToString(hash[:])
 }
 
@@ -81,6 +85,9 @@ func (tx *Transaction) Sign(
 	privateKey ed25519.PrivateKey,
 ) error {
 
+	if err := validateTransactionVersion(*tx); err != nil {
+		return err
+	}
 	if tx.From == "GENESIS" {
 		return fmt.Errorf("GENESIS transactions cannot be signed")
 	}
@@ -111,6 +118,9 @@ func (tx *Transaction) Sign(
 }
 
 func ValidateSigned(tx Transaction) error {
+	if err := validateTransactionVersion(tx); err != nil {
+		return err
+	}
 	if tx.From == "" {
 		return fmt.Errorf("transaction sender cannot be empty")
 	}
@@ -186,6 +196,9 @@ func ValidateSigned(tx Transaction) error {
 }
 
 func ValidateGenesis(tx Transaction) error {
+	if tx.Version != 0 || tx.ChainID != "" || tx.GenesisHash != "" {
+		return fmt.Errorf("genesis transaction must use legacy version 0")
+	}
 	if tx.From != "GENESIS" {
 		return fmt.Errorf(
 			"genesis transaction must originate from GENESIS",

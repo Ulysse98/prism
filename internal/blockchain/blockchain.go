@@ -972,11 +972,14 @@ func (bc *Blockchain) GetState() (
 			)
 		}
 
-		// Transactions.
+		// Transactions. The chain itself enforces the v2 network context.
 		for _, tx := range block.Transactions {
 			if err := transaction.ValidateSigned(
 				tx,
 			); err != nil {
+				return State{}, err
+			}
+			if err := bc.ValidateTransactionContext(tx); err != nil {
 				return State{}, err
 			}
 

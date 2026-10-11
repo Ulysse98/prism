@@ -9,7 +9,6 @@ import (
 	"sync"
 	"testing"
 
-	"prism/internal/blockchain"
 	"prism/internal/compute"
 	"prism/internal/storage"
 	"prism/internal/transaction"
@@ -27,16 +26,31 @@ func walletTransferTestAPI(t *testing.T) (*apiServer, map[string]*wallet.Wallet,
 	if err := storage.Save(dir, chain, pos, wallets); err != nil {
 		t.Fatal(err)
 	}
+	chainID, err := chain.ChainID()
+	if err != nil {
+		t.Fatal(err)
+	}
 	return &apiServer{
 		dataPath: dir, computeMarket: compute.NewMarketplace(),
 		walletTransfersEnabled: true, faucetEnabled: true,
 		faucetWallet: "Alice", faucetAmount: 100,
-	}, wallets, blockchain.MakeChainID(chain.Blocks[0].Hash)
+	}, wallets, chainID
 }
 
-func transferTestTx(t *testing.T, sender *wallet.Wallet, to string, amount, nonce uint64) transaction.Transaction {
+func transferTestTx(t *testing.T, api *apiServer, sender *wallet.Wallet, to string, amount, nonce uint64) transaction.Transaction {
 	t.Helper()
-	tx := transaction.New(sender.Address, to, amount, nonce, sender.PublicKeyHex())
+	chain, _, _, err := api.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	chainID, err := chain.ChainID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := transaction.NewV2(sender.Address, to, amount, nonce, sender.PublicKeyHex(), chainID, chain.Blocks[0].Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := tx.Sign(sender.PrivateKey); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +94,7 @@ func TestSignedWalletTransferFromExternalWallet(t *testing.T) {
 	if _, code, err := api.dispenseFaucet(external.Address); err != nil || code != http.StatusCreated {
 		t.Fatalf("fund external wallet: %v (HTTP %d)", err, code)
 	}
-	tx := transferTestTx(t, external, wallets["Bob"].Address, 25, 0)
+	tx := transferTestTx(t, api, external, wallets["Bob"].Address, 25, 0)
 	response := requestWalletTransfer(t, api, chainID, tx)
 	if response.Code != http.StatusCreated {
 		t.Fatalf("expected HTTP 201, got %d: %s", response.Code, response.Body.String())
@@ -135,7 +149,7 @@ func TestSignedWalletTransferFromExternalWallet(t *testing.T) {
 func TestSignedWalletTransferReplayAndInvalidSignature(t *testing.T) {
 	api, wallets, chainID := walletTransferTestAPI(t)
 	alice, bob := wallets["Alice"], wallets["Bob"]
-	tx := transferTestTx(t, alice, bob.Address, 1, 0)
+	tx := transferTestTx(t, api, alice, bob.Address, 1, 0)
 	tampered := tx
 	tampered.Signature = strings.Repeat("0", len(tx.Signature))
 	if response := requestWalletTransfer(t, api, chainID, tampered); response.Code != http.StatusBadRequest {
@@ -144,7 +158,8 @@ func TestSignedWalletTransferReplayAndInvalidSignature(t *testing.T) {
 	if response := requestWalletTransfer(t, api, "other-network", tx); response.Code != http.StatusBadRequest {
 		t.Fatalf("wrong chain ID accepted: HTTP %d", response.Code)
 	}
-	badRecipient := transferTestTx(t, alice, "not-a-prism-address", 1, 0)
+	badRecipient := tx
+	badRecipient.To = "not-a-prism-address"
 	if response := requestWalletTransfer(t, api, chainID, badRecipient); response.Code != http.StatusBadRequest {
 		t.Fatalf("bad recipient accepted: HTTP %d", response.Code)
 	}
@@ -158,7 +173,7 @@ func TestSignedWalletTransferReplayAndInvalidSignature(t *testing.T) {
 
 func TestSignedWalletTransferRequiresOptInAndStrictJSON(t *testing.T) {
 	api, wallets, chainID := walletTransferTestAPI(t)
-	tx := transferTestTx(t, wallets["Alice"], wallets["Bob"].Address, 1, 0)
+	tx := transferTestTx(t, api, wallets["Alice"], wallets["Bob"].Address, 1, 0)
 	api.walletTransfersEnabled = false
 	if response := requestWalletTransfer(t, api, chainID, tx); response.Code != http.StatusForbidden {
 		t.Fatalf("disabled transfers accepted: HTTP %d", response.Code)
@@ -199,7 +214,7 @@ func TestSignedWalletTransferPreservesComputeReservations(t *testing.T) {
 	if _, err := api.computeMarket.Create(task, "Alice", available-10, 1); err != nil {
 		t.Fatal(err)
 	}
-	tx := transferTestTx(t, alice, wallets["Bob"].Address, 11, 0)
+	tx := transferTestTx(t, api, alice, wallets["Bob"].Address, 11, 0)
 	response := requestWalletTransfer(t, api, chainID, tx)
 	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "unreserved") {
 		t.Fatalf("reserved compute funds spent: HTTP %d: %s", response.Code, response.Body.String())
@@ -209,8 +224,8 @@ func TestSignedWalletTransferPreservesComputeReservations(t *testing.T) {
 func TestSignedWalletTransferSerializesNonce(t *testing.T) {
 	api, wallets, chainID := walletTransferTestAPI(t)
 	alice := wallets["Alice"]
-	txA := transferTestTx(t, alice, wallets["Bob"].Address, 1, 0)
-	txB := transferTestTx(t, alice, wallets["Charlie"].Address, 1, 0)
+	txA := transferTestTx(t, api, alice, wallets["Bob"].Address, 1, 0)
+	txB := transferTestTx(t, api, alice, wallets["Charlie"].Address, 1, 0)
 	txs := []transaction.Transaction{txA, txB}
 	results := make([]int, 2)
 	var group sync.WaitGroup

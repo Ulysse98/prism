@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"prism/internal/blockchain"
 	"prism/internal/mempool"
 	"prism/internal/transaction"
 	"prism/internal/wallet"
@@ -83,6 +82,12 @@ func (api *apiServer) handleSignedWalletTransfer(writer http.ResponseWriter, req
 		return
 	}
 
+	// New wallet submissions require network-bound v2. Historical v1 blocks
+	// remain readable, but v1 submissions are unsafe across networks.
+	if payload.Transaction.Version != transaction.VersionV2 {
+		apiWriteError(writer, http.StatusBadRequest, fmt.Errorf("wallet transfers require transaction version 2"))
+		return
+	}
 	// Verify the client's Ed25519 signature. A private key is never received.
 	if err := transaction.ValidateSigned(payload.Transaction); err != nil {
 		apiWriteError(writer, http.StatusBadRequest, fmt.Errorf("invalid signed transaction: %w", err))
@@ -112,10 +117,14 @@ func (api *apiServer) commitSignedWalletTransfer(payload apiSignedTransferReques
 	if len(chain.Blocks) == 0 {
 		return apiSignedTransferResponse{}, http.StatusInternalServerError, fmt.Errorf("blockchain is empty")
 	}
-	// Matches the network ID currently exposed by /api/v1/status.
-	chainID := blockchain.MakeChainID(chain.Blocks[0].Hash)
-	if payload.ChainID == "" || payload.ChainID != chainID {
-		return apiSignedTransferResponse{}, http.StatusBadRequest, fmt.Errorf("transfer chainId does not match this network")
+	// Canonical configured chain ID (not just a caller-supplied JSON hint).
+	chainID, err := chain.ChainID()
+	if err != nil {
+		return apiSignedTransferResponse{}, http.StatusInternalServerError, err
+	}
+	if payload.ChainID != chainID || payload.Transaction.ChainID != chainID ||
+		payload.Transaction.GenesisHash != chain.Blocks[0].Hash {
+		return apiSignedTransferResponse{}, http.StatusBadRequest, fmt.Errorf("v2 transaction network context mismatch")
 	}
 
 	tx := payload.Transaction
