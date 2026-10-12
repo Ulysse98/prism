@@ -68,6 +68,13 @@ func main() {
 		return
 	}
 
+	if command == "node-bootstrap-team-preview" {
+		if err := runNodeBootstrapTeamPreviewV061(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "Bootstrap preview refused:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if command == "node-transfer-propose" {
 		runNodeReservedTransferProposeCommand(
 			os.Args[2:],
