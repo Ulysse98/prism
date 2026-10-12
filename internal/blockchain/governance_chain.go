@@ -51,7 +51,7 @@ func (bc *Blockchain) GetGovernanceState() (
 		)
 	}
 
-	if bc.hasReservedTransferGovernance() {
+	if bc.hasReservedTransferGovernance() || bc.hasGovernanceBootstrapV061() {
 		governance, _, err :=
 			bc.replayReservedTransferConsensusState()
 

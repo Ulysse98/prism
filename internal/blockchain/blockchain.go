@@ -761,6 +761,9 @@ func (bc *Blockchain) GetState() (
 	hasReservedEmissions := false
 
 	for blockIndex, block := range bc.Blocks {
+		if len(block.GovernanceBootstraps) != 0 && !standaloneGovernanceBootstrapBlockV061(block) {
+			return State{}, fmt.Errorf("invalid mixed governance bootstrap block at height %d", block.Height)
+		}
 		if blockIndex == 0 {
 			continue
 		}
@@ -817,6 +820,9 @@ func (bc *Blockchain) GetState() (
 	var participationEmission uint64
 
 	for blockIndex, block := range bc.Blocks {
+		if len(block.GovernanceBootstraps) != 0 && !standaloneGovernanceBootstrapBlockV061(block) {
+			return State{}, fmt.Errorf("invalid mixed governance bootstrap block at height %d", block.Height)
+		}
 		if blockIndex == 0 {
 			if block.Proposer != "GENESIS" {
 				return State{}, fmt.Errorf(
@@ -964,7 +970,7 @@ func (bc *Blockchain) GetState() (
 			len(block.AuthorityProposals) == 0 &&
 			len(block.AuthorityExecutions) == 0 &&
 			len(block.ReservedTransferProposals) == 0 &&
-			len(block.ReservedTransferExecutions) == 0 {
+			len(block.ReservedTransferExecutions) == 0 && len(block.GovernanceBootstraps) == 0 {
 
 			return State{}, fmt.Errorf(
 				"empty normal block at height %d",
@@ -1380,6 +1386,11 @@ func (bc *Blockchain) ValidateChain(
 
 	genesis := bc.Blocks[0]
 
+	// Bootstrap blocks are forbidden pending v0.61 consensus integration.
+	if len(genesis.GovernanceBootstraps) != 0 {
+		return false
+	}
+
 	if genesis.Height != 0 {
 		return false
 	}
@@ -1438,6 +1449,10 @@ func (bc *Blockchain) ValidateChain(
 		current := bc.Blocks[i]
 		previous := bc.Blocks[i-1]
 
+		if len(current.GovernanceBootstraps) != 0 && !standaloneGovernanceBootstrapBlockV061(current) {
+			return false
+		}
+
 		if current.Height != previous.Height+1 {
 			return false
 		}
@@ -1484,7 +1499,7 @@ func (bc *Blockchain) ValidateChain(
 			len(current.AuthorityProposals) == 0 &&
 			len(current.AuthorityExecutions) == 0 &&
 			len(current.ReservedTransferProposals) == 0 &&
-			len(current.ReservedTransferExecutions) == 0 {
+			len(current.ReservedTransferExecutions) == 0 && len(current.GovernanceBootstraps) == 0 {
 
 			return false
 		}
