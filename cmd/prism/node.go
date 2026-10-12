@@ -11,7 +11,6 @@ import (
 	"prism/internal/mempool"
 	"prism/internal/p2p"
 	"prism/internal/storage"
-	"prism/internal/transaction"
 	"prism/internal/usefulwork"
 	"prism/internal/wallet"
 	"strconv"
@@ -308,21 +307,12 @@ func runNodeSendCommand(
 		return
 	}
 
-	tx := transaction.New(
-		senderAddress,
-		recipientAddress,
-		amount,
-		nonce,
-		senderWallet.PublicKeyHex(),
+	// Sign for the canonical configured network, not the legacy PoUW ID.
+	tx, err := signLocalWalletTransferV2(
+		chain, senderWallet, recipientAddress, amount, nonce,
 	)
-
-	if err := tx.Sign(
-		senderWallet.PrivateKey,
-	); err != nil {
-		fmt.Println(
-			"Unable to sign transaction:",
-			err,
-		)
+	if err != nil {
+		fmt.Println("Unable to sign V2 transaction:", err)
 		return
 	}
 
@@ -497,17 +487,11 @@ func runNodeProduceCommand(
 		return
 	}
 
-	tx := transaction.New(
-		alice.Address,
-		bob.Address,
-		1,
-		aliceNonce,
-		alice.PublicKeyHex(),
+	// Locally generated P2P demo blocks also use network-bound V2.
+	tx, err := signLocalWalletTransferV2(
+		chain, alice, bob.Address, 1, aliceNonce,
 	)
-
-	if err := tx.Sign(
-		alice.PrivateKey,
-	); err != nil {
+	if err != nil {
 		fmt.Println(err)
 		return
 	}

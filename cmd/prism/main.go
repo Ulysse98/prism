@@ -15,7 +15,6 @@ import (
 	"prism/internal/mempool"
 	"prism/internal/participation"
 	"prism/internal/storage"
-	"prism/internal/transaction"
 	"prism/internal/usefulwork"
 	"prism/internal/wallet"
 )
@@ -778,17 +777,10 @@ func runSend(
 		return err
 	}
 
-	tx := transaction.New(
-		sender.Address,
-		toAddress,
-		amount,
-		nonce,
-		sender.PublicKeyHex(),
-	)
-
-	if err := tx.Sign(
-		sender.PrivateKey,
-	); err != nil {
+	// New local wallet payments must be network-bound; legacy V1 history
+	// remains readable without re-signing prior blocks.
+	tx, err := signLocalWalletTransferV2(chain, sender, toAddress, amount, nonce)
+	if err != nil {
 		return err
 	}
 

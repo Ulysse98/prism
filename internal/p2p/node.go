@@ -470,6 +470,20 @@ func (s *Server) SendTransaction(
 		)
 	}
 
+	// Reject incorrectly signed V2 network context before any TCP connect.
+	// V1 remains accepted here only for legacy compatibility; consensus
+	// activation rules will need a separate coordinated upgrade.
+	s.mu.RLock()
+	if s.Chain == nil {
+		s.mu.RUnlock()
+		return fmt.Errorf("cannot send transaction without a local chain")
+	}
+	contextErr := s.Chain.ValidateTransactionContext(tx)
+	s.mu.RUnlock()
+	if contextErr != nil {
+		return fmt.Errorf("outgoing transaction network mismatch: %w", contextErr)
+	}
+
 	conn, err := net.DialTimeout(
 		"tcp",
 		address,
