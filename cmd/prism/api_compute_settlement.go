@@ -7,7 +7,6 @@ import (
 	"prism/internal/compute"
 	"prism/internal/crosschain"
 	"prism/internal/mempool"
-	"prism/internal/transaction"
 	"prism/internal/usefulwork"
 )
 
@@ -266,17 +265,12 @@ func settleComputeJob(
 		return apiComputeSettlementResult{}, err
 	}
 
-	tx := transaction.New(
-		requesterWallet.Address,
-		job.Worker,
-		job.Reward,
-		nonce,
-		requesterWallet.PublicKeyHex(),
+	// The bounty transfer uses the canonical wallet ChainID; PoUW proof
+	// context (chainID above) remains unchanged for receipt compatibility.
+	tx, err := signLocalWalletTransferV2(
+		chain, requesterWallet, job.Worker, job.Reward, nonce,
 	)
-
-	if err := tx.Sign(
-		requesterWallet.PrivateKey,
-	); err != nil {
+	if err != nil {
 		return apiComputeSettlementResult{}, err
 	}
 
