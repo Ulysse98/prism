@@ -51,9 +51,15 @@ func (bc *Blockchain) ValidateBootstrapCandidateV061(
 		return fmt.Errorf("cannot replay current governance: %w", err)
 	}
 
-	// ValidateChain ensured every local PoS validator and locked stake match.
-	// We pass this verified snapshot rather than caller-defined vote weights.
-	validators := append([]consensus.Validator(nil), pos.Validators...)
+	// Preflight and canonical replay MUST use identical signed-stake weights.
+	// ValidateChain(pos) above separately checks the current PoS state.
+	if nextHeight != v061CheckpointHeight+1 {
+		return fmt.Errorf("v0.61 bootstrap expected at height %d", v061CheckpointHeight+1)
+	}
+	validators, err := bc.pinnedBootstrapValidatorsForChainV061()
+	if err != nil {
+		return fmt.Errorf("v0.61 bootstrap checkpoint rejected: %w", err)
+	}
 	if err := governance.ApplyBootstrapV061(
 		bootstrap,
 		validators,

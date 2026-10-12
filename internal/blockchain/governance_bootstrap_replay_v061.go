@@ -2,9 +2,6 @@ package blockchain
 
 import (
 	"fmt"
-	"sort"
-
-	"prism/internal/consensus"
 	"prism/internal/reserved"
 )
 
@@ -60,23 +57,14 @@ func (bc *Blockchain) applyGovernanceBootstrapBlockV061(
 	if block.Height < GovernanceBootstrapActivationHeightV061 {
 		return fmt.Errorf("bootstrap block before activation height %d", GovernanceBootstrapActivationHeightV061)
 	}
-	if len(bc.LockedStakes) == 0 {
-		return fmt.Errorf("bootstrap has no canonical validator stake")
+	// Use the checkpoint fixed at the activation boundary. A later mutation
+	// of LockedStakes must not reweight signatures in a historical block.
+	if block.Height != v061CheckpointHeight+1 {
+		return fmt.Errorf("v0.61 bootstrap only permitted at checkpoint successor height %d", v061CheckpointHeight+1)
 	}
-
-	// Sorted ordering ensures reproducible validator snapshot encoding.
-	keys := make([]string, 0, len(bc.LockedStakes))
-	for address := range bc.LockedStakes {
-		keys = append(keys, address)
-	}
-	sort.Strings(keys)
-	validators := make([]consensus.Validator, 0, len(keys))
-	for _, address := range keys {
-		amount := bc.LockedStakes[address]
-		if amount == 0 {
-			return fmt.Errorf("bootstrap invalid zero locked stake")
-		}
-		validators = append(validators, consensus.Validator{Address: address, Stake: amount})
+	validators, err := bc.pinnedBootstrapValidatorsForChainV061()
+	if err != nil {
+		return fmt.Errorf("v0.61 bootstrap checkpoint rejected: %w", err)
 	}
 	if err := governance.ApplyBootstrapV061(
 		block.GovernanceBootstraps[0],

@@ -47,30 +47,20 @@ func v061ReplayFixture(t *testing.T) (queuedGovernanceConsensusFixture, reserved
 	return f, b, block
 }
 
-func TestV061ConsensusReplayAcceptsSignedBootstrap(t *testing.T) {
-	f, bootstrap, block := v061ReplayFixture(t)
-	if err := f.bc.AppendValidatedBlock(block, f.pos); err != nil {
-		t.Fatalf("signed bootstrap failed canonical validation: %v", err)
+func TestV061ConsensusReplayRejectsUnpinnedNetwork(t *testing.T) {
+	f, _, block := v061ReplayFixture(t)
+	before := len(f.bc.Blocks)
+	beforeHash := f.bc.Blocks[before-1].Hash
+	if err := f.bc.AppendValidatedBlock(block, f.pos); err == nil {
+		t.Fatal("non-pinned chain unexpectedly accepted bootstrap")
 	}
-	state, err := f.bc.GetGovernanceState()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(state.CurrentPolicy.Team) != 2 || state.CurrentPolicy.TeamThreshold != 2 {
-		t.Fatal("replay did not activate signed team governance")
-	}
-	if state.CurrentPolicy.Team[0] != bootstrap.Authorities[0] ||
-		state.CurrentPolicy.Team[1] != bootstrap.Authorities[1] {
-		t.Fatal("activated authorities differ from signed intent")
-	}
-	if _, err := f.bc.GetReservedAccountingState(); err != nil {
-		t.Fatalf("reserved accounting diverged after bootstrap: %v", err)
+	if len(f.bc.Blocks) != before || f.bc.Blocks[before-1].Hash != beforeHash {
+		t.Fatal("rejected bootstrap changed canonical chain")
 	}
 	if !f.bc.ValidateChain(f.pos) {
-		t.Fatal("bootstrap made chain invalid")
+		t.Fatal("rejected bootstrap invalidated the original chain")
 	}
 }
-
 func TestV061ConsensusReplayRejectsInvalidBootstrapWithoutMutation(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -103,45 +93,17 @@ func TestV061ConsensusReplayRejectsInvalidBootstrapWithoutMutation(t *testing.T)
 	}
 }
 
-func TestV061ConsensusReplayRejectsSecondBootstrap(t *testing.T) {
-	f, _, first := v061ReplayFixture(t)
-	if err := f.bc.AppendValidatedBlock(first, f.pos); err != nil {
-		t.Fatal(err)
-	}
-	id, err := f.bc.ChainID()
-	if err != nil {
-		t.Fatal(err)
-	}
-	next := first.Height + 1
-	second, err := reserved.NewGovernanceBootstrap(
-		id, f.bc.Blocks[0].Hash, consensus.ReservedPoolTeam,
-		[]string{f.authorities[0].Address, f.authorities[1].Address}, 2, 1, next,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := second.AddApproval(f.validator); err != nil {
-		t.Fatal(err)
-	}
-	proposer, err := f.pos.SelectProposer(first.Hash, next)
-	if err != nil {
-		t.Fatal(err)
-	}
-	block := Block{
-		Height: next, Timestamp: time.Unix(20001, 0).UTC(),
-		PreviousHash: first.Hash, Proposer: proposer.Address,
-		Reward:               consensus.DefaultProposerReward,
-		GovernanceBootstraps: []reserved.GovernanceBootstrap{second},
-	}
-	block.Hash = CalculateHash(block)
-	if err := f.bc.AppendValidatedBlock(block, f.pos); err == nil {
-		t.Fatal("duplicate bootstrap was accepted")
+func TestV061ConsensusReplayRejectsAttemptedBootstrapTwiceOnUnpinnedNetwork(t *testing.T) {
+	f, _, block := v061ReplayFixture(t)
+	for i := 0; i < 2; i++ {
+		if err := f.bc.AppendValidatedBlock(block, f.pos); err == nil {
+			t.Fatal("unpinned chain unexpectedly accepted bootstrap")
+		}
 	}
 	if !f.bc.ValidateChain(f.pos) {
-		t.Fatal("duplicate rejection damaged chain")
+		t.Fatal("bootstrap rejection mutated chain")
 	}
 }
-
 func TestV061ConsensusReplayRejectsGenesisBootstrap(t *testing.T) {
 	f, intent, _ := v061ReplayFixture(t)
 	f.bc.Blocks[0].GovernanceBootstraps = []reserved.GovernanceBootstrap{intent}

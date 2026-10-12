@@ -36,7 +36,7 @@ func newV061Candidate(t *testing.T) (queuedGovernanceConsensusFixture, reserved.
 	return fixture, bootstrap
 }
 
-func TestV061BootstrapCandidatePreflightReadOnly(t *testing.T) {
+func TestV061BootstrapCandidateRejectsUnpinnedNetworkReadOnly(t *testing.T) {
 	fixture, bootstrap := newV061Candidate(t)
 	beforeHeight := fixture.bc.Blocks[len(fixture.bc.Blocks)-1].Height
 	beforeHash := fixture.bc.Blocks[len(fixture.bc.Blocks)-1].Hash
@@ -44,30 +44,28 @@ func TestV061BootstrapCandidatePreflightReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if err := fixture.bc.ValidateBootstrapCandidateV061(bootstrap, fixture.pos); err != nil {
-		t.Fatalf("valid candidate rejected: %v", err)
+	if err := fixture.bc.ValidateBootstrapCandidateV061(bootstrap, fixture.pos); err == nil {
+		t.Fatal("unpinned candidate unexpectedly authorized")
 	}
 	if fixture.bc.Blocks[len(fixture.bc.Blocks)-1].Height != beforeHeight ||
 		fixture.bc.Blocks[len(fixture.bc.Blocks)-1].Hash != beforeHash {
-		t.Fatal("preflight mutated the canonical blockchain")
+		t.Fatal("preflight mutated canonical blockchain")
 	}
 	afterChainID, err := fixture.bc.ChainID()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if beforeChainID != afterChainID {
-		t.Fatal("preflight changed chain identity")
+		t.Fatal("preflight modified chain identity")
 	}
 	policy, err := fixture.bc.GetGovernanceState()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(policy.CurrentPolicy.Team) != 0 {
-		t.Fatal("preflight activated governance on the chain")
+		t.Fatal("preflight unexpectedly activated governance")
 	}
 }
-
 func TestV061BootstrapCandidateRejectsUntrustedContext(t *testing.T) {
 	cases := []struct {
 		name   string
