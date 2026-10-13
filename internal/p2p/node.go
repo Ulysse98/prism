@@ -13,7 +13,7 @@ import (
 	"prism/internal/blockchain"
 	"prism/internal/consensus"
 	"prism/internal/mempool"
-	"prism/internal/storage"
+
 	"prism/internal/transaction"
 	"prism/internal/wallet"
 )
@@ -996,7 +996,7 @@ func (s *Server) requestAndAdoptState(
 		)
 	}
 
-	if err := storage.Save(
+	if err := persistPeerStateV061(
 		s.DataDir,
 		response.Blockchain,
 		remotePoS,
@@ -1559,7 +1559,7 @@ func (s *Server) acceptBlock(
 		return false, err
 	}
 
-	if err := storage.Save(
+	if err := persistPeerStateV061(
 		s.DataDir,
 		s.Chain,
 		s.PoS,
