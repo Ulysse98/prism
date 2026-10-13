@@ -35,6 +35,9 @@ func (mp *Mempool) Add(
 			err,
 		)
 	}
+	if err := chain.ValidateTransactionContext(tx); err != nil {
+		return fmt.Errorf("invalid transaction network: %w", err)
+	}
 
 	if _, exists := mp.ids[tx.ID]; exists {
 		return fmt.Errorf(
@@ -186,6 +189,9 @@ func (mp *Mempool) stateWithPending(
 				"invalid transaction already in mempool: %w",
 				err,
 			)
+		}
+		if err := chain.ValidateTransactionContext(tx); err != nil {
+			return blockchain.State{}, fmt.Errorf("invalid pending network: %w", err)
 		}
 
 		expectedNonce := state.Nonces[tx.From]

@@ -9,7 +9,6 @@ import (
 	"prism/internal/blockchain"
 	"prism/internal/mempool"
 	"prism/internal/storage"
-	"prism/internal/transaction"
 )
 
 type apiFaucetRequest struct {
@@ -207,6 +206,19 @@ func (api *apiServer) dispenseFaucet(
 			err
 	}
 
+	// OPEN/CLAIMED compute jobs reserve their requester's funding. The
+	// faucet must not spend those commitments.
+	if api.computeMarket != nil {
+		reserved, err := api.reservedWalletBounties(faucetWallet.Address, wallets)
+		if err != nil {
+			return apiFaucetResponse{}, http.StatusInternalServerError, err
+		}
+		if available < reserved || api.faucetAmount > available-reserved {
+			return apiFaucetResponse{}, http.StatusServiceUnavailable,
+				fmt.Errorf("faucet balance reserved for compute bounties")
+		}
+	}
+
 	if available < api.faucetAmount {
 		return apiFaucetResponse{},
 			http.StatusServiceUnavailable,
@@ -229,23 +241,12 @@ func (api *apiServer) dispenseFaucet(
 			err
 	}
 
-	tx := transaction.New(
-		faucetWallet.Address,
-		recipientAddress,
-		api.faucetAmount,
-		nonce,
-		faucetWallet.PublicKeyHex(),
+	tx, err := signLocalWalletTransferV2(
+		chain, faucetWallet, recipientAddress, api.faucetAmount, nonce,
 	)
-
-	if err := tx.Sign(
-		faucetWallet.PrivateKey,
-	); err != nil {
-		return apiFaucetResponse{},
-			http.StatusInternalServerError,
-			fmt.Errorf(
-				"unable to sign faucet transaction: %w",
-				err,
-			)
+	if err != nil {
+		return apiFaucetResponse{}, http.StatusInternalServerError,
+			fmt.Errorf("unable to sign faucet transaction: %w", err)
 	}
 
 	if err := pool.Add(

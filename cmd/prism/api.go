@@ -19,43 +19,46 @@ import (
 )
 
 type apiServer struct {
-	dataPath              string
-	stateMu               sync.Mutex
-	computeMarket         *compute.Marketplace
-	settlements           *crosschain.SettlementStore
-	quantumAuditPolicy    *usefulwork.QuantumQuorumPolicy
-	quantumAuditTokenHash *[32]byte
-	quantumAuditBusy      atomic.Bool
-	quantumAuditRate      quantumAuditRateLimiter
-	quantumAuditEpoch     uint64
-	faucetEnabled         bool
-	faucetWallet          string
-	faucetAmount          uint64
+	dataPath               string
+	stateMu                sync.Mutex
+	computeMarket          *compute.Marketplace
+	settlements            *crosschain.SettlementStore
+	quantumAuditPolicy     *usefulwork.QuantumQuorumPolicy
+	quantumAuditTokenHash  *[32]byte
+	quantumAuditBusy       atomic.Bool
+	quantumAuditRate       quantumAuditRateLimiter
+	quantumAuditEpoch      uint64
+	faucetEnabled          bool
+	faucetWallet           string
+	faucetAmount           uint64
+	walletTransfersEnabled bool
 }
 
 type apiStatusResponse struct {
-	Network     string `json:"network"`
-	Version     string `json:"version"`
-	Protocol    string `json:"protocol"`
-	ChainID     string `json:"chainId"`
-	Height      uint64 `json:"height"`
-	Blocks      int    `json:"blocks"`
-	Validators  int    `json:"validators"`
-	TotalStake  uint64 `json:"totalStake"`
-	TotalSupply uint64 `json:"totalSupply"`
-	ChainValid  bool   `json:"chainValid"`
-	GenesisHash string `json:"genesisHash"`
-	LastHash    string `json:"lastHash"`
+	Network       string `json:"network"`
+	Version       string `json:"version"`
+	Protocol      string `json:"protocol"`
+	ChainID       string `json:"chainId"`
+	WalletChainID string `json:"walletChainId"`
+	Height        uint64 `json:"height"`
+	Blocks        int    `json:"blocks"`
+	Validators    int    `json:"validators"`
+	TotalStake    uint64 `json:"totalStake"`
+	TotalSupply   uint64 `json:"totalSupply"`
+	ChainValid    bool   `json:"chainValid"`
+	GenesisHash   string `json:"genesisHash"`
+	LastHash      string `json:"lastHash"`
 }
 
 type apiHealthResponse struct {
-	Status     string `json:"status"`
-	Network    string `json:"network"`
-	Version    string `json:"version"`
-	Protocol   string `json:"protocol"`
-	ChainID    string `json:"chainId"`
-	Height     uint64 `json:"height"`
-	ChainValid bool   `json:"chainValid"`
+	Status        string `json:"status"`
+	Network       string `json:"network"`
+	Version       string `json:"version"`
+	Protocol      string `json:"protocol"`
+	ChainID       string `json:"chainId"`
+	WalletChainID string `json:"walletChainId"`
+	Height        uint64 `json:"height"`
+	ChainValid    bool   `json:"chainValid"`
 }
 
 type apiValidatorResponse struct {
@@ -146,6 +149,11 @@ func runAPICommand(args []string) (exitCode int) {
 		100,
 		"fixed PRISM amount distributed by the testnet faucet",
 	)
+	walletTransfersEnabled := flags.Bool(
+		"wallet-transfers-enabled",
+		false,
+		"allow experimental locally signed wallet transfers (local testnet only)",
+	)
 
 	quantumAuditPolicyPath := flags.String(
 		"quantum-audit-policy",
@@ -199,6 +207,10 @@ func runAPICommand(args []string) (exitCode int) {
 		return
 	}
 
+	if *walletTransfersEnabled && *host != "127.0.0.1" {
+		fmt.Println("Experimental wallet transfers require -host 127.0.0.1")
+		return
+	}
 	if !storage.Exists(*nodeData) && !storage.ExistsPublic(*nodeData) {
 		fmt.Println(
 			"Prism API state not found:",
@@ -296,15 +308,16 @@ func runAPICommand(args []string) (exitCode int) {
 	}
 
 	api := &apiServer{
-		dataPath:              *nodeData,
-		computeMarket:         computeMarket,
-		settlements:           settlements,
-		quantumAuditPolicy:    quantumAuditPolicy,
-		quantumAuditTokenHash: quantumAuditTokenHash,
-		quantumAuditEpoch:     *quantumAuditEpochFlag,
-		faucetEnabled:         *faucetEnabled,
-		faucetWallet:          *faucetWallet,
-		faucetAmount:          *faucetAmount,
+		dataPath:               *nodeData,
+		computeMarket:          computeMarket,
+		settlements:            settlements,
+		quantumAuditPolicy:     quantumAuditPolicy,
+		quantumAuditTokenHash:  quantumAuditTokenHash,
+		quantumAuditEpoch:      *quantumAuditEpochFlag,
+		faucetEnabled:          *faucetEnabled,
+		faucetWallet:           *faucetWallet,
+		faucetAmount:           *faucetAmount,
+		walletTransfersEnabled: *walletTransfersEnabled,
 	}
 
 	mux := http.NewServeMux()
@@ -331,6 +344,14 @@ func runAPICommand(args []string) (exitCode int) {
 	mux.HandleFunc(
 		"/api/v1/wallets/",
 		api.handleWalletByAddress,
+	)
+	mux.HandleFunc(
+		"/api/v1/transactions",
+		api.handleWalletTransactions,
+	)
+	mux.HandleFunc(
+		"/api/v1/transactions/context",
+		api.handleWalletSigningContext,
 	)
 
 	mux.HandleFunc(
@@ -423,6 +444,9 @@ func runAPICommand(args []string) (exitCode int) {
 	fmt.Println("  GET /metrics")
 	fmt.Println("  GET /api/v1/validators")
 	fmt.Println("  GET /api/v1/wallets/{address}")
+	fmt.Println("  GET /api/v1/transactions?address={address}")
+	fmt.Println("  GET /api/v1/transactions/context")
+	fmt.Println("  POST /api/v1/transactions (opt-in local testnet)")
 	fmt.Println("  POST /api/v1/faucet")
 	fmt.Println("  GET /api/v1/participation")
 	fmt.Println("  GET /api/v1/work")
@@ -486,17 +510,27 @@ func (api *apiServer) handleHealth(
 		return
 	}
 
+	// Do not change the legacy chainId here: PoUW workers read it as a
+	// proof context. V2 wallets and the P2P handshake use the canonical
+	// configured identity, exposed separately as walletChainId.
+	walletChainID, err := chain.ChainID()
+	if err != nil {
+		apiWriteError(writer, http.StatusInternalServerError, err)
+		return
+	}
+
 	genesis := chain.Blocks[0]
 	last := chain.Blocks[len(chain.Blocks)-1]
 
 	response := apiHealthResponse{
-		Status:     "ok",
-		Network:    "Prism",
-		Version:    prismVersion,
-		Protocol:   p2p.ProtocolVersion,
-		ChainID:    p2p.MakeChainID(genesis.Hash),
-		Height:     last.Height,
-		ChainValid: chain.ValidateChain(pos),
+		Status:        "ok",
+		Network:       "Prism",
+		Version:       prismVersion,
+		Protocol:      p2p.ProtocolVersion,
+		ChainID:       p2p.MakeChainID(genesis.Hash),
+		WalletChainID: walletChainID,
+		Height:        last.Height,
+		ChainValid:    chain.ValidateChain(pos),
 	}
 
 	apiWriteJSON(
@@ -543,22 +577,31 @@ func (api *apiServer) handleStatus(
 		return
 	}
 
+	// Preserve legacy proof identity for existing PoUW clients. Wallets
+	// must use the canonical configured identity (walletChainId).
+	walletChainID, err := chain.ChainID()
+	if err != nil {
+		apiWriteError(writer, http.StatusInternalServerError, err)
+		return
+	}
+
 	genesis := chain.Blocks[0]
 	last := chain.Blocks[len(chain.Blocks)-1]
 
 	response := apiStatusResponse{
-		Network:     "Prism",
-		Version:     prismVersion,
-		Protocol:    p2p.ProtocolVersion,
-		ChainID:     p2p.MakeChainID(genesis.Hash),
-		Height:      last.Height,
-		Blocks:      len(chain.Blocks),
-		Validators:  len(pos.Validators),
-		TotalStake:  pos.TotalStake(),
-		TotalSupply: totalSupply,
-		ChainValid:  chain.ValidateChain(pos),
-		GenesisHash: genesis.Hash,
-		LastHash:    last.Hash,
+		Network:       "Prism",
+		Version:       prismVersion,
+		Protocol:      p2p.ProtocolVersion,
+		ChainID:       p2p.MakeChainID(genesis.Hash),
+		WalletChainID: walletChainID,
+		Height:        last.Height,
+		Blocks:        len(chain.Blocks),
+		Validators:    len(pos.Validators),
+		TotalStake:    pos.TotalStake(),
+		TotalSupply:   totalSupply,
+		ChainValid:    chain.ValidateChain(pos),
+		GenesisHash:   genesis.Hash,
+		LastHash:      last.Hash,
 	}
 
 	apiWriteJSON(

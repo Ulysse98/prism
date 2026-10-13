@@ -17,7 +17,7 @@ func (bc *Blockchain) GetReservedAccountingState() (
 				"blockchain cannot be nil",
 			)
 	}
-	if bc.hasReservedTransferGovernance() {
+	if bc.hasReservedTransferGovernance() || bc.hasGovernanceBootstrapV061() {
 		_, accounting, err :=
 			bc.replayReservedTransferConsensusState()
 

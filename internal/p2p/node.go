@@ -13,7 +13,7 @@ import (
 	"prism/internal/blockchain"
 	"prism/internal/consensus"
 	"prism/internal/mempool"
-	"prism/internal/storage"
+
 	"prism/internal/transaction"
 	"prism/internal/wallet"
 )
@@ -463,11 +463,30 @@ func (s *Server) SendTransaction(
 	address string,
 	tx transaction.Transaction,
 ) error {
+	// Live P2P submissions are V2-only. Historical V1 blocks remain valid.
+	if err := validateP2PLiveTransactionVersion(tx); err != nil {
+		return err
+	}
+
 	if err := transaction.ValidateSigned(tx); err != nil {
 		return fmt.Errorf(
 			"invalid outgoing transaction: %w",
 			err,
 		)
+	}
+
+	// Reject incorrectly signed V2 network context before any TCP connect.
+	// V1 remains accepted here only for legacy compatibility; consensus
+	// activation rules will need a separate coordinated upgrade.
+	s.mu.RLock()
+	if s.Chain == nil {
+		s.mu.RUnlock()
+		return fmt.Errorf("cannot send transaction without a local chain")
+	}
+	contextErr := s.Chain.ValidateTransactionContext(tx)
+	s.mu.RUnlock()
+	if contextErr != nil {
+		return fmt.Errorf("outgoing transaction network mismatch: %w", contextErr)
 	}
 
 	conn, err := net.DialTimeout(
@@ -977,7 +996,7 @@ func (s *Server) requestAndAdoptState(
 		)
 	}
 
-	if err := storage.Save(
+	if err := persistPeerStateV061(
 		s.DataDir,
 		response.Blockchain,
 		remotePoS,
@@ -1389,9 +1408,26 @@ func (s *Server) handleIncoming(
 	}
 }
 
+// validateP2PLiveTransactionVersion enforces a testnet mempool admission
+// policy, not a consensus hard fork. V1 history remains verifiable and a
+// future coordinated activation is still required to reject V1 in new blocks.
+func validateP2PLiveTransactionVersion(tx transaction.Transaction) error {
+	if tx.Version != transaction.VersionV2 {
+		return fmt.Errorf(
+			"new P2P submissions require V2 transactions (got version %d)",
+			tx.Version,
+		)
+	}
+	return nil
+}
+
 func (s *Server) acceptTransaction(
 	tx transaction.Transaction,
 ) error {
+	if err := validateP2PLiveTransactionVersion(tx); err != nil {
+		return err
+	}
+
 	s.mu.RLock()
 	chain := s.Chain
 	s.mu.RUnlock()
@@ -1523,7 +1559,7 @@ func (s *Server) acceptBlock(
 		return false, err
 	}
 
-	if err := storage.Save(
+	if err := persistPeerStateV061(
 		s.DataDir,
 		s.Chain,
 		s.PoS,

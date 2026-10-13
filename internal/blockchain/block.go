@@ -39,12 +39,18 @@ type Block struct {
 	AuthorityExecutions        []reserved.AuthorityExecution        `json:"authority_executions,omitempty"`
 	ReservedTransferProposals  []reserved.ReservedTransferProposal  `json:"reserved_transfer_proposals,omitempty"`
 	ReservedTransferExecutions []reserved.ReservedTransferExecution `json:"reserved_transfer_executions,omitempty"`
+	GovernanceBootstraps       []reserved.GovernanceBootstrap       `json:"governance_bootstraps,omitempty"`
 	Hash                       string                               `json:"hash"`
 }
 
 func CalculateHash(
 	block Block,
 ) string {
+	// v0.61 prototype: a separate hash domain commits the complete signed
+	// bootstrap payload. All historical blocks keep their previous domain.
+	if len(block.GovernanceBootstraps) > 0 {
+		return calculateGovernanceBootstrapBlockHashV061(block)
+	}
 
 	transactionData, err := json.Marshal(
 		block.Transactions,

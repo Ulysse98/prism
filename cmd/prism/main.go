@@ -15,14 +15,13 @@ import (
 	"prism/internal/mempool"
 	"prism/internal/participation"
 	"prism/internal/storage"
-	"prism/internal/transaction"
 	"prism/internal/usefulwork"
 	"prism/internal/wallet"
 )
 
 const (
 	dataDir      = "data"
-	prismVersion = "0.59.0"
+	prismVersion = "0.61.0"
 )
 
 func main() {
@@ -69,6 +68,20 @@ func main() {
 		return
 	}
 
+	if command == "node-bootstrap-team-commit" {
+		if err := runNodeBootstrapTeamCommitV061(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "Bootstrap commit refused:", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if command == "node-bootstrap-team-preview" {
+		if err := runNodeBootstrapTeamPreviewV061(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "Bootstrap preview refused:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if command == "node-transfer-propose" {
 		runNodeReservedTransferProposeCommand(
 			os.Args[2:],
@@ -778,17 +791,10 @@ func runSend(
 		return err
 	}
 
-	tx := transaction.New(
-		sender.Address,
-		toAddress,
-		amount,
-		nonce,
-		sender.PublicKeyHex(),
-	)
-
-	if err := tx.Sign(
-		sender.PrivateKey,
-	); err != nil {
+	// New local wallet payments must be network-bound; legacy V1 history
+	// remains readable without re-signing prior blocks.
+	tx, err := signLocalWalletTransferV2(chain, sender, toAddress, amount, nonce)
+	if err != nil {
 		return err
 	}
 

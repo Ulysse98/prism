@@ -120,6 +120,9 @@ func (bc *Blockchain) replayReservedTransferConsensusState() (
 	for blockIndex, block := range bc.Blocks {
 
 		if blockIndex == 0 {
+			if len(block.GovernanceBootstraps) != 0 {
+				return nil, nil, fmt.Errorf("genesis cannot contain bootstrap")
+			}
 			if len(block.ReservedAuthorizations) != 0 {
 				return nil, nil,
 					fmt.Errorf(
@@ -179,6 +182,14 @@ func (bc *Blockchain) replayReservedTransferConsensusState() (
 			continue
 		}
 
+		// v0.61 bootstrap is a standalone consensus operation.
+		// Its validator approvals are checked against canonical locked stake.
+		if len(block.GovernanceBootstraps) != 0 {
+			if err := bc.applyGovernanceBootstrapBlockV061(block, governance); err != nil {
+				return nil, nil, fmt.Errorf("v0.61 bootstrap replay: %w", err)
+			}
+			continue
+		}
 		queuedEra :=
 			block.Height >=
 				QueuedGovernanceActivationHeight
