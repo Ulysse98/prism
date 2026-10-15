@@ -29,6 +29,7 @@ export CUDA_HOME="$CUDA_TOOLKIT_PATH"
 export PATH="$CUDA_TOOLKIT_PATH/bin:$PATH"
 
 cargo build --locked --release \
+  --manifest-path workers/gpu-cutile-v062/Cargo.toml \
   --bin ml_gpu_task_3x3
 ```
 

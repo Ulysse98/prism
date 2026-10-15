@@ -21,7 +21,7 @@ import (
 
 const (
 	dataDir      = "data"
-	prismVersion = "0.61.0"
+	prismVersion = "0.62.0"
 )
 
 // gpuBackendRequestedV062 detects explicit GPU mode.
