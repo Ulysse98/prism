@@ -81,6 +81,13 @@ func runComputeWorkerCommand(
 
 	flags.SetOutput(os.Stdout)
 
+	computeBackend := flags.String(
+		"compute-backend", "cpu", "compute backend: cpu or gpu (single job only)",
+	)
+	gpuBinary := flags.String(
+		"gpu-bin", "", "absolute path to Rust/CUDA 3x3 worker",
+	)
+
 	apiBase := flags.String(
 		"api",
 		"http://127.0.0.1:8080/api/v1",
@@ -124,6 +131,24 @@ func runComputeWorkerCommand(
 	)
 
 	if err := flags.Parse(args); err != nil {
+		return
+	}
+
+	if *computeBackend != "cpu" && *computeBackend != "gpu" {
+		fmt.Println("Unsupported compute backend (expected cpu or gpu).")
+		return
+	}
+	if *computeBackend == "gpu" {
+		if *autoMode {
+			fmt.Println("GPU v0.62 currently requires a specific job ID (-auto is disabled).")
+			return
+		}
+		if err := validateGPUWorkerBinaryV062(*gpuBinary); err != nil {
+			fmt.Println("GPU backend unavailable:", err)
+			return
+		}
+	} else if *gpuBinary != "" {
+		fmt.Println("-gpu-bin requires -compute-backend gpu.")
 		return
 	}
 
@@ -351,6 +376,14 @@ func runComputeWorkerCommand(
 	result.Processed = true
 	result.JobID = job.ID
 
+	// Reject unsupported GPU work before claiming the marketplace job.
+	if *computeBackend == "gpu" {
+		if err := validateGPUComputeTaskV062(job.Task); err != nil {
+			fmt.Println("GPU task rejected before claim:", err)
+			return
+		}
+	}
+
 	if strings.EqualFold(
 		job.Requester,
 		worker.Address,
@@ -507,13 +540,18 @@ func runComputeWorkerCommand(
 		"Computing useful work...",
 	)
 
-	proof, err := usefulwork.ExecuteCompute(
-		job.Task,
-		job.ID,
-		status.ChainID,
-		status.GenesisHash,
-		worker,
-	)
+	var proof usefulwork.Proof
+	if *computeBackend == "gpu" {
+		fmt.Println("Compute backend: Rust/CUDA GPU 3x3")
+		proof, err = executeComputeGPUV062(
+			job.Task, job.ID, status.ChainID, status.GenesisHash,
+			worker, *gpuBinary,
+		)
+	} else {
+		proof, err = usefulwork.ExecuteCompute(
+			job.Task, job.ID, status.ChainID, status.GenesisHash, worker,
+		)
+	}
 	if err != nil {
 		fmt.Println(
 			"Useful work execution failed:",

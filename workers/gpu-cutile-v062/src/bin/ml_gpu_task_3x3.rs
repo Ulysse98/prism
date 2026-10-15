@@ -1,0 +1,260 @@
+use cutile::prelude::*;
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::sync::Arc;
+
+#[cutile::module]
+mod ml_gpu {
+    use cutile::core::*;
+
+    #[cutile::entry()]
+    fn predict<const S: [i32; 1]>(
+        out: &mut Tensor<i64, S>,
+        x0: &Tensor<i64, { [-1] }>,
+        x1: &Tensor<i64, { [-1] }>,
+        x2: &Tensor<i64, { [-1] }>,
+        w00: i64,
+        w01: i64,
+        w02: i64,
+        w10: i64,
+        w11: i64,
+        w12: i64,
+        w20: i64,
+        w21: i64,
+        w22: i64,
+        b0: i64,
+        b1: i64,
+        b2: i64,
+    ) {
+        let shape = out.shape();
+
+        let a = x0.load_like(out);
+        let b = x1.load_like(out);
+        let c = x2.load_like(out);
+
+        let s0 = a * w00.broadcast(shape)
+            + b * w01.broadcast(shape)
+            + c * w02.broadcast(shape)
+            + b0.broadcast(shape);
+
+        let s1 = a * w10.broadcast(shape)
+            + b * w11.broadcast(shape)
+            + c * w12.broadcast(shape)
+            + b1.broadcast(shape);
+
+        let s2 = a * w20.broadcast(shape)
+            + b * w21.broadcast(shape)
+            + c * w22.broadcast(shape)
+            + b2.broadcast(shape);
+
+        // Strict > preserves the lowest class on ties.
+        let choose1 = gt_tile(s1, s0);
+
+        let best01 = select(choose1, s1, s0);
+
+        let class01 = select(
+            gt_tile(s1, s0),
+            1i64.broadcast(shape),
+            0i64.broadcast(shape),
+        );
+
+        let prediction = select(gt_tile(s2, best01), 2i64.broadcast(shape), class01);
+
+        out.store(prediction);
+    }
+}
+
+fn sha256(data: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(data))
+}
+
+fn read_i64(v: &Value, key: &str) -> Vec<i64> {
+    v[key]
+        .as_array()
+        .expect("missing array")
+        .iter()
+        .map(|x| x.as_i64().expect("invalid i64"))
+        .collect()
+}
+
+// This worker receives ONE Prism task via stdin.
+// Unlike the fixture harness, it does not receive
+// expected predictions and does not compute argmax on CPU.
+
+fn ensure_safe_integer_ranges(inputs: &[i64], weights: &[i64], biases: &[i64]) {
+    let mut max_abs = [0i128; 3];
+
+    for sample in inputs.chunks_exact(3) {
+        for feature in 0..3 {
+            let value = (sample[feature] as i128).abs();
+
+            max_abs[feature] = max_abs[feature].max(value);
+        }
+    }
+
+    let limit = i64::MAX as i128;
+
+    for class in 0..3 {
+        let mut bound = (biases[class] as i128).abs();
+
+        assert!(bound <= limit, "unsafe bias range");
+
+        for feature in 0..3 {
+            let weight = (weights[class * 3 + feature] as i128).abs();
+
+            let term = max_abs[feature]
+                .checked_mul(weight)
+                .expect("integer range multiplication overflow");
+
+            assert!(term <= limit, "unsafe product range");
+
+            bound = bound
+                .checked_add(term)
+                .expect("integer range addition overflow");
+
+            assert!(bound <= limit, "unsafe score range");
+        }
+    }
+}
+
+fn main() -> Result<(), Error> {
+    use std::io::Read;
+
+    const MAX_TASK_JSON_BYTES: u64 = 512 * 1024;
+
+    let mut input = String::new();
+
+    std::io::stdin()
+        .take(MAX_TASK_JSON_BYTES + 1)
+        .read_to_string(&mut input)
+        .expect("cannot read task from stdin");
+
+    assert!(
+        input.len() as u64 <= MAX_TASK_JSON_BYTES,
+        "task JSON exceeds 512 KiB"
+    );
+
+    let envelope: Value = serde_json::from_str(&input).expect("invalid JSON");
+
+    let task = envelope.get("task").expect("missing task");
+
+    assert_eq!(
+        task["type"].as_str(),
+        Some("ml_inference_quantized"),
+        "unsupported task type",
+    );
+
+    let batch = usize::try_from(task["rows_a"].as_u64().expect("invalid batch"))
+        .expect("batch exceeds platform size");
+
+    assert!(batch > 0 && batch <= 4096, "unsupported batch size",);
+
+    assert_eq!(task["cols_a"].as_u64(), Some(3));
+    assert_eq!(task["cols_b"].as_u64(), Some(3));
+
+    let inputs = read_i64(task, "signed_values");
+    let weights = read_i64(task, "signed_values_b");
+    let biases = read_i64(task, "biases");
+
+    assert_eq!(inputs.len(), batch * 3);
+    assert_eq!(weights.len(), 9);
+    assert_eq!(biases.len(), 3);
+
+    // Go computes scores with checked int64 operations.
+    // Conservative bounds reject any potentially unsafe
+    // GPU integer arithmetic without calculating predictions.
+    ensure_safe_integer_ranges(&inputs, &weights, &biases);
+
+    let payload = format!(
+        "{{\"batch_size\":{},\"features\":3,\
+         \"classes\":3,\"inputs\":{},\
+         \"weights\":{},\"biases\":{}}}",
+        batch,
+        serde_json::to_string(&inputs).unwrap(),
+        serde_json::to_string(&weights).unwrap(),
+        serde_json::to_string(&biases).unwrap(),
+    );
+
+    let input_hash = sha256(payload.as_bytes());
+
+    assert_eq!(
+        task["input_hash"].as_str(),
+        Some(input_hash.as_str()),
+        "input hash mismatch",
+    );
+
+    let task_id = sha256(format!("ml_inference_quantized|{input_hash}").as_bytes());
+
+    assert_eq!(
+        task["id"].as_str(),
+        Some(task_id.as_str()),
+        "task ID mismatch",
+    );
+
+    let device = Device::new(0)?;
+    let stream = device.new_stream()?;
+
+    let mut columns = [
+        Vec::with_capacity(batch),
+        Vec::with_capacity(batch),
+        Vec::with_capacity(batch),
+    ];
+
+    for sample in inputs.chunks_exact(3) {
+        for feature in 0..3 {
+            columns[feature].push(sample[feature]);
+        }
+    }
+
+    let x0: Arc<Tensor<i64>> = api::copy_host_vec_to_device(&Arc::new(columns[0].clone()))
+        .sync_on(&stream)?
+        .into();
+
+    let x1: Arc<Tensor<i64>> = api::copy_host_vec_to_device(&Arc::new(columns[1].clone()))
+        .sync_on(&stream)?
+        .into();
+
+    let x2: Arc<Tensor<i64>> = api::copy_host_vec_to_device(&Arc::new(columns[2].clone()))
+        .sync_on(&stream)?
+        .into();
+
+    let out = api::zeros::<i64>(&[batch])
+        .sync_on(&stream)?
+        .partition([32]);
+
+    let outputs = ml_gpu::predict(
+        out, x0, x1, x2, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5],
+        weights[6], weights[7], weights[8], biases[0], biases[1], biases[2],
+    )
+    .sync_on(&stream)?;
+
+    let gpu_values: Vec<i64> = outputs.0.unpartition().to_host_vec().sync_on(&stream)?;
+
+    let predictions: Vec<u64> = gpu_values
+        .into_iter()
+        .map(|value| u64::try_from(value).unwrap())
+        .collect();
+
+    assert_eq!(predictions.len(), batch);
+
+    for class in &predictions {
+        assert!(*class < 3, "invalid GPU prediction");
+    }
+
+    let result_json = serde_json::to_vec(&predictions).expect("prediction serialization failed");
+
+    let output_hash = sha256(&result_json);
+
+    let receipt = serde_json::json!({
+        "schema": "prism-gpu-ml-lab-v0",
+        "task_id": task_id,
+        "input_hash": input_hash,
+        "result_values": predictions,
+        "output_hash": output_hash,
+        "gpu_attestation": false
+    });
+
+    println!("PRISM_GPU_RECEIPT={receipt}");
+
+    Ok(())
+}

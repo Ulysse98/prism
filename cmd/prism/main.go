@@ -24,6 +24,25 @@ const (
 	prismVersion = "0.61.0"
 )
 
+// gpuBackendRequestedV062 detects explicit GPU mode.
+// The CPU CLI retains its existing exit-code behavior.
+func gpuBackendRequestedV062(args []string) bool {
+	backend := "cpu"
+	for i, arg := range args {
+		switch {
+		case arg == "-compute-backend", arg == "--compute-backend":
+			if i+1 < len(args) {
+				backend = args[i+1]
+			}
+		case strings.HasPrefix(arg, "-compute-backend="):
+			backend = strings.TrimPrefix(arg, "-compute-backend=")
+		case strings.HasPrefix(arg, "--compute-backend="):
+			backend = strings.TrimPrefix(arg, "--compute-backend=")
+		}
+	}
+	return backend == "gpu"
+}
+
 func main() {
 	jsonWorkLog := len(os.Args) == 3 &&
 		strings.EqualFold(os.Args[1], "worklog") &&
@@ -119,7 +138,11 @@ func main() {
 	}
 
 	if command == "compute-worker" {
-		runComputeWorkerCommand(os.Args[2:])
+		args := os.Args[2:]
+		result := runComputeWorkerCommand(args)
+		if gpuBackendRequestedV062(args) && !result.Completed {
+			os.Exit(1)
+		}
 		return
 	}
 

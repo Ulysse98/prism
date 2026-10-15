@@ -1,0 +1,9 @@
+[package]
+name = "prism-gpu-worker-lab"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cutile = { git = "https://github.com/NVIDIA/cuda-rust.git", rev = "bc46b1ffb751885073066b087594045f07f0f81b" }
+sha2 = "0.10"
+serde_json = "1"
