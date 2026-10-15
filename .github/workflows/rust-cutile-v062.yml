@@ -1,0 +1,120 @@
+name: Rust cuTile GPU worker CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-cutile-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source:
+    name: Rust formatting and dependency pin
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify pinned cuTile revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import tomllib
+
+          directory = Path("workers/gpu-cutile-v062")
+          manifest = tomllib.loads((directory / "Cargo.toml").read_text())
+          lock = tomllib.loads((directory / "Cargo.lock").read_text())
+
+          expected = "bc46b1ffb751885073066b087594045f07f0f81b"
+          dependency = manifest["dependencies"]["cutile"]
+          assert dependency["git"] == "https://github.com/NVIDIA/cuda-rust.git"
+          assert dependency["rev"] == expected
+          assert not any(
+              "path" in value
+              for value in manifest["dependencies"].values()
+              if isinstance(value, dict)
+          )
+
+          packages = [package for package in lock["package"] if package["name"] == "cutile"]
+          assert len(packages) == 1
+          assert packages[0]["source"].endswith("#" + expected)
+          print("PASS: NVIDIA cuTile dependency and lockfile pinned")
+          PY
+
+      - name: Rust formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal --component rustfmt
+          cargo +stable fmt --manifest-path workers/gpu-cutile-v062/Cargo.toml -- --check
+
+  cuda-host-build:
+    name: CUDA 13.2 Rust release build (no GPU)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    container:
+      image: nvidia/cuda:13.2.0-devel-ubuntu24.04
+      env:
+        DEBIAN_FRONTEND: noninteractive
+    env:
+      CUDA_TOOLKIT_PATH: /usr/local/cuda
+      CUDA_HOME: /usr/local/cuda
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust and build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential curl ca-certificates git cmake pkg-config \
+            libclang-dev zlib1g-dev libzstd-dev python3
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Verify CUDA toolkit (not GPU hardware)
+        shell: bash
+        run: |
+          set -euo pipefail
+          nvcc --version
+          test -f "$CUDA_TOOLKIT_PATH/include/cuda.h"
+          command -v tileiras
+
+      - name: Build Prism Rust/cuTile worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --release \
+            --manifest-path workers/gpu-cutile-v062/Cargo.toml \
+            --bin ml_gpu_task_3x3
+          test -x workers/gpu-cutile-v062/target/release/ml_gpu_task_3x3
+
+      - name: Confirm input limit without launching CUDA
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          binary = Path("workers/gpu-cutile-v062/target/release/ml_gpu_task_3x3")
+          result = subprocess.run(
+              [str(binary.resolve())],
+              input=b" " * (512 * 1024 + 1),
+              capture_output=True,
+              timeout=15,
+          )
+          assert result.returncode != 0, "oversized input unexpectedly accepted"
+          assert b"task JSON exceeds 512 KiB" in result.stderr, result.stderr[:2000]
+          print("PASS: 512 KiB input limit enforced without a GPU")
+          PY
