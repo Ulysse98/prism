@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -48,7 +49,7 @@ func TestGPUProcessGroupTimeoutV062(t *testing.T) {
 	for time.Now().Before(deadline) {
 		// A zombie is no longer running; PID 1 may reap it later.
 		stat, readErr := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
-		if errors.Is(readErr, os.ErrNotExist) {
+		if errors.Is(readErr, os.ErrNotExist) || errors.Is(readErr, syscall.ESRCH) {
 			t.Log("PASS: GPU descendant terminated after timeout")
 			return
 		}

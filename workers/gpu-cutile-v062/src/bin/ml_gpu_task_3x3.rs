@@ -2,6 +2,7 @@ use cutile::prelude::*;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
+use std::time::Instant;
 
 #[cutile::module]
 mod ml_gpu {
@@ -13,18 +14,18 @@ mod ml_gpu {
         x0: &Tensor<i64, { [-1] }>,
         x1: &Tensor<i64, { [-1] }>,
         x2: &Tensor<i64, { [-1] }>,
-        w00: i64,
-        w01: i64,
-        w02: i64,
-        w10: i64,
-        w11: i64,
-        w12: i64,
-        w20: i64,
-        w21: i64,
-        w22: i64,
-        b0: i64,
-        b1: i64,
-        b2: i64,
+        w00: &Tensor<i64, { [-1] }>,
+        w01: &Tensor<i64, { [-1] }>,
+        w02: &Tensor<i64, { [-1] }>,
+        w10: &Tensor<i64, { [-1] }>,
+        w11: &Tensor<i64, { [-1] }>,
+        w12: &Tensor<i64, { [-1] }>,
+        w20: &Tensor<i64, { [-1] }>,
+        w21: &Tensor<i64, { [-1] }>,
+        w22: &Tensor<i64, { [-1] }>,
+        b0: &Tensor<i64, { [-1] }>,
+        b1: &Tensor<i64, { [-1] }>,
+        b2: &Tensor<i64, { [-1] }>,
     ) {
         let shape = out.shape();
 
@@ -32,20 +33,20 @@ mod ml_gpu {
         let b = x1.load_like(out);
         let c = x2.load_like(out);
 
-        let s0 = a * w00.broadcast(shape)
-            + b * w01.broadcast(shape)
-            + c * w02.broadcast(shape)
-            + b0.broadcast(shape);
+        let s0 = a * w00.load_like(out)
+            + b * w01.load_like(out)
+            + c * w02.load_like(out)
+            + b0.load_like(out);
 
-        let s1 = a * w10.broadcast(shape)
-            + b * w11.broadcast(shape)
-            + c * w12.broadcast(shape)
-            + b1.broadcast(shape);
+        let s1 = a * w10.load_like(out)
+            + b * w11.load_like(out)
+            + c * w12.load_like(out)
+            + b1.load_like(out);
 
-        let s2 = a * w20.broadcast(shape)
-            + b * w21.broadcast(shape)
-            + c * w22.broadcast(shape)
-            + b2.broadcast(shape);
+        let s2 = a * w20.load_like(out)
+            + b * w21.load_like(out)
+            + c * w22.load_like(out)
+            + b2.load_like(out);
 
         // Strict > preserves the lowest class on ties.
         let choose1 = gt_tile(s1, s0);
@@ -120,6 +121,9 @@ fn ensure_safe_integer_ranges(inputs: &[i64], weights: &[i64], biases: &[i64]) {
 fn main() -> Result<(), Error> {
     use std::io::Read;
 
+    let worker_started = Instant::now();
+    let profile_enabled = matches!(std::env::var("PRISM_GPU_PROFILE").as_deref(), Ok("1"));
+
     const MAX_TASK_JSON_BYTES: u64 = 512 * 1024;
 
     let mut input = String::new();
@@ -191,8 +195,10 @@ fn main() -> Result<(), Error> {
         "task ID mismatch",
     );
 
+    let parsing_finished = Instant::now();
     let device = Device::new(0)?;
     let stream = device.new_stream()?;
+    let device_ready = Instant::now();
 
     let mut columns = [
         Vec::with_capacity(batch),
@@ -205,6 +211,7 @@ fn main() -> Result<(), Error> {
             columns[feature].push(sample[feature]);
         }
     }
+    let columns_ready = Instant::now();
 
     let x0: Arc<Tensor<i64>> = api::copy_host_vec_to_device(&Arc::new(columns[0].clone()))
         .sync_on(&stream)?
@@ -217,18 +224,49 @@ fn main() -> Result<(), Error> {
     let x2: Arc<Tensor<i64>> = api::copy_host_vec_to_device(&Arc::new(columns[2].clone()))
         .sync_on(&stream)?
         .into();
+    // v0.63: model values are runtime GPU data, not scalar JIT parameters.
+    // Conservative implementation: 12 vectors repeated across each batch.
+    // Optimize representation only after production-path correctness tests.
+    let model_values: Vec<i64> = weights.iter().chain(biases.iter()).copied().collect();
+    assert_eq!(model_values.len(), 12);
+    let mut model_tensors: Vec<Arc<Tensor<i64>>> = Vec::with_capacity(12);
+    for &value in model_values.iter() {
+        let repeated = Arc::new(vec![value; batch]);
+        let tensor: Arc<Tensor<i64>> = api::copy_host_vec_to_device(&repeated)
+            .sync_on(&stream)?
+            .into();
+        model_tensors.push(tensor);
+    }
+    let h2d_finished = Instant::now();
 
     let out = api::zeros::<i64>(&[batch])
         .sync_on(&stream)?
         .partition([32]);
+    let output_allocated = Instant::now();
 
     let outputs = ml_gpu::predict(
-        out, x0, x1, x2, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5],
-        weights[6], weights[7], weights[8], biases[0], biases[1], biases[2],
+        out,
+        x0,
+        x1,
+        x2,
+        model_tensors[0].clone(),
+        model_tensors[1].clone(),
+        model_tensors[2].clone(),
+        model_tensors[3].clone(),
+        model_tensors[4].clone(),
+        model_tensors[5].clone(),
+        model_tensors[6].clone(),
+        model_tensors[7].clone(),
+        model_tensors[8].clone(),
+        model_tensors[9].clone(),
+        model_tensors[10].clone(),
+        model_tensors[11].clone(),
     )
     .sync_on(&stream)?;
+    let kernel_finished = Instant::now();
 
     let gpu_values: Vec<i64> = outputs.0.unpartition().to_host_vec().sync_on(&stream)?;
+    let d2h_finished = Instant::now();
 
     let predictions: Vec<u64> = gpu_values
         .into_iter()
@@ -254,7 +292,31 @@ fn main() -> Result<(), Error> {
         "gpu_attestation": false
     });
 
-    println!("PRISM_GPU_RECEIPT={receipt}");
+    let receipt_line = format!("PRISM_GPU_RECEIPT={receipt}");
+    let receipt_ready = Instant::now();
+    println!("{receipt_line}");
+
+    if profile_enabled {
+        // Host wall-clock timers synchronized with CUDA operations; the
+        // kernel region may include JIT compilation and launch overhead.
+        // Never include timings in the consensus-critical stdout receipt.
+        let millis = |duration: std::time::Duration| duration.as_secs_f64() * 1000.0;
+        let profile = serde_json::json!({
+            "schema": "prism-gpu-profile-v063",
+            "measurement": "host_instant_sync_walltime_not_kernel_only",
+            "batch_size": batch,
+            "host_parse_validation_ms": millis(parsing_finished.duration_since(worker_started)),
+            "device_stream_init_ms": millis(device_ready.duration_since(parsing_finished)),
+            "host_column_prep_ms": millis(columns_ready.duration_since(device_ready)),
+            "h2d_transfer_sync_ms": millis(h2d_finished.duration_since(columns_ready)),
+            "device_output_alloc_ms": millis(output_allocated.duration_since(h2d_finished)),
+            "kernel_launch_jit_sync_ms": millis(kernel_finished.duration_since(output_allocated)),
+            "d2h_transfer_sync_ms": millis(d2h_finished.duration_since(kernel_finished)),
+            "host_result_receipt_ms": millis(receipt_ready.duration_since(d2h_finished)),
+            "total_worker_ms": millis(receipt_ready.duration_since(worker_started)),
+        });
+        eprintln!("PRISM_GPU_PROFILE={profile}");
+    }
 
     Ok(())
 }

@@ -8,7 +8,7 @@ quantized ML inference.
 - Task type: `ml_inference_quantized`
 - Features: 3
 - Classes: 3
-- Batch size: 1 to 4096 samples
+- Batch size: 1 to 1365 samples with 3 features (4096 total input values maximum)
 - Signed 64-bit integer inputs, weights and biases
 - Conservative integer-overflow rejection
 - No implicit CPU fallback
@@ -67,3 +67,10 @@ task dimensions documented above.
 
 Testing on an isolated blockchain does not imply
 deployment to the main Prism network.
+
+## Prism v0.63 persistent GPU session (opt-in)
+
+Prism v0.63 adds the experimental `gpu-session` CLI backend.
+The legacy v0.62 single-shot GPU backend and the default CPU backend remain available.
+See [GPU_SESSION_V063.md](GPU_SESSION_V063.md) for the build, security model,
+limits, CLI examples, and measured performance.

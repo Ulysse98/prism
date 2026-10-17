@@ -71,8 +71,12 @@ func printComputeWorkerUsage() {
 	)
 }
 
-func runComputeWorkerCommand(
-	args []string,
+func runComputeWorkerCommand(args []string) autonomousComputeIterationResult {
+	return runComputeWorkerCommandWithGPUV063(args, nil)
+}
+
+func runComputeWorkerCommandWithGPUV063(
+	args []string, shared *gpuCLISessionV063,
 ) (result autonomousComputeIterationResult) {
 	flags := flag.NewFlagSet(
 		"compute-worker",
@@ -82,7 +86,7 @@ func runComputeWorkerCommand(
 	flags.SetOutput(os.Stdout)
 
 	computeBackend := flags.String(
-		"compute-backend", "cpu", "compute backend: cpu or gpu (single job only)",
+		"compute-backend", "cpu", "compute backend: cpu, gpu, or experimental gpu-session",
 	)
 	gpuBinary := flags.String(
 		"gpu-bin", "", "absolute path to Rust/CUDA 3x3 worker",
@@ -134,12 +138,12 @@ func runComputeWorkerCommand(
 		return
 	}
 
-	if *computeBackend != "cpu" && *computeBackend != "gpu" {
-		fmt.Println("Unsupported compute backend (expected cpu or gpu).")
+	if *computeBackend != "cpu" && *computeBackend != "gpu" && *computeBackend != "gpu-session" {
+		fmt.Println("Unsupported compute backend (expected cpu, gpu, or gpu-session).")
 		return
 	}
-	if *computeBackend == "gpu" {
-		if *autoMode {
+	if *computeBackend == "gpu" || *computeBackend == "gpu-session" {
+		if *computeBackend == "gpu" && *autoMode {
 			fmt.Println("GPU v0.62 currently requires a specific job ID (-auto is disabled).")
 			return
 		}
@@ -148,7 +152,7 @@ func runComputeWorkerCommand(
 			return
 		}
 	} else if *gpuBinary != "" {
-		fmt.Println("-gpu-bin requires -compute-backend gpu.")
+		fmt.Println("-gpu-bin requires -compute-backend gpu or gpu-session.")
 		return
 	}
 
@@ -247,16 +251,25 @@ func runComputeWorkerCommand(
 	}
 
 	if *autoMode && *pollInterval > 0 {
-		runContinuousComputeWorker(
-			*apiBase,
-			*dataPath,
-			workerName,
-			worker.Address,
-			*taskFilter,
-			*minReward,
-			*limit,
-			*pollInterval,
-		)
+		if *computeBackend == "gpu-session" {
+			if shared == nil {
+				shared = &gpuCLISessionV063{binary: *gpuBinary}
+			}
+			runContinuousGPUV063Worker(*apiBase, *dataPath, workerName, worker.Address,
+				*taskFilter, *minReward, *limit, *pollInterval, shared)
+		} else {
+
+			runContinuousComputeWorker(
+				*apiBase,
+				*dataPath,
+				workerName,
+				worker.Address,
+				*taskFilter,
+				*minReward,
+				*limit,
+				*pollInterval,
+			)
+		}
 		return
 	}
 
@@ -377,7 +390,7 @@ func runComputeWorkerCommand(
 	result.JobID = job.ID
 
 	// Reject unsupported GPU work before claiming the marketplace job.
-	if *computeBackend == "gpu" {
+	if *computeBackend == "gpu" || *computeBackend == "gpu-session" {
 		if err := validateGPUComputeTaskV062(job.Task); err != nil {
 			fmt.Println("GPU task rejected before claim:", err)
 			return
@@ -547,6 +560,13 @@ func runComputeWorkerCommand(
 			job.Task, job.ID, status.ChainID, status.GenesisHash,
 			worker, *gpuBinary,
 		)
+	} else if *computeBackend == "gpu-session" {
+		owned := shared
+		if owned == nil {
+			owned = &gpuCLISessionV063{binary: *gpuBinary}
+			defer func() { _ = owned.Close() }()
+		}
+		proof, err = owned.Execute(job.Task, job.ID, status.ChainID, status.GenesisHash, worker)
 	} else {
 		proof, err = usefulwork.ExecuteCompute(
 			job.Task, job.ID, status.ChainID, status.GenesisHash, worker,

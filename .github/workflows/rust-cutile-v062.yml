@@ -99,8 +99,10 @@ jobs:
           set -euo pipefail
           cargo build --locked --release \
             --manifest-path workers/gpu-cutile-v062/Cargo.toml \
-            --bin ml_gpu_task_3x3
+            --bin ml_gpu_task_3x3 \
+            --bin ml_gpu_session_hardened_v063
           test -x workers/gpu-cutile-v062/target/release/ml_gpu_task_3x3
+          test -x workers/gpu-cutile-v062/target/release/ml_gpu_session_hardened_v063
 
       - name: Confirm input limit without launching CUDA
         shell: bash
