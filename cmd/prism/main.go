@@ -21,7 +21,7 @@ import (
 
 const (
 	dataDir      = "data"
-	prismVersion = "0.62.0"
+	prismVersion = "0.63.0"
 )
 
 // gpuBackendRequestedV062 detects explicit GPU mode.
@@ -41,6 +41,40 @@ func gpuBackendRequestedV062(args []string) bool {
 		}
 	}
 	return backend == "gpu"
+}
+
+// gpuSessionSingleJobRequestedV063 preserves a successful
+// shutdown for autonomous polling, while allowing failed
+// individual GPU jobs to return a nonzero exit status.
+func gpuSessionSingleJobRequestedV063(args []string) bool {
+	backend := "cpu"
+	auto := false
+
+	for i, arg := range args {
+		switch {
+		case arg == "-compute-backend", arg == "--compute-backend":
+			if i+1 < len(args) {
+				backend = args[i+1]
+			}
+		case strings.HasPrefix(arg, "-compute-backend="):
+			backend = strings.TrimPrefix(arg, "-compute-backend=")
+		case strings.HasPrefix(arg, "--compute-backend="):
+			backend = strings.TrimPrefix(arg, "--compute-backend=")
+		case arg == "-auto", arg == "--auto":
+			auto = true
+		case strings.HasPrefix(arg, "-auto="):
+			value, err := strconv.ParseBool(
+				strings.TrimPrefix(arg, "-auto="),
+			)
+			auto = err == nil && value
+		case strings.HasPrefix(arg, "--auto="):
+			value, err := strconv.ParseBool(
+				strings.TrimPrefix(arg, "--auto="),
+			)
+			auto = err == nil && value
+		}
+	}
+	return backend == "gpu-session" && !auto
 }
 
 func main() {
@@ -140,7 +174,7 @@ func main() {
 	if command == "compute-worker" {
 		args := os.Args[2:]
 		result := runComputeWorkerCommand(args)
-		if gpuBackendRequestedV062(args) && !result.Completed {
+		if (gpuBackendRequestedV062(args) || gpuSessionSingleJobRequestedV063(args)) && !result.Completed {
 			os.Exit(1)
 		}
 		return
