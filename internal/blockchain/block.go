@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"prism/internal/consensus"
+	"prism/internal/escrow"
 	"prism/internal/identity"
 	"prism/internal/poup"
 	"prism/internal/reserved"
@@ -28,6 +29,7 @@ type Block struct {
 	Proposer                   string                               `json:"proposer"`
 	Reward                     uint64                               `json:"reward"`
 	Transactions               []transaction.Transaction            `json:"transactions"`
+	EscrowFundings             []escrow.FundingAuthorization        `json:"escrow_fundings,omitempty"`
 	UsefulWork                 []usefulwork.Proof                   `json:"useful_work"`
 	Humanity                   []identity.Attestation               `json:"humanity,omitempty"`
 	ParticipationClaims        []poup.Claim                         `json:"participation_claims,omitempty"`
@@ -46,6 +48,11 @@ type Block struct {
 func CalculateHash(
 	block Block,
 ) string {
+	// v0.65 funding blocks use a new fully committed hash domain.
+	// Legacy block hashes remain byte-for-byte unchanged.
+	if len(block.EscrowFundings) != 0 {
+		return calculateEscrowBlockHashV065(block)
+	}
 	// v0.61 prototype: a separate hash domain commits the complete signed
 	// bootstrap payload. All historical blocks keep their previous domain.
 	if len(block.GovernanceBootstraps) > 0 {
