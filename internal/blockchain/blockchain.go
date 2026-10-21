@@ -808,8 +808,8 @@ func (bc *Blockchain) GetState() (
 	var participationEmission uint64
 
 	for blockIndex, block := range bc.Blocks {
-		if len(block.EscrowFundings) != 0 && (blockIndex == 0 || !standaloneEscrowFundingBlockV065(block)) {
-			return State{}, fmt.Errorf("invalid standalone escrow funding block at height %d", block.Height)
+		if escrowOperationCountV065(block) != 0 && (blockIndex == 0 || !standaloneEscrowBlockV065(block)) {
+			return State{}, fmt.Errorf("invalid standalone escrow block at height %d", block.Height)
 		}
 		if len(block.GovernanceBootstraps) != 0 && !standaloneGovernanceBootstrapBlockV061(block) {
 			return State{}, fmt.Errorf("invalid mixed governance bootstrap block at height %d", block.Height)
@@ -961,7 +961,7 @@ func (bc *Blockchain) GetState() (
 			len(block.AuthorityProposals) == 0 &&
 			len(block.AuthorityExecutions) == 0 &&
 			len(block.ReservedTransferProposals) == 0 &&
-			len(block.ReservedTransferExecutions) == 0 && len(block.GovernanceBootstraps) == 0 && len(block.EscrowFundings) == 0 {
+			len(block.ReservedTransferExecutions) == 0 && len(block.GovernanceBootstraps) == 0 && escrowOperationCountV065(block) == 0 {
 
 			return State{}, fmt.Errorf(
 				"empty normal block at height %d",
@@ -1024,6 +1024,24 @@ func (bc *Blockchain) GetState() (
 				return State{}, fmt.Errorf("insufficient unlocked balance for escrow funding")
 			}
 			if err := escrowIndex.apply(auth, block.Height, chainID, bc.Blocks[0].Hash); err != nil {
+				return State{}, err
+			}
+		}
+		// Escrow lifecycle operations are standalone, consensus committed,
+		// and applied in canonical block order. RELEASE transfers existing
+		// tokens once; REFUND merely removes the funding lock.
+		if len(block.EscrowClaims) == 1 {
+			if err := escrowIndex.applyClaimV065(block.EscrowClaims[0], block.Height); err != nil {
+				return State{}, err
+			}
+		}
+		if len(block.EscrowReleases) == 1 {
+			if err := escrowIndex.applyReleaseV065(block.EscrowReleases[0], block.Height, &state); err != nil {
+				return State{}, err
+			}
+		}
+		if len(block.EscrowRefunds) == 1 {
+			if err := escrowIndex.applyRefundV065(block.EscrowRefunds[0], block.Height); err != nil {
 				return State{}, err
 			}
 		}
@@ -1409,7 +1427,7 @@ func (bc *Blockchain) ValidateChain(
 	if len(genesis.GovernanceBootstraps) != 0 {
 		return false
 	}
-	if len(genesis.EscrowFundings) != 0 {
+	if escrowOperationCountV065(genesis) != 0 {
 		return false
 	}
 
@@ -1471,7 +1489,7 @@ func (bc *Blockchain) ValidateChain(
 		current := bc.Blocks[i]
 		previous := bc.Blocks[i-1]
 
-		if len(current.EscrowFundings) != 0 && !standaloneEscrowFundingBlockV065(current) {
+		if escrowOperationCountV065(current) != 0 && !standaloneEscrowBlockV065(current) {
 			return false
 		}
 		if len(current.GovernanceBootstraps) != 0 && !standaloneGovernanceBootstrapBlockV061(current) {
@@ -1524,7 +1542,7 @@ func (bc *Blockchain) ValidateChain(
 			len(current.AuthorityProposals) == 0 &&
 			len(current.AuthorityExecutions) == 0 &&
 			len(current.ReservedTransferProposals) == 0 &&
-			len(current.ReservedTransferExecutions) == 0 && len(current.GovernanceBootstraps) == 0 && len(current.EscrowFundings) == 0 {
+			len(current.ReservedTransferExecutions) == 0 && len(current.GovernanceBootstraps) == 0 && escrowOperationCountV065(current) == 0 {
 
 			return false
 		}

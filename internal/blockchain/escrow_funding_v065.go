@@ -27,31 +27,19 @@ func calculateEscrowBlockHashV065(block Block) string {
 // v0.65 limits each funding block to exactly one independent signed intent.
 // No transaction, proof, governance operation, or other intent can share it.
 func standaloneEscrowFundingBlockV065(block Block) bool {
-	return len(block.EscrowFundings) == 1 &&
-		len(block.Transactions) == 0 &&
-		len(block.UsefulWork) == 0 &&
-		len(block.Humanity) == 0 &&
-		len(block.ParticipationClaims) == 0 &&
-		len(block.ReservedAuthorizations) == 0 &&
-		len(block.ReservedGrants) == 0 &&
-		len(block.ReservedRevocations) == 0 &&
-		len(block.AuthorityChanges) == 0 &&
-		len(block.AuthorityProposals) == 0 &&
-		len(block.AuthorityExecutions) == 0 &&
-		len(block.ReservedTransferProposals) == 0 &&
-		len(block.ReservedTransferExecutions) == 0 &&
-		len(block.GovernanceBootstraps) == 0
+	return len(block.EscrowFundings) == 1 && standaloneEscrowBlockV065(block)
 }
 
 type escrowFundingIndexV065 struct {
 	locked  map[string]uint64
+	records map[string]escrow.Escrow
 	jobIDs  map[string]bool
 	intents map[string]bool
 	nonces  map[string]bool
 }
 
 func newEscrowFundingIndexV065() *escrowFundingIndexV065 {
-	return &escrowFundingIndexV065{locked: map[string]uint64{}, jobIDs: map[string]bool{}, intents: map[string]bool{}, nonces: map[string]bool{}}
+	return &escrowFundingIndexV065{locked: map[string]uint64{}, records: map[string]escrow.Escrow{}, jobIDs: map[string]bool{}, intents: map[string]bool{}, nonces: map[string]bool{}}
 }
 
 func (i *escrowFundingIndexV065) apply(a escrow.FundingAuthorization, blockHeight uint64, chainID, genesisHash string) error {
@@ -68,39 +56,24 @@ func (i *escrowFundingIndexV065) apply(a escrow.FundingAuthorization, blockHeigh
 	if i.locked[f.Requester] > math.MaxUint64-f.Amount {
 		return fmt.Errorf("escrow lock overflow")
 	}
+	record, err := escrow.NewFunded(f)
+	if err != nil {
+		return err
+	}
 	i.locked[f.Requester] += f.Amount
+	i.records[f.JobID] = record
 	i.jobIDs[f.JobID] = true
 	i.intents[f.FundingTxID] = true
 	i.nonces[fmt.Sprintf("%s/%d", f.Requester, a.Nonce)] = true
 	return nil
 }
 
-// GetEscrowLockedBalancesV065 reconstructs the immutable funding locks from
-// canonical blocks. This is not SQLite state. It supports FUND only: no coins
-// can leave escrow until authenticated RELEASE/REFUND transitions are added.
+// GetEscrowLockedBalancesV065 replays all on-chain escrow operations.
+// RELEASE and REFUND remove locks; FUND adds them, and CLAIM retains them.
 func (bc *Blockchain) GetEscrowLockedBalancesV065() (map[string]uint64, error) {
-	if bc == nil || len(bc.Blocks) == 0 {
-		return nil, fmt.Errorf("missing escrow blockchain")
-	}
-	idx := newEscrowFundingIndexV065()
-	var chainID string
-	for j, block := range bc.Blocks {
-		if len(block.EscrowFundings) == 0 {
-			continue
-		}
-		if j == 0 || !standaloneEscrowFundingBlockV065(block) {
-			return nil, fmt.Errorf("invalid escrow funding block at height %d", block.Height)
-		}
-		if chainID == "" {
-			var err error
-			chainID, err = bc.ChainID()
-			if err != nil {
-				return nil, err
-			}
-		}
-		if err := idx.apply(block.EscrowFundings[0], block.Height, chainID, bc.Blocks[0].Hash); err != nil {
-			return nil, err
-		}
+	idx, err := bc.replayEscrowIndexV065()
+	if err != nil {
+		return nil, err
 	}
 	return idx.locked, nil
 }

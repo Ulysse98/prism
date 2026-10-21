@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"prism/internal/compute"
 	"prism/internal/consensus"
 	"prism/internal/escrow"
 	"prism/internal/identity"
@@ -30,6 +31,9 @@ type Block struct {
 	Reward                     uint64                               `json:"reward"`
 	Transactions               []transaction.Transaction            `json:"transactions"`
 	EscrowFundings             []escrow.FundingAuthorization        `json:"escrow_fundings,omitempty"`
+	EscrowClaims               []compute.ClaimAuthorization         `json:"escrow_claims,omitempty"`
+	EscrowReleases             []usefulwork.Proof                   `json:"escrow_releases,omitempty"`
+	EscrowRefunds              []EscrowRefundV065                   `json:"escrow_refunds,omitempty"`
 	UsefulWork                 []usefulwork.Proof                   `json:"useful_work"`
 	Humanity                   []identity.Attestation               `json:"humanity,omitempty"`
 	ParticipationClaims        []poup.Claim                         `json:"participation_claims,omitempty"`
@@ -48,9 +52,9 @@ type Block struct {
 func CalculateHash(
 	block Block,
 ) string {
-	// v0.65 funding blocks use a new fully committed hash domain.
-	// Legacy block hashes remain byte-for-byte unchanged.
-	if len(block.EscrowFundings) != 0 {
+	// v0.65 escrow blocks (FUND/CLAIM/RELEASE/REFUND) share a fully
+	// committed hash domain. Legacy block hashes are unchanged.
+	if escrowOperationCountV065(block) != 0 {
 		return calculateEscrowBlockHashV065(block)
 	}
 	// v0.61 prototype: a separate hash domain commits the complete signed
