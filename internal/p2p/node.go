@@ -18,7 +18,7 @@ import (
 	"prism/internal/wallet"
 )
 
-const ProtocolVersion = "0.36"
+const ProtocolVersion = "0.65-escrow-lab"
 
 const (
 	MessageHello          = "hello"
