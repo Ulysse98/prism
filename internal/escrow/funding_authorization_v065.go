@@ -23,9 +23,9 @@ type FundingAuthorization struct {
 func fundingAuthorizationDigest(a FundingAuthorization) string {
 	f := a.Funding
 	payload := fmt.Sprintf(
-		"prism-escrow-funding-v065|%s|%s|%s|%s|%d|%d|%d|%d|%s",
-		f.ChainID, f.GenesisHash, f.JobID, f.Requester,
-		f.Amount, f.FundedAtHeight, f.ExpiresAtHeight, a.Nonce, a.PublicKey,
+		"prism-escrow-funding-v065-task-bound|%s|%s|%s|%s|%s|%d|%d|%d|%d|%d|%s",
+		f.ChainID, f.GenesisHash, f.JobID, f.TaskID, f.Requester,
+		f.Amount, f.JobNonce, f.FundedAtHeight, f.ExpiresAtHeight, a.Nonce, a.PublicKey,
 	)
 	sum := sha256.Sum256([]byte(payload))
 	return hex.EncodeToString(sum[:])

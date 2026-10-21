@@ -12,7 +12,8 @@ func TestFundingAuthorizationV065BindsAllFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := Funding{ChainID: "prism-" + strings.Repeat("a", 16), GenesisHash: strings.Repeat("b", 64), JobID: strings.Repeat("c", 64), Requester: alice.Address, Amount: 10, FundedAtHeight: 5, ExpiresAtHeight: 15}
+	f := Funding{ChainID: "prism-" + strings.Repeat("a", 16), GenesisHash: strings.Repeat("b", 64), TaskID: strings.Repeat("c", 64), JobNonce: 9, Requester: alice.Address, Amount: 10, FundedAtHeight: 5, ExpiresAtHeight: 15}
+	f.JobID = CalculateFundedJobID(f.TaskID, f.Requester, f.Amount, f.JobNonce)
 	signed, err := SignFunding(f, 7, alice.PrivateKey)
 	if err != nil {
 		t.Fatal(err)
@@ -28,6 +29,8 @@ func TestFundingAuthorizationV065BindsAllFields(t *testing.T) {
 		{"height", func(a *FundingAuthorization) { a.Funding.FundedAtHeight++ }},
 		{"expiry", func(a *FundingAuthorization) { a.Funding.ExpiresAtHeight++ }},
 		{"job", func(a *FundingAuthorization) { a.Funding.JobID = strings.Repeat("1", 64) }},
+		{"task", func(a *FundingAuthorization) { a.Funding.TaskID = strings.Repeat("1", 64) }},
+		{"job_nonce", func(a *FundingAuthorization) { a.Funding.JobNonce++ }},
 		{"chain", func(a *FundingAuthorization) { a.Funding.ChainID = "prism-" + strings.Repeat("1", 16) }},
 		{"genesis", func(a *FundingAuthorization) { a.Funding.GenesisHash = strings.Repeat("1", 64) }},
 		{"requester", func(a *FundingAuthorization) { a.Funding.Requester = "prism_" + strings.Repeat("1", 40) }},
@@ -49,8 +52,33 @@ func TestFundingAuthorizationV065BindsAllFields(t *testing.T) {
 func TestFundingAuthorizationV065CannotUseWrongKey(t *testing.T) {
 	alice, _ := wallet.New()
 	bob, _ := wallet.New()
-	f := Funding{ChainID: "prism-" + strings.Repeat("a", 16), GenesisHash: strings.Repeat("b", 64), JobID: strings.Repeat("c", 64), Requester: alice.Address, Amount: 10, FundedAtHeight: 5, ExpiresAtHeight: 15}
+	f := Funding{ChainID: "prism-" + strings.Repeat("a", 16), GenesisHash: strings.Repeat("b", 64), TaskID: strings.Repeat("c", 64), JobNonce: 9, Requester: alice.Address, Amount: 10, FundedAtHeight: 5, ExpiresAtHeight: 15}
+	f.JobID = CalculateFundedJobID(f.TaskID, f.Requester, f.Amount, f.JobNonce)
 	if _, err := SignFunding(f, 0, bob.PrivateKey); err == nil {
 		t.Fatal("wrong key accepted")
+	}
+}
+
+// Funding must bind the intended task and the marketplace job's identity.
+func TestFundingV065RejectsUnboundOrMismatchedTask(t *testing.T) {
+	alice, err := wallet.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := Funding{
+		ChainID: "prism-" + strings.Repeat("a", 16), GenesisHash: strings.Repeat("b", 64),
+		JobID: strings.Repeat("c", 64), TaskID: strings.Repeat("d", 64),
+		Requester: alice.Address, Amount: 10, FundedAtHeight: 1, ExpiresAtHeight: 10,
+	}
+	if _, err := SignFunding(f, 0, alice.PrivateKey); err == nil {
+		t.Fatal("unbound job accepted")
+	}
+	f.JobID = CalculateFundedJobID(f.TaskID, f.Requester, f.Amount, f.JobNonce)
+	if _, err := SignFunding(f, 0, alice.PrivateKey); err != nil {
+		t.Fatal(err)
+	}
+	f.TaskID = ""
+	if _, err := SignFunding(f, 0, alice.PrivateKey); err == nil {
+		t.Fatal("empty task commitment accepted")
 	}
 }

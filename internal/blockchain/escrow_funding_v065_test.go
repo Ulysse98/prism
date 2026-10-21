@@ -40,7 +40,8 @@ func testEscrowAuthV065(t *testing.T, bc *Blockchain, requester *wallet.Wallet, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := escrow.Funding{ChainID: chainID, GenesisHash: bc.Blocks[0].Hash, JobID: jobID, Requester: requester.Address, Amount: amount, FundedAtHeight: height, ExpiresAtHeight: height + 20}
+	f := escrow.Funding{ChainID: chainID, GenesisHash: bc.Blocks[0].Hash, TaskID: jobID, JobNonce: 10, Requester: requester.Address, Amount: amount, FundedAtHeight: height, ExpiresAtHeight: height + 20}
+	f.JobID = escrow.CalculateFundedJobID(f.TaskID, f.Requester, f.Amount, f.JobNonce)
 	a, err := escrow.SignFunding(f, nonce, requester.PrivateKey)
 	if err != nil {
 		t.Fatal(err)

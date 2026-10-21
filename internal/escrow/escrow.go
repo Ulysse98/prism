@@ -24,9 +24,12 @@ const (
 // Authenticating the transaction and preventing reuse across jobs is a future
 // consensus responsibility, not something this in-memory model can guarantee.
 type Funding struct {
-	ChainID         string
-	GenesisHash     string
-	JobID           string
+	ChainID     string
+	GenesisHash string
+	JobID       string
+	// TaskID and JobNonce commit funding to the precise marketplace task.
+	TaskID          string
+	JobNonce        uint64
 	FundingTxID     string
 	Requester       string
 	Amount          uint64
@@ -68,8 +71,13 @@ func validateFunding(f Funding) error {
 	if !strings.HasPrefix(f.ChainID, "prism-") || !isHex(strings.TrimPrefix(f.ChainID, "prism-"), 8) {
 		return errors.New("invalid chain ID")
 	}
-	if !isHex(f.GenesisHash, 32) || !isHex(f.JobID, 32) || !isHex(f.FundingTxID, 32) {
-		return errors.New("invalid genesis, job or funding transaction ID")
+	if !isHex(f.GenesisHash, 32) || !isHex(f.JobID, 32) || !isHex(f.FundingTxID, 32) || !isHex(f.TaskID, 32) {
+		return errors.New("invalid genesis, job, task or funding transaction ID")
+	}
+	// Same canonical job-ID derivation as compute.CalculateJobID when the
+	// marketplace requester is stored as the canonical Prism address.
+	if f.JobID != CalculateFundedJobID(f.TaskID, f.Requester, f.Amount, f.JobNonce) {
+		return errors.New("escrow job ID does not commit to task, requester, reward and job nonce")
 	}
 	if !validAddress(f.Requester) {
 		return errors.New("invalid requester address")
@@ -78,6 +86,14 @@ func validateFunding(f Funding) error {
 		return errors.New("invalid amount or funding/expiry heights")
 	}
 	return nil
+}
+
+// CalculateFundedJobID matches compute.CalculateJobID's consensus payload.
+// New escrow jobs must use canonical wallet addresses, not local aliases.
+func CalculateFundedJobID(taskID, requester string, reward, nonce uint64) string {
+	payload := fmt.Sprintf("%s|%s|%d|%d", taskID, requester, reward, nonce)
+	sum := sha256.Sum256([]byte(payload))
+	return hex.EncodeToString(sum[:])
 }
 
 func calculateID(f Funding) string {

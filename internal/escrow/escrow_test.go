@@ -6,16 +6,19 @@ import (
 )
 
 func sampleFunding() Funding {
-	return Funding{
+	f := Funding{
 		ChainID:         "prism-" + strings.Repeat("a", 16),
 		GenesisHash:     strings.Repeat("b", 64),
-		JobID:           strings.Repeat("c", 64),
+		TaskID:          strings.Repeat("c", 64),
+		JobNonce:        9,
 		FundingTxID:     strings.Repeat("d", 64),
 		Requester:       "prism_" + strings.Repeat("1", 40),
 		Amount:          10,
 		FundedAtHeight:  10,
 		ExpiresAtHeight: 20,
 	}
+	f.JobID = CalculateFundedJobID(f.TaskID, f.Requester, f.Amount, f.JobNonce)
+	return f
 }
 
 func sampleProof(f Funding) ProofReference {
