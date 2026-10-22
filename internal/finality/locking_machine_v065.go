@@ -1,7 +1,7 @@
 package finality
 
 // Simplified deterministic, in-memory BFT transition laboratory.
-// No network signing, persisted locks, NIL certificates, or live consensus.
+// No network signing, persisted locks, or live consensus.
 
 import (
 	"fmt"
@@ -17,7 +17,7 @@ const (
 )
 
 // BFTLockSnapshotV065 intentionally distinguishes no lock from a lock at round 0.
-// A blank vote choice means NIL; it is NOT a signed vote in the 2C.5B lab.
+// A blank vote choice means NIL; the 2C.5F lab signs this explicitly.
 type BFTLockSnapshotV065 struct {
 	Height          uint64
 	Round           uint64
@@ -68,7 +68,7 @@ func (m *BFTLockMachineV065) SnapshotV065() BFTLockSnapshotV065 {
 }
 
 // verifyEvidence checks every signature and voting weight, not merely claimed
-// block/round fields. Only non-NIL certificate contexts are supported here.
+// block/round fields; explicitly signed NIL certificates are supported.
 func (m *BFTLockMachineV065) verifyEvidence(cert Certificate, step string) error {
 	c := cert.Context
 	if c.ChainID != m.chainID || c.GenesisHash != m.genesisHash ||
@@ -130,34 +130,44 @@ func (m *BFTLockMachineV065) ChoosePrevoteV065(proposal string, validBlock bool,
 	return choice, nil
 }
 
-// EnterPrecommitV065 models a verified non-NIL PREVOTE quorum at the current
-// round for a locally validated block. Without one, it recommends
-// PRECOMMIT(NIL) and leaves the lock intact.
-// NIL prevote quorum unlocking is intentionally NOT implemented in 2C.5E.
+// EnterPrecommitV065 models a signed PREVOTE quorum for a block or NIL.
+// A verified NIL quorum unlocks; absent proof retains any existing lock.
+// This is not durably bound to the signer in the lab.
 func (m *BFTLockMachineV065) EnterPrecommitV065(prevoteQuorum *Certificate, blockValidated bool) (string, error) {
 	if m.state.Step != BFTPrevoteV065 || m.state.Finalized {
 		return "", fmt.Errorf("PRECOMMIT requires PREVOTE step")
 	}
 	if prevoteQuorum != nil {
-		if !blockValidated {
-			return "", fmt.Errorf("cannot lock unavailable or unvalidated block")
-		}
 		if err := m.verifyEvidence(*prevoteQuorum, stepPrevote); err != nil {
 			return "", err
 		}
 		if prevoteQuorum.Context.Round != m.state.Round {
 			return "", fmt.Errorf("prevote quorum is from another round")
 		}
+		if prevoteQuorum.Context.Nil {
+			if blockValidated {
+				return "", fmt.Errorf("NIL quorum has no block to validate")
+			}
+		} else if !blockValidated {
+			return "", fmt.Errorf("cannot lock unavailable or unvalidated block")
+		}
 	}
 	choice := ""
 	if prevoteQuorum != nil {
-		choice = prevoteQuorum.Context.BlockHash
-		m.state.HasLock = true
-		m.state.LockedBlock = choice
-		m.state.LockedRound = m.state.Round
-		m.state.HasValid = true
-		m.state.ValidBlock = choice
-		m.state.ValidRound = m.state.Round
+		if prevoteQuorum.Context.Nil {
+			// CometBFT-style NIL prevote quorum unlocks and precommits NIL.
+			m.state.HasLock = false
+			m.state.LockedBlock = ""
+			m.state.LockedRound = 0
+		} else {
+			choice = prevoteQuorum.Context.BlockHash
+			m.state.HasLock = true
+			m.state.LockedBlock = choice
+			m.state.LockedRound = m.state.Round
+			m.state.HasValid = true
+			m.state.ValidBlock = choice
+			m.state.ValidRound = m.state.Round
+		}
 	}
 	m.state.PrecommitChoice = choice
 	m.state.Step = BFTPrecommitV065
@@ -184,6 +194,9 @@ func (m *BFTLockMachineV065) AdvanceRoundV065(next uint64) error {
 // indication that the block has been fully validated. This is a lab observation
 // only, NOT distributed finality or an active blockchain commit.
 func (m *BFTLockMachineV065) ObserveCommitV065(cert Certificate, blockValidated bool) error {
+	if cert.Context.Nil {
+		return fmt.Errorf("NIL precommit quorum cannot finalize a block")
+	}
 	if !blockValidated {
 		return fmt.Errorf("cannot commit unvalidated or unavailable block")
 	}

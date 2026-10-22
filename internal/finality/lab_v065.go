@@ -30,6 +30,9 @@ type VoteContext struct {
 	Step             string `json:"step"`
 	BlockHash        string `json:"block_hash"`
 	ValidatorSetHash string `json:"validator_set_hash"`
+	// Nil explicitly distinguishes a NIL vote from a vote for a block.
+	// omitempty preserves v0.65 block-vote signing bytes and stored votes.
+	Nil bool `json:"nil,omitempty"`
 }
 
 type SignedVote struct {
@@ -50,8 +53,16 @@ func validHash(value string) bool {
 }
 
 func validateContext(ctx VoteContext) error {
-	if ctx.ChainID == "" || !validHash(ctx.GenesisHash) || !validHash(ctx.BlockHash) || !validHash(ctx.ValidatorSetHash) || ctx.Height == 0 {
+	if ctx.ChainID == "" || !validHash(ctx.GenesisHash) || !validHash(ctx.ValidatorSetHash) || ctx.Height == 0 {
 		return fmt.Errorf("incomplete or noncanonical vote context")
+	}
+	// Exactly one choice is permitted: an explicit NIL or a canonical block hash.
+	if ctx.Nil {
+		if ctx.BlockHash != "" {
+			return fmt.Errorf("NIL vote must not carry a block hash")
+		}
+	} else if !validHash(ctx.BlockHash) {
+		return fmt.Errorf("non-NIL vote requires a canonical block hash")
 	}
 	if ctx.Step != stepPrevote && ctx.Step != stepPrecommit {
 		return fmt.Errorf("unsupported vote step: %q", ctx.Step)
