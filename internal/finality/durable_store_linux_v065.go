@@ -29,11 +29,12 @@ type durableBindingV065 struct {
 }
 
 type durableBFTRecordV065 struct {
-	Version  int                 `json:"version"`
-	Binding  durableBindingV065  `json:"binding"`
-	Revision uint64              `json:"revision"`
-	Snapshot BFTLockSnapshotV065 `json:"snapshot"`
-	Votes    []SignedVote        `json:"votes"`
+	Version  int                    `json:"version"`
+	Binding  durableBindingV065     `json:"binding"`
+	Revision uint64                 `json:"revision"`
+	Snapshot BFTLockSnapshotV065    `json:"snapshot"`
+	Votes    []SignedVote           `json:"votes"`
+	Events   []durableGateEventV065 `json:"events,omitempty"`
 }
 
 func validateDurableBindingV065(b durableBindingV065) error {
