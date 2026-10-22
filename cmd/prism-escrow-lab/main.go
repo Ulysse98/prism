@@ -14,13 +14,17 @@ import (
 )
 
 func run() error {
-	phase := flag.String("phase", "status", "fund, claim, release, or status")
+	phase := flag.String("phase", "status", "fund, claim, release, refund, or status")
 	data := flag.String("data", "", "existing test node data")
 	peer := flag.String("peer", "", "receiver TCP address")
+	expiryBlocks := flag.Uint64("expiry-blocks", 10, "blocks until FUND expires")
 	flag.Parse()
 
 	if *data == "" {
 		return fmt.Errorf("-data is required")
+	}
+	if *phase == "fund" && (*expiryBlocks < 1 || *expiryBlocks > 100) {
+		return fmt.Errorf("expiry-blocks must be between 1 and 100")
 	}
 
 	chain, pos, wallets, err := storage.Load(*data)
@@ -100,7 +104,7 @@ func run() error {
 			Requester:       alice.Address,
 			Amount:          10,
 			FundedAtHeight:  nextHeight,
-			ExpiresAtHeight: nextHeight + 10,
+			ExpiresAtHeight: nextHeight + *expiryBlocks,
 		}
 		auth, e := escrow.SignFunding(
 			funding, 0, alice.PrivateKey,
@@ -132,6 +136,11 @@ func run() error {
 		}
 		block, err = chain.AddEscrowReleaseBlockV065(
 			proof, proposer.Address, pos,
+		)
+
+	case "refund":
+		block, err = chain.AddEscrowRefundBlockV065(
+			jobID, proposer.Address, pos,
 		)
 
 	default:
