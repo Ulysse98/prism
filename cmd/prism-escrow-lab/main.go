@@ -17,6 +17,7 @@ func run() error {
 	phase := flag.String("phase", "status", "fund, claim, release, refund, or status")
 	data := flag.String("data", "", "existing test node data")
 	peer := flag.String("peer", "", "receiver TCP address")
+	listen := flag.String("listen", "127.0.0.1:17065", "sender advertised TCP address")
 	expiryBlocks := flag.Uint64("expiry-blocks", 10, "blocks until FUND expires")
 	flag.Parse()
 
@@ -156,7 +157,7 @@ func run() error {
 
 	server := p2p.NewServer(
 		p2p.MakeNodeID(alice.Address),
-		"127.0.0.1:17065",
+		*listen,
 		*data, chain, pos, wallets,
 	)
 	if err := server.SendBlock(*peer, block); err != nil {
