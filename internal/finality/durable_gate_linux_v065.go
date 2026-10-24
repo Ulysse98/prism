@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"reflect"
 
+	"prism/internal/blockchain"
 	"prism/internal/consensus"
 	"prism/internal/wallet"
 )
@@ -25,11 +26,12 @@ const (
 )
 
 type durableGateEventV065 struct {
-	Kind           string       `json:"kind"`
-	Proposal       string       `json:"proposal,omitempty"`
-	BlockValidated bool         `json:"block_validated,omitempty"`
-	Evidence       *Certificate `json:"evidence,omitempty"`
-	NextRound      uint64       `json:"next_round,omitempty"`
+	Kind           string            `json:"kind"`
+	Proposal       string            `json:"proposal,omitempty"`
+	BlockValidated bool              `json:"block_validated,omitempty"`
+	Evidence       *Certificate      `json:"evidence,omitempty"`
+	NextRound      uint64            `json:"next_round,omitempty"`
+	Candidate      *blockchain.Block `json:"candidate,omitempty"`
 }
 
 func durableGateBindingV065(chainID, genesisHash string, height uint64, validators []consensus.Validator, key ed25519.PrivateKey) (durableBindingV065, error) {
@@ -112,6 +114,11 @@ func replayDurableGateV065(r durableBFTRecordV065, b durableBindingV065, validat
 	m, err := gateInitialMachineV065(b, validators)
 	if err != nil {
 		return nil, err
+	}
+	if b.Mode == validatedPrevoteModeV065 {
+		if err := verifyValidatedPrevoteHistoryV065(r, b, validators); err != nil {
+			return nil, fmt.Errorf("invalid validated parent/proposal history: %w", err)
+		}
 	}
 	if len(r.Events) == 0 && len(r.Votes) != 0 {
 		return nil, errors.New("votes without transition evidence")

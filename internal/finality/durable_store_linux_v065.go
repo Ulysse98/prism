@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"prism/internal/blockchain"
 )
 
 const (
@@ -26,6 +28,8 @@ type durableBindingV065 struct {
 	ValidatorSetHash string `json:"validator_set_hash"`
 	SignerAddress    string `json:"signer_address"`
 	Height           uint64 `json:"height"`
+	Mode             string `json:"mode,omitempty"`
+	ParentHash       string `json:"parent_hash,omitempty"`
 }
 
 type durableBFTRecordV065 struct {
@@ -35,11 +39,18 @@ type durableBFTRecordV065 struct {
 	Snapshot BFTLockSnapshotV065    `json:"snapshot"`
 	Votes    []SignedVote           `json:"votes"`
 	Events   []durableGateEventV065 `json:"events,omitempty"`
+	Parent   *blockchain.Blockchain `json:"parent,omitempty"`
 }
 
 func validateDurableBindingV065(b durableBindingV065) error {
 	if b.ChainID == "" || !validHash(b.GenesisHash) || !validHash(b.ValidatorSetHash) || b.SignerAddress == "" || b.Height == 0 {
 		return errors.New("invalid durable binding")
+	}
+	if b.Mode != "" && (b.Mode != validatedPrevoteModeV065 || !validHash(b.ParentHash)) {
+		return errors.New("invalid validated gate mode or parent hash")
+	}
+	if b.Mode == "" && b.ParentHash != "" {
+		return errors.New("legacy binding cannot carry parent hash")
 	}
 	return nil
 }
@@ -48,6 +59,12 @@ func validateDurableBindingV065(b durableBindingV065) error {
 func validateDurableRecordV065(r durableBFTRecordV065, b durableBindingV065) error {
 	if r.Version != durableStoreVersionV065 || r.Binding != b || r.Revision == 0 || r.Snapshot.Height != b.Height {
 		return errors.New("durable state identity/version mismatch")
+	}
+	if b.Mode == validatedPrevoteModeV065 && r.Parent == nil {
+		return errors.New("validated prevote state lacks pinned parent")
+	}
+	if b.Mode == "" && r.Parent != nil {
+		return errors.New("unexpected parent witness in legacy state")
 	}
 	s := r.Snapshot
 	switch s.Step {
@@ -207,6 +224,10 @@ func persistDurableV065(dir, path string, r durableBFTRecordV065, hook func(stri
 
 // Explicit fresh setup ONLY. Deletion plus re-init remains an out-of-scope rollback hazard.
 func initDurableV065(dir string, b durableBindingV065) error {
+	return initDurableWithParentV065(dir, b, nil)
+}
+
+func initDurableWithParentV065(dir string, b durableBindingV065, parent *blockchain.Blockchain) error {
 	if err := validateDurableBindingV065(b); err != nil {
 		return err
 	}
@@ -219,7 +240,7 @@ func initDurableV065(dir string, b durableBindingV065) error {
 		if !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-		r := durableBFTRecordV065{Version: 1, Binding: b, Revision: 1, Snapshot: BFTLockSnapshotV065{Height: b.Height, Step: BFTProposeV065}}
+		r := durableBFTRecordV065{Version: 1, Binding: b, Revision: 1, Snapshot: BFTLockSnapshotV065{Height: b.Height, Step: BFTProposeV065}, Parent: parent}
 		if err := validateDurableRecordV065(r, b); err != nil {
 			return err
 		}
