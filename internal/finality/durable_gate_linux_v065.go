@@ -197,6 +197,12 @@ func durableGateApplyHookV065(dir string, b durableBindingV065, validators []con
 		}
 		next := prior // clone slices before mutation
 		next.Events = append(append([]durableGateEventV065(nil), prior.Events...), detached)
+		// Validate the complete candidate witness before invoking the cryptographic signer.
+		if b.Mode == validatedPrevoteModeV065 {
+			if err := verifyValidatedPrevoteHistoryV065(next, b, validators); err != nil {
+				return err
+			}
+		}
 		if step != "" {
 			var vote SignedVote
 			vote, err = SignVote(gateContextV065(b, round, step, choice), key)
