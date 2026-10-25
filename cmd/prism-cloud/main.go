@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"prism/internal/computecloud"
@@ -123,12 +124,36 @@ func serve(configPath, dataPath string) error {
 	if err := gateway.Validate(); err != nil {
 		return err
 	}
+	observer, err := nodeObserverFromEnv()
+	if err != nil {
+		return err
+	}
+	cloudHandler := &computecloud.CloudObserveGatewayV1{Gateway: gateway, Observer: observer}
 	ln, err := net.Listen("tcp", listenAddress)
 	if err != nil {
 		return err
 	}
 	defer ln.Close()
-	server := &http.Server{Handler: gateway, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8192}
+	server := &http.Server{Handler: cloudHandler, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8192}
 	log.Printf("Prism Cloud simulation listening on http://%s (LOCAL ONLY, NO COMPUTE)", listenAddress)
 	return server.Serve(ln)
+}
+
+// nodeObserverFromEnv is opt-in and fails closed on partial or unsafe settings.
+// The observer only reads a single loopback status endpoint.
+func nodeObserverFromEnv() (*computecloud.CloudNodeObserverV1, error) {
+	port := os.Getenv("PRISM_CLOUD_NODE_PORT")
+	chainID := os.Getenv("PRISM_CLOUD_NODE_CHAIN_ID")
+	genesis := os.Getenv("PRISM_CLOUD_NODE_GENESIS_HASH")
+	if port == "" && chainID == "" && genesis == "" {
+		return nil, nil
+	}
+	if port == "" || chainID == "" || genesis == "" {
+		return nil, errors.New("node observer requires port, chain ID, and genesis hash")
+	}
+	portNumber, err := strconv.Atoi(port)
+	if err != nil {
+		return nil, errors.New("invalid node observer port")
+	}
+	return computecloud.NewCloudNodeObserverV1(portNumber, chainID, genesis)
 }
