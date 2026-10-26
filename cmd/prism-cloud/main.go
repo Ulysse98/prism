@@ -128,7 +128,8 @@ func serve(configPath, dataPath string) error {
 	if err != nil {
 		return err
 	}
-	cloudHandler := &computecloud.CloudObserveGatewayV1{Gateway: gateway, Observer: observer}
+	observerHandler := &computecloud.CloudObserveGatewayV1{Gateway: gateway, Observer: observer}
+	cloudHandler := &computecloud.CloudPlanGatewayV1{Observed: observerHandler}
 	ln, err := net.Listen("tcp", listenAddress)
 	if err != nil {
 		return err
