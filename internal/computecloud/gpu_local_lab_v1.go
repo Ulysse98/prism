@@ -213,6 +213,20 @@ func parseCloudGPUFrameV1(task usefulwork.Task, expectedNonce string, raw []byte
 // RunLocalGPULabV1 launches one short-lived, pinned CUDA process.
 // Explicit CLI-only call. It does NOT contact Prism Core, Cloud HTTP, wallets or marketplace.
 func RunLocalGPULabV1(ctx context.Context, body []byte, gpuBinary, expectedSHA256 string) (CloudGPUResultV1, error) {
+	return runLocalGPULabV1(ctx, body, gpuBinary, expectedSHA256, "")
+}
+
+// RunLocalGPULabWithGlobalLockV1 is an opt-in offline executor whose child
+// inherits the flock open-file description on fd 3. The supervisor only
+// closes its own descriptor, never unlocks the inherited flock.
+func RunLocalGPULabWithGlobalLockV1(ctx context.Context, body []byte, gpuBinary, expectedSHA256, lockDir string) (CloudGPUResultV1, error) {
+	if lockDir == "" {
+		return CloudGPUResultV1{}, errors.New("GPU global lock directory required")
+	}
+	return runLocalGPULabV1(ctx, body, gpuBinary, expectedSHA256, lockDir)
+}
+
+func runLocalGPULabV1(ctx context.Context, body []byte, gpuBinary, expectedSHA256, lockDir string) (CloudGPUResultV1, error) {
 	var empty CloudGPUResultV1
 	if ctx == nil {
 		return empty, errors.New("nil context")
@@ -248,7 +262,21 @@ func RunLocalGPULabV1(ctx context.Context, body []byte, gpuBinary, expectedSHA25
 
 	session, cancel := context.WithTimeout(ctx, cloudGPUTimeoutV1)
 	defer cancel()
+	// Acquire only after workload validation and executable pinning.
+	// The inherited descriptor protects an orphaned pinned worker when
+	// its supervisor is killed. This is cooperative, not GPU isolation.
+	var gpuLock *GlobalGPULockV1
+	if lockDir != "" {
+		gpuLock, err = TryAcquireGlobalGPULockV1(lockDir)
+		if err != nil {
+			return empty, fmt.Errorf("GPU global reservation refused: %w", err)
+		}
+		defer func() { _ = gpuLock.ClosePreservingInheritedLockV1() }()
+	}
 	cmd := exec.CommandContext(session, gpuBinary)
+	if gpuLock != nil {
+		cmd.ExtraFiles = []*os.File{gpuLock.file}
+	}
 	cmd.Stdin = bytes.NewReader(request)
 	stdout := &cloudGPUCaptureV1{max: cloudGPUMaxStdoutV1}
 	stderr := &cloudGPUCaptureV1{max: cloudGPUMaxStderrV1}

@@ -18,9 +18,9 @@ var ErrGlobalGPUBusyV1 = errors.New("GPU global lock held by another cooperating
 
 const globalGPULockFileV1 = "gpu-owner.lock"
 
-// GlobalGPULockV1 owns one Linux flock until Release or process termination.
-// Hold it for the COMPLETE worker lifetime, including subprocess cleanup.
-// An orphaned GPU worker after supervisor death is NOT protected by this lock.
+// GlobalGPULockV1 holds a cooperative Linux flock. A pinned CUDA child can
+// inherit the same open-file description to retain ownership after a parent
+// crash; the parent must then close without explicitly calling LOCK_UN.
 // Never delete a lock file to recover a stale lock: flock is kernel-managed.
 type GlobalGPULockV1 struct {
 	file       *os.File
@@ -94,7 +94,21 @@ func TryAcquireGlobalGPULockV1(lockDir string) (*GlobalGPULockV1, error) {
 	return &GlobalGPULockV1{file: file}, nil
 }
 
-// Release drops ownership exactly once. It is safe to call multiple times.
+// ClosePreservingInheritedLockV1 closes only this process's descriptor.
+// Unlike Release, it MUST NOT call LOCK_UN: the same Linux flock open-file
+// description may still be held by a CUDA child through cmd.ExtraFiles.
+// Once the last inherited descriptor is closed by the kernel, flock ends.
+func (l *GlobalGPULockV1) ClosePreservingInheritedLockV1() error {
+	if l == nil || l.file == nil {
+		return errors.New("missing GPU lock owner")
+	}
+	l.once.Do(func() { l.releaseErr = l.file.Close() })
+	return l.releaseErr
+}
+
+// Release drops ownership exactly once. Never use it after passing the lock
+// descriptor to a child: LOCK_UN would also unlock the child's shared flock.
+// It is safe to call multiple times.
 func (l *GlobalGPULockV1) Release() error {
 	if l == nil || l.file == nil {
 		return errors.New("missing GPU lock owner")

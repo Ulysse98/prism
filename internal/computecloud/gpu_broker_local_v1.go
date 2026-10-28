@@ -39,6 +39,23 @@ type CloudLocalBrokerGPUResultV1 struct {
 func RunLocalBrokerGPULabV1(ctx context.Context, data []byte,
 	observer *CloudNodeObserverV1, approvedTaskID, gpuBinary, expectedSHA256 string,
 ) (CloudLocalBrokerGPUResultV1, error) {
+	return runLocalBrokerGPULabV1(ctx, data, observer, approvedTaskID, gpuBinary, expectedSHA256, "")
+}
+
+// RunLocalBrokerGPULabWithGlobalLockV1 enforces the shared advisory lock for
+// an operator-authorized offline GPU execution.
+func RunLocalBrokerGPULabWithGlobalLockV1(ctx context.Context, data []byte,
+	observer *CloudNodeObserverV1, approvedTaskID, gpuBinary, expectedSHA256, lockDir string,
+) (CloudLocalBrokerGPUResultV1, error) {
+	if lockDir == "" {
+		return CloudLocalBrokerGPUResultV1{}, errors.New("GPU global lock directory required")
+	}
+	return runLocalBrokerGPULabV1(ctx, data, observer, approvedTaskID, gpuBinary, expectedSHA256, lockDir)
+}
+
+func runLocalBrokerGPULabV1(ctx context.Context, data []byte,
+	observer *CloudNodeObserverV1, approvedTaskID, gpuBinary, expectedSHA256, lockDir string,
+) (CloudLocalBrokerGPUResultV1, error) {
 	var empty CloudLocalBrokerGPUResultV1
 	if ctx == nil || observer == nil {
 		return empty, errors.New("broker requires context and pinned node observer")
@@ -63,7 +80,12 @@ func RunLocalBrokerGPULabV1(ctx context.Context, data []byte,
 	if !initial.ChainValid || initial.ComputeEnabled || initial.ProofsAvailable {
 		return empty, errors.New("broker node capabilities are not read-only")
 	}
-	result, err := RunLocalGPULabV1(ctx, data, gpuBinary, expectedSHA256)
+	var result CloudGPUResultV1
+	if lockDir != "" {
+		result, err = RunLocalGPULabWithGlobalLockV1(ctx, data, gpuBinary, expectedSHA256, lockDir)
+	} else {
+		result, err = RunLocalGPULabV1(ctx, data, gpuBinary, expectedSHA256)
+	}
 	if err != nil {
 		return empty, fmt.Errorf("broker GPU execution refused: %w", err)
 	}

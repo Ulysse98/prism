@@ -34,6 +34,18 @@ func NewOperatorGPUQueueRunnerV1(observer *CloudNodeObserverV1, gpuBinary, expec
 	}, nil
 }
 
+// NewOperatorGPUQueueRunnerWithGlobalLockV1 enables cross-process GPU
+// exclusion for the operator queue. Unlocked V1 remains for legacy tests;
+// actual queue CLI uses the locked constructor from Phase 1E.3B onward.
+func NewOperatorGPUQueueRunnerWithGlobalLockV1(observer *CloudNodeObserverV1, gpuBinary, expectedSHA256, lockDir string) (LocalGPURunnerV1, error) {
+	if observer == nil || gpuBinary == "" || expectedSHA256 == "" || lockDir == "" {
+		return nil, errors.New("offline locked queue requires pinned node, worker and lock directory")
+	}
+	return func(ctx context.Context, body []byte, approvedID string) (CloudLocalBrokerGPUResultV1, error) {
+		return RunLocalBrokerGPULabWithGlobalLockV1(ctx, body, observer, approvedID, gpuBinary, expectedSHA256, lockDir)
+	}, nil
+}
+
 // RunApprovedLocalGPUQueueV1 submits 2..4 distinct, already approved jobs to
 // ONE scheduler with ONE runner callback at a time. It produces no partial
 // accepted results if any job fails. It does not provide a cross-process GPU
