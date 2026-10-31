@@ -414,6 +414,11 @@ func runAPICommand(args []string) (exitCode int) {
 	)
 
 	mux.HandleFunc(
+		"/api/v1/compute/proofs/",
+		api.handleComputeProofV064,
+	)
+
+	mux.HandleFunc(
 		"/api/v1/compute/jobs/",
 		api.handleComputeJobAction,
 	)

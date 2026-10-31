@@ -157,25 +157,11 @@ func (bc *Blockchain) LockedStakeOf(
 func (bc *Blockchain) AvailableBalanceOf(
 	address string,
 ) (uint64, error) {
-	balance, err := bc.BalanceOf(
-		address,
-	)
+	state, err := bc.GetSpendableState()
 	if err != nil {
 		return 0, err
 	}
-
-	locked := bc.LockedStakeOf(
-		address,
-	)
-
-	if locked > balance {
-		return 0, fmt.Errorf(
-			"locked stake exceeds balance for %s",
-			address,
-		)
-	}
-
-	return balance - locked, nil
+	return state.Balances[address], nil
 }
 
 // AddBlock creates a normal Prism block containing
@@ -793,6 +779,8 @@ func (bc *Blockchain) GetState() (
 		Balances: make(map[string]uint64),
 		Nonces:   make(map[string]uint64),
 	}
+	// Consensus escrow locks are replayed with canonical transactions.
+	escrowIndex := newEscrowFundingIndexV065()
 
 	usedTasks := make(
 		map[string]struct{},
@@ -820,6 +808,9 @@ func (bc *Blockchain) GetState() (
 	var participationEmission uint64
 
 	for blockIndex, block := range bc.Blocks {
+		if escrowOperationCountV065(block) != 0 && (blockIndex == 0 || !standaloneEscrowBlockV065(block)) {
+			return State{}, fmt.Errorf("invalid standalone escrow block at height %d", block.Height)
+		}
 		if len(block.GovernanceBootstraps) != 0 && !standaloneGovernanceBootstrapBlockV061(block) {
 			return State{}, fmt.Errorf("invalid mixed governance bootstrap block at height %d", block.Height)
 		}
@@ -970,7 +961,7 @@ func (bc *Blockchain) GetState() (
 			len(block.AuthorityProposals) == 0 &&
 			len(block.AuthorityExecutions) == 0 &&
 			len(block.ReservedTransferProposals) == 0 &&
-			len(block.ReservedTransferExecutions) == 0 && len(block.GovernanceBootstraps) == 0 {
+			len(block.ReservedTransferExecutions) == 0 && len(block.GovernanceBootstraps) == 0 && escrowOperationCountV065(block) == 0 {
 
 			return State{}, fmt.Errorf(
 				"empty normal block at height %d",
@@ -1000,11 +991,10 @@ func (bc *Blockchain) GetState() (
 				)
 			}
 
-			if state.Balances[tx.From] < tx.Amount {
-				return State{}, fmt.Errorf(
-					"invalid chain: insufficient balance for %s",
-					tx.From,
-				)
+			// A transfer cannot consume funds already locked by earlier FUND blocks.
+			locked := escrowIndex.locked[tx.From]
+			if state.Balances[tx.From] < locked || tx.Amount > state.Balances[tx.From]-locked {
+				return State{}, fmt.Errorf("invalid chain: insufficient unlocked balance for %s", tx.From)
 			}
 
 			if state.Balances[tx.To] >
@@ -1018,6 +1008,42 @@ func (bc *Blockchain) GetState() (
 			state.Balances[tx.From] -= tx.Amount
 			state.Balances[tx.To] += tx.Amount
 			state.Nonces[tx.From]++
+		}
+
+		// FUND is a signed, standalone consensus operation. It does not
+		// transfer or mint coins; it restricts the requester's spendable balance.
+		if len(block.EscrowFundings) != 0 {
+			chainID, err := bc.ChainID()
+			if err != nil {
+				return State{}, err
+			}
+			auth := block.EscrowFundings[0]
+			f := auth.Funding
+			locked := escrowIndex.locked[f.Requester]
+			if state.Balances[f.Requester] < locked || f.Amount > state.Balances[f.Requester]-locked {
+				return State{}, fmt.Errorf("insufficient unlocked balance for escrow funding")
+			}
+			if err := escrowIndex.apply(auth, block.Height, chainID, bc.Blocks[0].Hash); err != nil {
+				return State{}, err
+			}
+		}
+		// Escrow lifecycle operations are standalone, consensus committed,
+		// and applied in canonical block order. RELEASE transfers existing
+		// tokens once; REFUND merely removes the funding lock.
+		if len(block.EscrowClaims) == 1 {
+			if err := escrowIndex.applyClaimV065(block.EscrowClaims[0], block.Height); err != nil {
+				return State{}, err
+			}
+		}
+		if len(block.EscrowReleases) == 1 {
+			if err := escrowIndex.applyReleaseV065(block.EscrowReleases[0], block.Height, &state); err != nil {
+				return State{}, err
+			}
+		}
+		if len(block.EscrowRefunds) == 1 {
+			if err := escrowIndex.applyRefundV065(block.EscrowRefunds[0], block.Height); err != nil {
+				return State{}, err
+			}
 		}
 
 		// Useful Work.
@@ -1303,6 +1329,17 @@ func (bc *Blockchain) GetSpendableState() (
 		state.Balances[address] -= locked
 	}
 
+	lockedEscrow, err := bc.GetEscrowLockedBalancesV065()
+	if err != nil {
+		return State{}, err
+	}
+	for address, locked := range lockedEscrow {
+		if state.Balances[address] < locked {
+			return State{}, fmt.Errorf("escrow + stake exceed available balance for %s", address)
+		}
+		state.Balances[address] -= locked
+	}
+
 	return state, nil
 }
 
@@ -1390,6 +1427,9 @@ func (bc *Blockchain) ValidateChain(
 	if len(genesis.GovernanceBootstraps) != 0 {
 		return false
 	}
+	if escrowOperationCountV065(genesis) != 0 {
+		return false
+	}
 
 	if genesis.Height != 0 {
 		return false
@@ -1449,6 +1489,9 @@ func (bc *Blockchain) ValidateChain(
 		current := bc.Blocks[i]
 		previous := bc.Blocks[i-1]
 
+		if escrowOperationCountV065(current) != 0 && !standaloneEscrowBlockV065(current) {
+			return false
+		}
 		if len(current.GovernanceBootstraps) != 0 && !standaloneGovernanceBootstrapBlockV061(current) {
 			return false
 		}
@@ -1499,7 +1542,7 @@ func (bc *Blockchain) ValidateChain(
 			len(current.AuthorityProposals) == 0 &&
 			len(current.AuthorityExecutions) == 0 &&
 			len(current.ReservedTransferProposals) == 0 &&
-			len(current.ReservedTransferExecutions) == 0 && len(current.GovernanceBootstraps) == 0 {
+			len(current.ReservedTransferExecutions) == 0 && len(current.GovernanceBootstraps) == 0 && escrowOperationCountV065(current) == 0 {
 
 			return false
 		}
