@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -17,13 +18,40 @@ import (
 
 func makeGPUFixtureV066(t *testing.T) (string, string) {
 	t.Helper()
-	source := "/bin/echo"
-	blob, err := os.ReadFile(source)
-	if err != nil {
-		t.Skipf("/bin/echo is required for Linux ELF test: %v", err)
+	return buildGPUFixtureV066(t, false)
+}
+
+func buildGPUFixtureV066(
+	t *testing.T, fail bool,
+) (string, string) {
+	t.Helper()
+
+	program := "package main\nimport \"fmt\"\nfunc main() { fmt.Println() }\n"
+	if fail {
+		program = "package main\nimport \"os\"\nfunc main() { os.Exit(7) }\n"
 	}
+
+	source := filepath.Join(t.TempDir(), "fixture.go")
+	if err := os.WriteFile(source, []byte(program), 0600); err != nil {
+		t.Fatal(err)
+	}
+
 	path := filepath.Join(t.TempDir(), "gpu-fixture")
-	if err := os.WriteFile(path, blob, 0700); err != nil {
+	cmd := exec.Command(
+		"go", "build", "-trimpath", "-o", path, source,
+	)
+	cmd.Env = append(
+		os.Environ(),
+		"GOTOOLCHAIN=local",
+		"GOPROXY=off",
+		"GOSUMDB=off",
+	)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build ELF fixture: %v\n%s", err, output)
+	}
+
+	blob, err := os.ReadFile(path)
+	if err != nil {
 		t.Fatal(err)
 	}
 	digest := sha256.Sum256(blob)
@@ -175,16 +203,15 @@ func TestGPUSealedWorkerV066RejectsUnsealedFile(t *testing.T) {
 }
 
 func TestGPUSealedWorkerV066RejectsWorkerNonzeroExit(t *testing.T) {
-	data, err := os.ReadFile("/bin/false")
-	if err != nil {
-		t.Skipf("/bin/false unavailable: %v", err)
-	}
-	path := filepath.Join(t.TempDir(), "exit-failure-worker")
-	if err := os.WriteFile(path, data, 0700); err != nil {
-		t.Fatal(err)
-	}
-	hash := sha256.Sum256(data)
-	if _, err := runApprovedGPUWorkerV066(context.Background(), path, hex.EncodeToString(hash[:]), maxGPUExecutableBytesV066, nil); err == nil {
-		t.Fatal("nonzero worker exit accepted")
+	path, approved := buildGPUFixtureV066(t, true)
+	_, err := runApprovedGPUWorkerV066(
+		context.Background(),
+		path,
+		approved,
+		maxGPUExecutableBytesV066,
+		nil,
+	)
+	if err == nil || !strings.Contains(err.Error(), "exit status 7") {
+		t.Fatalf("expected worker exit status 7, got %v", err)
 	}
 }
