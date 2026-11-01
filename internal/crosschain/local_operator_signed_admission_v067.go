@@ -67,8 +67,8 @@ func operatorTrustMessageV067(policy AnchorProofPolicyV067, cp PinnedSourceCheck
 
 // LocalOperatorAdmitterV067 fixes the signer-verified policy and checkpoint
 // during initialization; Admit accepts ONLY untrusted candidate material.
-// The operator owns the store and must keep chain/pos immutable for the entire
-// context lifetime. This is NOT a complete network-facing trust boundary.
+// The operator owns the store; caller must synchronize source inputs while
+// constructing its independent snapshot. Not a network-facing trust boundary.
 type LocalOperatorAdmitterV067 struct {
 	store      *LocalReplayStoreV067
 	policy     AnchorProofPolicyV067
@@ -99,9 +99,15 @@ func NewLocalOperatorAdmitterV067(
 	if !ed25519.Verify(pinnedOperatorKey, message, signed.Signature) {
 		return nil, fmt.Errorf("%w: signature not from pinned operator", ErrOperatorTrustV067)
 	}
+	// Retain independently validated copies. Caller must synchronize source
+	// access while this snapshot is being materialized.
+	snapshotChain, snapshotPos, err := snapshotOperatorSourceV067(chain, pos)
+	if err != nil {
+		return nil, err
+	}
 	return &LocalOperatorAdmitterV067{
 		store: store, policy: signed.Policy, checkpoint: signed.Checkpoint,
-		chain: chain, pos: pos,
+		chain: snapshotChain, pos: snapshotPos,
 	}, nil
 }
 
