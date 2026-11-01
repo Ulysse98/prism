@@ -159,7 +159,7 @@ func TestLocalAnchorAdmissionV067RealVerifierRejectsInvalidCandidate(t *testing.
 	}
 	// Real verifier: nil chain / validators must fail even if the supplied
 	// operator pins and intent are structurally well formed.
-	if _, err := AdmitLocalAnchorCandidateV067(store, candidate, policy, checkpoint, nil, nil); err == nil {
+	if _, err := admitLocalAnchorCandidateV067(store, candidate, policy, checkpoint, nil, nil); err == nil {
 		t.Fatal("unverified source candidate admitted")
 	}
 	entries, err := os.ReadDir(store.dir)

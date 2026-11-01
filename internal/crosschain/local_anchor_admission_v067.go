@@ -20,7 +20,7 @@ type LocalAnchorCandidateV067 struct {
 	Report   usefulwork.ComputeVerificationReportV064
 }
 
-// AdmitLocalAnchorCandidateV067 performs one fixed verification sequence before
+// admitLocalAnchorCandidateV067 performs one fixed verification sequence before
 // attempting a one-shot LOCAL reservation. It checks independent proof binding,
 // locally validated chain inclusion, and a trusted operator-pinned checkpoint.
 //
@@ -32,10 +32,10 @@ type LocalAnchorCandidateV067 struct {
 // IMPORTANT: This is an experimental, OFFLINE candidate-admission helper.
 // A pinned local checkpoint does NOT prove network-wide canonicality or BFT
 // finality. Success NEVER permits registry submission, transaction signing,
-// funds transfer, escrow release, or settlement. An external caller able to
-// access ReserveProofV067 directly can still bypass this helper; a future
-// privileged admission boundary must prevent that before network exposure.
-func AdmitLocalAnchorCandidateV067(
+// funds transfer, escrow release, or settlement. This helper is now
+// package-private; only the signer-pinned operator wrapper is exported.
+// Neither should be exposed to untrusted network requests.
+func admitLocalAnchorCandidateV067(
 	store *LocalReplayStoreV067,
 	candidate LocalAnchorCandidateV067,
 	policy AnchorProofPolicyV067,

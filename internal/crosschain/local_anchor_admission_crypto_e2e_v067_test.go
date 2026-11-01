@@ -26,13 +26,13 @@ func TestLocalAnchorAdmissionRealCryptoV067PositiveAndReplay(t *testing.T) {
 	}
 
 	// This invokes the production, fixed cryptographic/inclusion/checkpoint gate.
-	if _, err := AdmitLocalAnchorCandidateV067(store, candidate, f.candidate.policy, cp, f.chain, f.pos); err != nil {
+	if _, err := admitLocalAnchorCandidateV067(store, candidate, f.candidate.policy, cp, f.chain, f.pos); err != nil {
 		t.Fatalf("real signed, included, checkpointed proof rejected: %v", err)
 	}
 	if _, err := store.InspectProofV067(candidate.Intent); err != nil {
 		t.Fatalf("committed reservation cannot be inspected: %v", err)
 	}
-	if _, err := AdmitLocalAnchorCandidateV067(store, candidate, f.candidate.policy, cp, f.chain, f.pos); !errors.Is(err, ErrLocalReplayReservedV067) {
+	if _, err := admitLocalAnchorCandidateV067(store, candidate, f.candidate.policy, cp, f.chain, f.pos); !errors.Is(err, ErrLocalReplayReservedV067) {
 		t.Fatalf("same-process replay was not rejected as already reserved: %v", err)
 	}
 
@@ -43,7 +43,7 @@ func TestLocalAnchorAdmissionRealCryptoV067PositiveAndReplay(t *testing.T) {
 	if _, err := reopened.InspectProofV067(candidate.Intent); err != nil {
 		t.Fatalf("reservation missing on reopened store: %v", err)
 	}
-	if _, err := AdmitLocalAnchorCandidateV067(reopened, candidate, f.candidate.policy, cp, f.chain, f.pos); !errors.Is(err, ErrLocalReplayReservedV067) {
+	if _, err := admitLocalAnchorCandidateV067(reopened, candidate, f.candidate.policy, cp, f.chain, f.pos); !errors.Is(err, ErrLocalReplayReservedV067) {
 		t.Fatalf("restarted-store replay was not rejected: %v", err)
 	}
 }
@@ -55,7 +55,7 @@ func TestLocalAnchorAdmissionRealCryptoV067DestinationAndNonceBypass(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := AdmitLocalAnchorCandidateV067(store, candidate, f.candidate.policy, cp, f.chain, f.pos); err != nil {
+	if _, err := admitLocalAnchorCandidateV067(store, candidate, f.candidate.policy, cp, f.chain, f.pos); err != nil {
 		t.Fatalf("first real admission failed: %v", err)
 	}
 
@@ -74,7 +74,7 @@ func TestLocalAnchorAdmissionRealCryptoV067DestinationAndNonceBypass(t *testing.
 	); err != nil {
 		t.Fatalf("independently valid alternative intent unexpectedly failed preflight: %v", err)
 	}
-	if _, err := AdmitLocalAnchorCandidateV067(store, other, otherPolicy, cp, f.chain, f.pos); !errors.Is(err, ErrLocalReplayReservedV067) {
+	if _, err := admitLocalAnchorCandidateV067(store, other, otherPolicy, cp, f.chain, f.pos); !errors.Is(err, ErrLocalReplayReservedV067) {
 		t.Fatalf("same-proof destination/nonce bypass was not rejected: %v", err)
 	}
 }
@@ -113,11 +113,11 @@ func TestLocalAnchorAdmissionRealCryptoV067InvalidEvidenceLeavesSlotFree(t *test
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := AdmitLocalAnchorCandidateV067(store, bad, policy, badCheckpoint, f.chain, f.pos); err == nil {
+			if _, err := admitLocalAnchorCandidateV067(store, bad, policy, badCheckpoint, f.chain, f.pos); err == nil {
 				t.Fatal("invalid signed proof, source evidence or policy was admitted")
 			}
 			// An invalid attempt must never burn the legitimate proof's slot.
-			if _, err := AdmitLocalAnchorCandidateV067(store, valid, f.candidate.policy, cp, f.chain, f.pos); err != nil {
+			if _, err := admitLocalAnchorCandidateV067(store, valid, f.candidate.policy, cp, f.chain, f.pos); err != nil {
 				t.Fatalf("invalid attempt consumed or poisoned valid proof reservation: %v", err)
 			}
 		})
