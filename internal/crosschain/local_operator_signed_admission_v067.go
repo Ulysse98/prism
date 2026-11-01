@@ -80,7 +80,7 @@ type LocalOperatorAdmitterV067 struct {
 // NewLocalOperatorAdmitterV067 may ONLY be called by trusted operator code.
 // pinnedOperatorKey MUST be loaded from a trusted external config or binary;
 // accepting a candidate-provided key defeats the signature check entirely.
-func NewLocalOperatorAdmitterV067(
+func newLocalOperatorAdmitterV067(
 	store *LocalReplayStoreV067,
 	pinnedOperatorKey ed25519.PublicKey,
 	signed SignedOperatorTrustV067,

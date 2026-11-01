@@ -141,7 +141,7 @@ func TestLocalSynchronizedSourceV067RealAdmissionAndReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	operator, err := NewLocalOperatorAdmitterFromSynchronizedSourceV067(store, pub, signed, source)
+	operator, err := newLocalOperatorAdmitterFromSynchronizedSourceV067(store, pub, signed, source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestLocalSynchronizedSourceV067RealAdmissionAndReplay(t *testing.T) {
 	if _, err := operator.Admit(candidate); !errors.Is(err, ErrLocalReplayReservedV067) {
 		t.Fatalf("same verified candidate was accepted twice: %v", err)
 	}
-	if _, err := NewLocalOperatorAdmitterFromSynchronizedSourceV067(store, pub, signed, nil); !errors.Is(err, ErrOperatorTrustV067) {
+	if _, err := newLocalOperatorAdmitterFromSynchronizedSourceV067(store, pub, signed, nil); !errors.Is(err, ErrOperatorTrustV067) {
 		t.Fatalf("nil source accepted: %v", err)
 	}
 }

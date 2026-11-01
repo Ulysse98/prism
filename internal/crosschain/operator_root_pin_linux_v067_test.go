@@ -124,7 +124,7 @@ func TestPinnedOperatorRootV067RealAdmissionAndReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	operator, err := NewLocalOperatorAdmitterFromPinnedRootV067(store, path, pin, signed, f.chain, f.pos)
+	operator, err := newLocalOperatorAdmitterFromPinnedRootV067(store, path, pin, signed, f.chain, f.pos)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestPinnedOperatorRootV067RealAdmissionAndReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	signed.Signature = ed25519.Sign(otherPriv, message)
-	if _, err := NewLocalOperatorAdmitterFromPinnedRootV067(store, path, pin, signed, f.chain, f.pos); !errors.Is(err, ErrOperatorTrustV067) {
+	if _, err := newLocalOperatorAdmitterFromPinnedRootV067(store, path, pin, signed, f.chain, f.pos); !errors.Is(err, ErrOperatorTrustV067) {
 		t.Fatalf("unpinned operator signature accepted: %v", err)
 	}
 }

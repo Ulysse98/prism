@@ -97,7 +97,7 @@ func LoadPinnedOperatorRootV067(filePath, pinnedSHA256 string) (ed25519.PublicKe
 // initialization path. It verifies root pinning before the existing signature
 // and snapshot checks. The older constructor remains exported; therefore this
 // helper alone is not a mandatory package-wide authorization boundary.
-func NewLocalOperatorAdmitterFromPinnedRootV067(
+func newLocalOperatorAdmitterFromPinnedRootV067(
 	store *LocalReplayStoreV067,
 	rootPath, independentlyPinnedSHA256 string,
 	signed SignedOperatorTrustV067,
@@ -108,5 +108,5 @@ func NewLocalOperatorAdmitterFromPinnedRootV067(
 	if err != nil {
 		return nil, err
 	}
-	return NewLocalOperatorAdmitterV067(store, key, signed, chain, pos)
+	return newLocalOperatorAdmitterV067(store, key, signed, chain, pos)
 }

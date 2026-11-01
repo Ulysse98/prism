@@ -26,7 +26,7 @@ func newSnapshotOperatorV067(t *testing.T, f anchorIncludedFixtureV067, cp Pinne
 	if err != nil {
 		t.Fatal(err)
 	}
-	operator, err := NewLocalOperatorAdmitterV067(store, public, signed, f.chain, f.pos)
+	operator, err := newLocalOperatorAdmitterV067(store, public, signed, f.chain, f.pos)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestLocalOperatorSnapshotV067RejectsCorruptSourceAtInitialization(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewLocalOperatorAdmitterV067(store, public, signed, f.chain, f.pos); !errors.Is(err, ErrOperatorTrustV067) {
+	if _, err := newLocalOperatorAdmitterV067(store, public, signed, f.chain, f.pos); !errors.Is(err, ErrOperatorTrustV067) {
 		t.Fatalf("expected invalid source rejection, got %v", err)
 	}
 }

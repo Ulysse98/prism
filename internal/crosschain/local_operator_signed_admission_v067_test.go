@@ -36,7 +36,7 @@ func TestLocalOperatorAdmissionV067RealCryptoAndRestartReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	operator, err := NewLocalOperatorAdmitterV067(store, pub, signed, f.chain, f.pos)
+	operator, err := newLocalOperatorAdmitterV067(store, pub, signed, f.chain, f.pos)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestLocalOperatorAdmissionV067RealCryptoAndRestartReplay(t *testing.T) {
 	// The trust bundle itself was deliberately mutated above; a fresh signed
 	// bundle is required for any new operator context.
 	freshPub, freshSigned := signedOperatorTrustFixtureV067(t, f, cp)
-	newOperator, err := NewLocalOperatorAdmitterV067(reopened, freshPub, freshSigned, f.chain, f.pos)
+	newOperator, err := newLocalOperatorAdmitterV067(reopened, freshPub, freshSigned, f.chain, f.pos)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestLocalOperatorAdmissionV067FailClosedTrustAndCandidate(t *testing.T) {
 				t.Fatal(err)
 			}
 			tc.mutate(&pub, &signed)
-			if _, err := NewLocalOperatorAdmitterV067(store, pub, signed, f.chain, f.pos); !errors.Is(err, ErrOperatorTrustV067) {
+			if _, err := newLocalOperatorAdmitterV067(store, pub, signed, f.chain, f.pos); !errors.Is(err, ErrOperatorTrustV067) {
 				t.Fatalf("untrusted or tampered operator context accepted: %v", err)
 			}
 			entries, err := os.ReadDir(store.dir)
@@ -109,7 +109,7 @@ func TestLocalOperatorAdmissionV067CandidateCannotReplacePin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	operator, err := NewLocalOperatorAdmitterV067(store, pub, signed, f.chain, f.pos)
+	operator, err := newLocalOperatorAdmitterV067(store, pub, signed, f.chain, f.pos)
 	if err != nil {
 		t.Fatal(err)
 	}

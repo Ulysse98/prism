@@ -83,7 +83,7 @@ func (s *LocalSynchronizedOperatorSourceV067) ApplyTrustedUpdateV067(
 // detached source view. The root key must come from trusted provisioning;
 // this wrapper does NOT establish key provenance, BFT finality, or payment
 // authority. Old constructors remain available and are NOT forced through it.
-func NewLocalOperatorAdmitterFromSynchronizedSourceV067(
+func newLocalOperatorAdmitterFromSynchronizedSourceV067(
 	store *LocalReplayStoreV067,
 	pinnedOperatorKey ed25519.PublicKey,
 	signed SignedOperatorTrustV067,
@@ -96,5 +96,5 @@ func NewLocalOperatorAdmitterFromSynchronizedSourceV067(
 	if err != nil {
 		return nil, err
 	}
-	return NewLocalOperatorAdmitterV067(store, pinnedOperatorKey, signed, chain, pos)
+	return newLocalOperatorAdmitterV067(store, pinnedOperatorKey, signed, chain, pos)
 }
