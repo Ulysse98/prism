@@ -119,6 +119,7 @@ func TestLocalSynchronizedSourceV067CaptureWaitsForTrustedWriter(t *testing.T) {
 }
 
 func TestLocalSynchronizedSourceV067RealAdmissionAndReplay(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	f, cp := newCheckpointFixtureV067(t)
 	source, err := NewLocalSynchronizedOperatorSourceV067(f.chain, f.pos)
 	if err != nil {

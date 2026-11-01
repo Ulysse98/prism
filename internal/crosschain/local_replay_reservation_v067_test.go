@@ -26,6 +26,7 @@ func localReplaySampleIntentV067() AnchorIntentV067 {
 }
 
 func TestLocalReplayV067ReserveRestartAndDestinationBypass(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	base := t.TempDir()
 	store, err := NewLocalReplayStoreV067(base)
 	if err != nil {
@@ -77,6 +78,7 @@ func TestLocalReplayV067ReserveRestartAndDestinationBypass(t *testing.T) {
 }
 
 func TestLocalReplayV067ConcurrentIndependentStoreInstances(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	base := t.TempDir()
 	const workers = 32
 	var wg sync.WaitGroup
@@ -111,6 +113,7 @@ func TestLocalReplayV067ConcurrentIndependentStoreInstances(t *testing.T) {
 }
 
 func TestLocalReplayV067CorruptionAndTombstoneFailClosed(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	store, err := NewLocalReplayStoreV067(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -147,6 +150,7 @@ func TestLocalReplayV067CorruptionAndTombstoneFailClosed(t *testing.T) {
 }
 
 func TestLocalReplayV067InvalidIntentAndStorageFailure(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	store, err := NewLocalReplayStoreV067(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -169,6 +173,7 @@ func TestLocalReplayV067InvalidIntentAndStorageFailure(t *testing.T) {
 }
 
 func TestLocalReplayV067SymlinkAndExtraJSONFailClosed(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	store, err := NewLocalReplayStoreV067(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -213,6 +218,7 @@ func TestLocalReplayV067SymlinkAndExtraJSONFailClosed(t *testing.T) {
 
 // A separate OS process must observe the same durable one-shot reservation.
 func TestLocalReplayV067CrossProcessRestart(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	base := t.TempDir()
 	store, err := NewLocalReplayStoreV067(base)
 	if err != nil {
@@ -229,6 +235,7 @@ func TestLocalReplayV067CrossProcessRestart(t *testing.T) {
 }
 
 func TestLocalReplayV067ChildProcess(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	if os.Getenv("PRISM_V067_REPLAY_CHILD") != "1" {
 		return
 	}

@@ -29,6 +29,7 @@ func signedOperatorTrustFixtureV067(t *testing.T, f anchorIncludedFixtureV067, c
 }
 
 func TestLocalOperatorAdmissionV067RealCryptoAndRestartReplay(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	f, cp := newCheckpointFixtureV067(t)
 	pub, signed := signedOperatorTrustFixtureV067(t, f, cp)
 	root := t.TempDir()
@@ -67,6 +68,7 @@ func TestLocalOperatorAdmissionV067RealCryptoAndRestartReplay(t *testing.T) {
 }
 
 func TestLocalOperatorAdmissionV067FailClosedTrustAndCandidate(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	tests := []struct {
 		name   string
 		mutate func(*ed25519.PublicKey, *SignedOperatorTrustV067)
@@ -103,6 +105,7 @@ func TestLocalOperatorAdmissionV067FailClosedTrustAndCandidate(t *testing.T) {
 }
 
 func TestLocalOperatorAdmissionV067CandidateCannotReplacePin(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	f, cp := newCheckpointFixtureV067(t)
 	pub, signed := signedOperatorTrustFixtureV067(t, f, cp)
 	store, err := NewLocalReplayStoreV067(t.TempDir())
