@@ -153,6 +153,18 @@ func TestLocalReplayRecoveryV067UnsafeNamespaceRejected(t *testing.T) {
 		if err := os.Mkdir(namespace, 0755); err != nil {
 			t.Fatal(err)
 		}
+		// os.Mkdir applies the process umask. Explicitly create the unsafe
+		// permissions that this negative test must exercise even under umask 077.
+		if err := os.Chmod(namespace, 0755); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(namespace)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != 0755 {
+			t.Fatalf("unsafe namespace fixture has mode %04o; want 0755", got)
+		}
 		if _, err := NewLocalReplayStoreV067(base); !errors.Is(err, ErrLocalReplayInvalidV067) {
 			t.Fatalf("world/traverse-readable namespace accepted: %v", err)
 		}
