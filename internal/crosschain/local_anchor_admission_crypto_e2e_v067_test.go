@@ -17,6 +17,7 @@ func realAdmissionCandidateV067(f anchorIncludedFixtureV067) LocalAnchorCandidat
 }
 
 func TestLocalAnchorAdmissionRealCryptoV067PositiveAndReplay(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	f, cp := newCheckpointFixtureV067(t)
 	candidate := realAdmissionCandidateV067(f)
 	dataDir := t.TempDir()
@@ -49,6 +50,7 @@ func TestLocalAnchorAdmissionRealCryptoV067PositiveAndReplay(t *testing.T) {
 }
 
 func TestLocalAnchorAdmissionRealCryptoV067DestinationAndNonceBypass(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	f, cp := newCheckpointFixtureV067(t)
 	candidate := realAdmissionCandidateV067(f)
 	store, err := NewLocalReplayStoreV067(t.TempDir())
@@ -80,6 +82,7 @@ func TestLocalAnchorAdmissionRealCryptoV067DestinationAndNonceBypass(t *testing.
 }
 
 func TestLocalAnchorAdmissionRealCryptoV067InvalidEvidenceLeavesSlotFree(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	cases := []struct {
 		name   string
 		mutate func(*LocalAnchorCandidateV067, *AnchorProofPolicyV067, *PinnedSourceCheckpointV067)

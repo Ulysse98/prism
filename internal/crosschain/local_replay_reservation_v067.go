@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -47,6 +48,12 @@ type LocalReplayStoreV067 struct {
 // NewLocalReplayStoreV067 initializes a new versioned, private storage namespace.
 // dataDir must be an operator-trusted local filesystem location (Linux lab).
 func NewLocalReplayStoreV067(dataDir string) (*LocalReplayStoreV067, error) {
+	// The local replay ledger requires Linux private directory modes and
+	// durable local filesystem semantics. Windows ACLs are not POSIX modes.
+	// Until separately implemented and qualified, fail closed on every other OS.
+	if runtime.GOOS != "linux" {
+		return nil, fmt.Errorf("v0.67 local replay: unsupported platform %s: %w", runtime.GOOS, ErrLocalReplayInvalidV067)
+	}
 	if strings.TrimSpace(dataDir) == "" {
 		return nil, fmt.Errorf("v0.67 local replay: empty data directory")
 	}

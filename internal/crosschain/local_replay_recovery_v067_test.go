@@ -15,6 +15,7 @@ import (
 // Sync, Close, or returning through the test framework. It models process
 // interruption while a partial record exists; it DOES NOT simulate power loss.
 func TestLocalReplayRecoveryV067AbortChild(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	if os.Getenv("PRISM_V067_RECOVERY_CHILD") != "abort" {
 		return
 	}
@@ -43,6 +44,7 @@ func TestLocalReplayRecoveryV067AbortChild(t *testing.T) {
 }
 
 func TestLocalReplayRecoveryV067InterruptedWriterBlocksRetry(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	base := t.TempDir()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestLocalReplayRecoveryV067AbortChild$")
 	cmd.Env = append(os.Environ(), "PRISM_V067_RECOVERY_CHILD=abort", "PRISM_V067_RECOVERY_ROOT="+base)
@@ -71,6 +73,7 @@ func TestLocalReplayRecoveryV067InterruptedWriterBlocksRetry(t *testing.T) {
 
 // Each child is a separate OS process, not just a goroutine or store instance.
 func TestLocalReplayRecoveryV067ContenderChild(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	if os.Getenv("PRISM_V067_RECOVERY_CHILD") != "contender" {
 		return
 	}
@@ -90,6 +93,7 @@ func TestLocalReplayRecoveryV067ContenderChild(t *testing.T) {
 }
 
 func TestLocalReplayRecoveryV067ConcurrentProcesses(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	const contenders = 12
 	base := t.TempDir()
 	var wg sync.WaitGroup
@@ -147,6 +151,7 @@ func TestLocalReplayRecoveryV067ConcurrentProcesses(t *testing.T) {
 }
 
 func TestLocalReplayRecoveryV067UnsafeNamespaceRejected(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	t.Run("loose directory permissions", func(t *testing.T) {
 		base := t.TempDir()
 		namespace := filepath.Join(base, localReplayDirectoryV067)

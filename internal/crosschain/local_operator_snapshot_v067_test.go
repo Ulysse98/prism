@@ -34,6 +34,7 @@ func newSnapshotOperatorV067(t *testing.T, f anchorIncludedFixtureV067, cp Pinne
 }
 
 func TestLocalOperatorSnapshotV067DetachesNestedState(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	f, cp := newCheckpointFixtureV067(t)
 	operator := newSnapshotOperatorV067(t, f, cp)
 
@@ -72,6 +73,7 @@ func TestLocalOperatorSnapshotV067DetachesNestedState(t *testing.T) {
 }
 
 func TestLocalOperatorSnapshotV067RejectsCorruptSourceAtInitialization(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	f, cp := newCheckpointFixtureV067(t)
 	f.chain.Blocks[1].Hash = strings.Repeat("f", 64)
 

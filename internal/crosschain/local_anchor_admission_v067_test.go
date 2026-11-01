@@ -10,6 +10,7 @@ import (
 )
 
 func TestLocalAnchorAdmissionV067PreflightFailureLeavesSlotEmpty(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	store, err := NewLocalReplayStoreV067(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -31,6 +32,7 @@ func TestLocalAnchorAdmissionV067PreflightFailureLeavesSlotEmpty(t *testing.T) {
 }
 
 func TestLocalAnchorAdmissionV067MalformedIntentSkipsPreflight(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	store, err := NewLocalReplayStoreV067(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -51,6 +53,7 @@ func TestLocalAnchorAdmissionV067MalformedIntentSkipsPreflight(t *testing.T) {
 }
 
 func TestLocalAnchorAdmissionV067PositiveSeamAndReplay(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	store, err := NewLocalReplayStoreV067(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -81,6 +84,7 @@ func TestLocalAnchorAdmissionV067PositiveSeamAndReplay(t *testing.T) {
 }
 
 func TestLocalAnchorAdmissionV067MissingGateFailsClosed(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	intent := localReplaySampleIntentV067()
 	if _, err := admitLocalAnchorCandidateWithPreflightV067(nil, intent, func() error { return nil }); !errors.Is(err, ErrLocalReplayInvalidV067) {
 		t.Fatalf("nil store accepted: %v", err)
@@ -101,6 +105,7 @@ func TestLocalAnchorAdmissionV067MissingGateFailsClosed(t *testing.T) {
 }
 
 func TestLocalAnchorAdmissionV067IndependentConcurrentCalls(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	base := t.TempDir()
 	intent := localReplaySampleIntentV067()
 	const contenders = 24
@@ -136,6 +141,7 @@ func TestLocalAnchorAdmissionV067IndependentConcurrentCalls(t *testing.T) {
 }
 
 func TestLocalAnchorAdmissionV067RealVerifierRejectsInvalidCandidate(t *testing.T) {
+	requireLinuxReplayLabV067(t)
 	store, err := NewLocalReplayStoreV067(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
