@@ -39,7 +39,11 @@ func run(ctx context.Context, args []string, input io.Reader, output io.Writer) 
 	if len(data) > computecloud.MaxSubmitBodyBytesV1 {
 		return errors.New("input body exceeds Cloud v1 limit")
 	}
-	result, err := computecloud.RunLocalGPULabV1(ctx, data, gpuBin, sha)
+	lockDir, err := computecloud.DefaultCloudGPULockDirV1()
+	if err != nil {
+		return err
+	}
+	result, err := computecloud.RunLocalGPULabWithGlobalLockV1(ctx, data, gpuBin, sha, lockDir)
 	if err != nil {
 		return err
 	}

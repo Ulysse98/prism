@@ -14,7 +14,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -91,12 +90,12 @@ func run(ctx context.Context, args []string, in io.Reader, out io.Writer) error 
 	if err != nil {
 		return err
 	}
-	home, err := os.UserHomeDir()
+	// Use the exact same lock directory as the standalone Cloud CLIs
+	// and cooperating Prism Core v0.66 workers.
+	lockDir, err := computecloud.DefaultCloudGPULockDirV1()
 	if err != nil {
-		return fmt.Errorf("GPU lock home unavailable: %w", err)
+		return err
 	}
-	// All cooperating local queues use one stable lock path.
-	lockDir := filepath.Join(home, ".prism-cloud-gpu-lock-v1")
 	runner, err := computecloud.NewOperatorGPUQueueRunnerWithGlobalLockV1(observer, gpuBin, pin, lockDir)
 	if err != nil {
 		return err

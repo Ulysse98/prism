@@ -18,6 +18,17 @@ var ErrGlobalGPUBusyV1 = errors.New("GPU global lock held by another cooperating
 
 const globalGPULockFileV1 = "gpu-owner.lock"
 
+// DefaultCloudGPULockDirV1 is the shared GPU reservation location for all
+// operator-only Cloud CLIs. Core v0.66 uses this same directory by convention.
+// This is a cooperative Linux flock, not a device security boundary.
+func DefaultCloudGPULockDirV1() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil || !filepath.IsAbs(home) || filepath.Clean(home) != home {
+		return "", errors.New("GPU lock home must be a clean absolute directory")
+	}
+	return filepath.Join(home, ".prism-cloud-gpu-lock-v1"), nil
+}
+
 // GlobalGPULockV1 holds a cooperative Linux flock. A pinned CUDA child can
 // inherit the same open-file description to retain ownership after a parent
 // crash; the parent must then close without explicitly calling LOCK_UN.

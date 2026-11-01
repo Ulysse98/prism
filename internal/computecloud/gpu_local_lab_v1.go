@@ -217,7 +217,7 @@ func RunLocalGPULabV1(ctx context.Context, body []byte, gpuBinary, expectedSHA25
 }
 
 // RunLocalGPULabWithGlobalLockV1 is an opt-in offline executor whose child
-// inherits the flock open-file description on fd 3. The supervisor only
+// inherits the flock open-file description on fd 4. Sealed worker uses fd 3.
 // closes its own descriptor, never unlocks the inherited flock.
 func RunLocalGPULabWithGlobalLockV1(ctx context.Context, body []byte, gpuBinary, expectedSHA256, lockDir string) (CloudGPUResultV1, error) {
 	if lockDir == "" {
@@ -239,9 +239,14 @@ func runLocalGPULabV1(ctx context.Context, body []byte, gpuBinary, expectedSHA25
 	if err != nil {
 		return empty, err
 	}
-	if err := validateCloudGPUBinaryV1(gpuBinary, expectedSHA256); err != nil {
-		return empty, err
+	// Capture the approved bytes once, then execute ONLY the sealed snapshot.
+	// The source pathname is never used by exec. This closes the former
+	// hash-check/path-execution TOCTOU window for Cloud workers.
+	sealed, err := newSealedCloudGPUWorkerV1(gpuBinary, expectedSHA256, cloudMaxWorkerBytesV1)
+	if err != nil {
+		return empty, fmt.Errorf("Cloud sealed worker refused: %w", err)
 	}
+	defer sealed.Close()
 	nonceBytes := make([]byte, 32)
 	if _, err = rand.Read(nonceBytes); err != nil {
 		return empty, err
@@ -262,7 +267,7 @@ func runLocalGPULabV1(ctx context.Context, body []byte, gpuBinary, expectedSHA25
 
 	session, cancel := context.WithTimeout(ctx, cloudGPUTimeoutV1)
 	defer cancel()
-	// Acquire only after workload validation and executable pinning.
+	// Acquire only after task validation and immutable worker capture.
 	// The inherited descriptor protects an orphaned pinned worker when
 	// its supervisor is killed. This is cooperative, not GPU isolation.
 	var gpuLock *GlobalGPULockV1
@@ -273,9 +278,13 @@ func runLocalGPULabV1(ctx context.Context, body []byte, gpuBinary, expectedSHA25
 		}
 		defer func() { _ = gpuLock.ClosePreservingInheritedLockV1() }()
 	}
-	cmd := exec.CommandContext(session, gpuBinary)
+	// Child fd 3 is the sealed executable; fd 4 is the optional
+	// cooperative GPU lock, inherited from the parent open-file description.
+	// /proc must be mounted in the Linux worker namespace.
+	cmd := exec.CommandContext(session, "/proc/self/fd/3")
+	cmd.ExtraFiles = []*os.File{sealed}
 	if gpuLock != nil {
-		cmd.ExtraFiles = []*os.File{gpuLock.file}
+		cmd.ExtraFiles = append(cmd.ExtraFiles, gpuLock.file)
 	}
 	cmd.Stdin = bytes.NewReader(request)
 	stdout := &cloudGPUCaptureV1{max: cloudGPUMaxStdoutV1}

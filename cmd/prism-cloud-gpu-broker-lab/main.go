@@ -49,7 +49,11 @@ func run(ctx context.Context, args []string, input io.Reader, output io.Writer) 
 	if len(data) > computecloud.MaxSubmitBodyBytesV1 {
 		return errors.New("offline broker workload exceeds maximum input size")
 	}
-	result, err := computecloud.RunLocalBrokerGPULabV1(ctx, data, observer, approvedID, gpuBin, sha)
+	lockDir, err := computecloud.DefaultCloudGPULockDirV1()
+	if err != nil {
+		return err
+	}
+	result, err := computecloud.RunLocalBrokerGPULabWithGlobalLockV1(ctx, data, observer, approvedID, gpuBin, sha, lockDir)
 	if err != nil {
 		return err
 	}
