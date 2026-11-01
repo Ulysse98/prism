@@ -68,7 +68,7 @@ func admitLocalAnchorCandidateWithPreflightV067(
 	if err := preflight(); err != nil {
 		return LocalReplayReservationV067{}, fmt.Errorf("v0.67 local admission proof/checkpoint rejected: %w", err)
 	}
-	record, err := store.ReserveProofV067(intent)
+	record, err := store.reserveProofV067(intent)
 	if err != nil {
 		return LocalReplayReservationV067{}, fmt.Errorf("v0.67 local admission reservation rejected: %w", err)
 	}

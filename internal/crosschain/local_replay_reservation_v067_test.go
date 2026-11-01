@@ -32,7 +32,7 @@ func TestLocalReplayV067ReserveRestartAndDestinationBypass(t *testing.T) {
 		t.Fatal(err)
 	}
 	intent := localReplaySampleIntentV067()
-	record, err := store.ReserveProofV067(intent)
+	record, err := store.reserveProofV067(intent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,14 +44,14 @@ func TestLocalReplayV067ReserveRestartAndDestinationBypass(t *testing.T) {
 		t.Fatalf("inspect: %+v %v", audited, err)
 	}
 
-	if _, err := store.ReserveProofV067(intent); !errors.Is(err, ErrLocalReplayReservedV067) {
+	if _, err := store.reserveProofV067(intent); !errors.Is(err, ErrLocalReplayReservedV067) {
 		t.Fatalf("identical replay must fail: %v", err)
 	}
 	restarted, err := NewLocalReplayStoreV067(base)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := restarted.ReserveProofV067(intent); !errors.Is(err, ErrLocalReplayReservedV067) {
+	if _, err := restarted.reserveProofV067(intent); !errors.Is(err, ErrLocalReplayReservedV067) {
 		t.Fatalf("restart replay must fail: %v", err)
 	}
 	changed := intent
@@ -59,7 +59,7 @@ func TestLocalReplayV067ReserveRestartAndDestinationBypass(t *testing.T) {
 	changed.DestinationChainID = "monad-testnet"
 	changed.DestinationRegistry = "another-registry"
 	changed.SourceBlockHeight++
-	if _, err := restarted.ReserveProofV067(changed); !errors.Is(err, ErrLocalReplayReservedV067) {
+	if _, err := restarted.reserveProofV067(changed); !errors.Is(err, ErrLocalReplayReservedV067) {
 		t.Fatalf("destination/nonce/block bypass must fail: %v", err)
 	}
 	if _, err := restarted.InspectProofV067(changed); !errors.Is(err, ErrLocalReplayInvalidV067) {
@@ -67,7 +67,7 @@ func TestLocalReplayV067ReserveRestartAndDestinationBypass(t *testing.T) {
 	}
 	differentProof := intent
 	differentProof.ProofHash = strings.Repeat("e", 64)
-	if _, err := restarted.ReserveProofV067(differentProof); err != nil {
+	if _, err := restarted.reserveProofV067(differentProof); err != nil {
 		t.Fatalf("distinct proof should have its own slot: %v", err)
 	}
 	info, err := os.Stat(store.recordPath(record.ProofKey))
@@ -87,7 +87,7 @@ func TestLocalReplayV067ConcurrentIndependentStoreInstances(t *testing.T) {
 			defer wg.Done()
 			store, err := NewLocalReplayStoreV067(base)
 			if err == nil {
-				_, err = store.ReserveProofV067(localReplaySampleIntentV067())
+				_, err = store.reserveProofV067(localReplaySampleIntentV067())
 			}
 			outcomes <- err
 		}()
@@ -116,7 +116,7 @@ func TestLocalReplayV067CorruptionAndTombstoneFailClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	intent := localReplaySampleIntentV067()
-	saved, err := store.ReserveProofV067(intent)
+	saved, err := store.reserveProofV067(intent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestLocalReplayV067CorruptionAndTombstoneFailClosed(t *testing.T) {
 	if _, err := store.InspectProofV067(intent); !errors.Is(err, ErrLocalReplayInvalidV067) {
 		t.Fatalf("corrupted record must fail inspection: %v", err)
 	}
-	if _, err := store.ReserveProofV067(intent); !errors.Is(err, ErrLocalReplayReservedV067) {
+	if _, err := store.reserveProofV067(intent); !errors.Is(err, ErrLocalReplayReservedV067) {
 		t.Fatalf("corrupted record must continue to block replay: %v", err)
 	}
 	second := intent
@@ -138,7 +138,7 @@ func TestLocalReplayV067CorruptionAndTombstoneFailClosed(t *testing.T) {
 	if err := os.WriteFile(store.recordPath(key), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ReserveProofV067(second); !errors.Is(err, ErrLocalReplayReservedV067) {
+	if _, err := store.reserveProofV067(second); !errors.Is(err, ErrLocalReplayReservedV067) {
 		t.Fatalf("partial/crash tombstone must block replay: %v", err)
 	}
 	if _, err := store.InspectProofV067(second); !errors.Is(err, ErrLocalReplayInvalidV067) {
@@ -153,7 +153,7 @@ func TestLocalReplayV067InvalidIntentAndStorageFailure(t *testing.T) {
 	}
 	bad := localReplaySampleIntentV067()
 	bad.Nonce = 0
-	if _, err := store.ReserveProofV067(bad); err == nil {
+	if _, err := store.reserveProofV067(bad); err == nil {
 		t.Fatal("invalid intent accepted")
 	}
 	entries, err := os.ReadDir(store.dir)
@@ -163,7 +163,7 @@ func TestLocalReplayV067InvalidIntentAndStorageFailure(t *testing.T) {
 	if err := os.Remove(store.dir); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ReserveProofV067(localReplaySampleIntentV067()); err == nil {
+	if _, err := store.reserveProofV067(localReplaySampleIntentV067()); err == nil {
 		t.Fatal("missing data directory accepted")
 	}
 }
@@ -185,7 +185,7 @@ func TestLocalReplayV067SymlinkAndExtraJSONFailClosed(t *testing.T) {
 	if err := os.Symlink(destination, store.recordPath(key)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ReserveProofV067(intent); !errors.Is(err, ErrLocalReplayReservedV067) {
+	if _, err := store.reserveProofV067(intent); !errors.Is(err, ErrLocalReplayReservedV067) {
 		t.Fatalf("symlink slot must block replay: %v", err)
 	}
 	if _, err := store.InspectProofV067(intent); !errors.Is(err, ErrLocalReplayInvalidV067) {
@@ -194,7 +194,7 @@ func TestLocalReplayV067SymlinkAndExtraJSONFailClosed(t *testing.T) {
 	if err := os.Remove(store.recordPath(key)); err != nil {
 		t.Fatal(err)
 	}
-	record, err := store.ReserveProofV067(intent)
+	record, err := store.reserveProofV067(intent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestLocalReplayV067CrossProcessRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ReserveProofV067(localReplaySampleIntentV067()); err != nil {
+	if _, err := store.reserveProofV067(localReplaySampleIntentV067()); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(os.Args[0], "-test.run=^TestLocalReplayV067ChildProcess$")
@@ -236,7 +236,7 @@ func TestLocalReplayV067ChildProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ReserveProofV067(localReplaySampleIntentV067()); !errors.Is(err, ErrLocalReplayReservedV067) {
+	if _, err := store.reserveProofV067(localReplaySampleIntentV067()); !errors.Is(err, ErrLocalReplayReservedV067) {
 		t.Fatalf("process replay must fail: %v", err)
 	}
 	if _, err := store.InspectProofV067(localReplaySampleIntentV067()); err != nil {

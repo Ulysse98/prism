@@ -54,7 +54,7 @@ func TestLocalReplayRecoveryV067InterruptedWriterBlocksRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	intent := localReplaySampleIntentV067()
-	if _, err := store.ReserveProofV067(intent); !errors.Is(err, ErrLocalReplayReservedV067) {
+	if _, err := store.reserveProofV067(intent); !errors.Is(err, ErrLocalReplayReservedV067) {
 		t.Fatalf("partial slot should block restart/retry: %v", err)
 	}
 	if _, err := store.InspectProofV067(intent); !errors.Is(err, ErrLocalReplayInvalidV067) {
@@ -64,7 +64,7 @@ func TestLocalReplayRecoveryV067InterruptedWriterBlocksRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := again.ReserveProofV067(intent); !errors.Is(err, ErrLocalReplayReservedV067) {
+	if _, err := again.reserveProofV067(intent); !errors.Is(err, ErrLocalReplayReservedV067) {
 		t.Fatalf("partial slot must remain reserved after new instance: %v", err)
 	}
 }
@@ -78,7 +78,7 @@ func TestLocalReplayRecoveryV067ContenderChild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open contender store: %v", err)
 	}
-	_, err = store.ReserveProofV067(localReplaySampleIntentV067())
+	_, err = store.reserveProofV067(localReplaySampleIntentV067())
 	switch {
 	case err == nil:
 		fmt.Println("PRISM_V067_RECOVERY_WIN")

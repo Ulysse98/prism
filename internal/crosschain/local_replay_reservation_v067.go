@@ -98,7 +98,7 @@ func (s *LocalReplayStoreV067) recordPath(key string) string {
 // Existing, partial, malformed, or symlinked slots are NEVER overwritten.
 // The caller MUST NOT use a successful reservation as proof of finality or
 // as permission to register, pay, release escrow, or sign anything.
-func (s *LocalReplayStoreV067) ReserveProofV067(intent AnchorIntentV067) (LocalReplayReservationV067, error) {
+func (s *LocalReplayStoreV067) reserveProofV067(intent AnchorIntentV067) (LocalReplayReservationV067, error) {
 	if s == nil || s.dir == "" {
 		return LocalReplayReservationV067{}, ErrLocalReplayInvalidV067
 	}
