@@ -3,8 +3,8 @@
 package computecloud
 
 // Offline-only Linux/amd64 sealed worker primitive. This does NOT dispatch
-// work, expose HTTP, sign a PoUW proof, or settle escrow. Integration with
-// the Cloud GPU runner is intentionally deferred to the next phase.
+// work, expose HTTP, sign a PoUW proof, or settle escrow. The Cloud offline
+// runner executes this sealed snapshot via /proc/self/fd/3.
 
 import (
 	"crypto/sha256"
