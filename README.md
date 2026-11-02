@@ -16,9 +16,10 @@ It combines three complementary mechanisms:
 
 | Component | Status |
 | --- | --- |
-| Latest published GitHub release | [v0.63.0 — Persistent GPU PoUW Worker](https://github.com/Ulysse98/prism/releases/tag/v0.63.0) |
+| Latest non-prerelease GitHub release | [v0.63.0 — Persistent GPU PoUW Worker](https://github.com/Ulysse98/prism/releases/tag/v0.63.0) |
+| Latest experimental pre-release | [v0.67 — Verifiable Compute & Cross-Chain Security](https://github.com/Ulysse98/prism/releases/tag/v0.67) |
 | Node-reported software version on `master` | `0.63.0` (see `cmd/prism/main.go`) |
-| Development in `master` | Experimental work spanning v0.64–v0.67; **v0.67.0 is not yet a published release** |
+| Development in `master` | Experimental work spanning v0.64–v0.67; the published `v0.67` pre-release points to `7a06f75`, before the latest README update. The separate `v0.67.0` tag has not been published. |
 | Production readiness | **Research / testnet only.** Not audited for production funds, public cloud services or live cross-chain settlement. |
 
 Prism includes a Go blockchain node, P2P networking, validators, wallets, persistent compute jobs, signed Proof v2 receipts, REST APIs, experimental mobile integration and cross-chain research. Some newer components are isolated laboratories or opt-in code paths; their presence in `master` does not mean they are activated on a live network.
