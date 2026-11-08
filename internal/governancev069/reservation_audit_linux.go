@@ -83,11 +83,22 @@ func AuditLocalAdvisoryReservations(store *AdvisoryVoteReplayStore, receipt Advi
 	if err != nil && !errors.Is(err, io.EOF) {
 		return zero, fmt.Errorf("enumerate local reservations: %w", err)
 	}
-	if len(names) != len(expected) {
-		return zero, fmt.Errorf("reservation count mismatch: got %d expected %d", len(names), len(expected))
+	// Phase 1B.6 accepts exactly one *verified* closure marker as metadata.
+	// Arbitrary extra files still fail closed. The marker is checked against
+	// the recomputed audit after all vote records have been verified.
+	if len(names) < len(expected) || len(names) > len(expected)+1 {
+		return zero, fmt.Errorf("reservation entry count mismatch: got %d expected %d (+ optional closure)", len(names), len(expected))
 	}
 	seen := make(map[string]struct{}, len(expected))
+	var closureSeen bool
 	for _, name := range names {
+		if name == localBallotClosureFilename {
+			if closureSeen {
+				return zero, errors.New("duplicate closure marker entry")
+			}
+			closureSeen = true
+			continue
+		}
 		canonical, ok := expected[name]
 		if !ok || !strings.HasSuffix(name, ".vote") {
 			return zero, fmt.Errorf("unexpected reservation entry %q", name)
@@ -121,9 +132,22 @@ func AuditLocalAdvisoryReservations(store *AdvisoryVoteReplayStore, receipt Advi
 			return zero, closeErr
 		}
 	}
-	// The directory may change if an external writer races this inspection;
-	// caller-controlled quiescence remains a mandatory precondition.
-	return makeAdvisoryReservationAudit(receipt, len(expected)), nil
+	if len(seen) != len(expected) {
+		return zero, errors.New("local reservation set incomplete")
+	}
+	audit := makeAdvisoryReservationAudit(receipt, len(expected))
+	if closureSeen {
+		actual, err := readLocalClosureFromFD(fd)
+		if err != nil {
+			return zero, fmt.Errorf("invalid closure marker: %w", err)
+		}
+		if expectedClosure := makeLocalBallotClosure(receipt, audit); actual != expectedClosure {
+			return zero, errors.New("closure marker not bound to the audited local ballot set")
+		}
+	}
+	// Old callers must still quiesce external writers; Phase 1B.6 verifier
+	// provides a shared gate for cooperating 1B.6 writers and sealers.
+	return audit, nil
 }
 
 func VerifyLocalAdvisoryReservationAudit(audit AdvisoryReservationAudit, store *AdvisoryVoteReplayStore, receipt AdvisoryTallyReceipt, snapshot EligibilitySnapshot, pinnedSnapshotSHA256, pinnedBallotSetSHA256 string, proposal ProposalIntent, trusted Context, ballots []SignedAdvisoryVote) error {

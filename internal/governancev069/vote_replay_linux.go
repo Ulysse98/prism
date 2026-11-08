@@ -95,24 +95,35 @@ func (s *AdvisoryVoteReplayStore) ReserveVerifiedAdvisoryVote(v SignedAdvisoryVo
 	if err := VerifyAdvisoryVote(v, p, trusted); err != nil {
 		return [32]byte{}, fmt.Errorf("vote verification rejected: %w", err)
 	}
+	// Phase 1B.6: the writer and closer use the SAME directory flock.
+	// Even a partial/invalid closure marker rejects all new admissions.
+	gate, err := localAdvisoryGate(s.dir)
+	if err != nil {
+		return [32]byte{}, fmt.Errorf("admission gate: %w", err)
+	}
+	defer gate.Close()
+	closed, err := gateHasClosure(int(gate.Fd()))
+	if err != nil {
+		return [32]byte{}, err
+	}
+	if closed {
+		return [32]byte{}, ErrAdvisoryBallotClosed
+	}
 	key, err := VoteReplayKey(v.Vote)
 	if err != nil {
 		return [32]byte{}, err
 	}
-	path := filepath.Join(s.dir, hex.EncodeToString(key[:])+".vote")
-
-	// Recheck on use (not a substitute for an exclusive directory owner).
-	info, err := os.Lstat(s.dir)
-	if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 || info.Mode()&os.ModeSymlink != 0 {
-		return [32]byte{}, errors.New("untrusted or missing replay directory")
-	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if errors.Is(err, os.ErrExist) {
+	name := hex.EncodeToString(key[:]) + ".vote"
+	// Open relative to the locked directory FD to avoid a path-switch race.
+	fd, err := syscall.Openat(int(gate.Fd()), name,
+		syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0600)
+	if errors.Is(err, syscall.EEXIST) {
 		return [32]byte{}, ErrAdvisoryVoteAlreadyReserved
 	}
 	if err != nil {
 		return [32]byte{}, fmt.Errorf("atomic local vote reservation: %w", err)
 	}
+	f := os.NewFile(uintptr(fd), name)
 	// Once O_EXCL succeeded, never automatically delete the filename even
 	// following an I/O error: this avoids re-admission after an ambiguous crash.
 	digest, err := AdvisoryVoteCommitment(v.Vote)
@@ -143,16 +154,8 @@ func (s *AdvisoryVoteReplayStore) ReserveVerifiedAdvisoryVote(v SignedAdvisoryVo
 	if err = f.Close(); err != nil {
 		return [32]byte{}, fmt.Errorf("close reservation: %w", err)
 	}
-	directory, err := os.Open(s.dir)
-	if err != nil {
-		return [32]byte{}, fmt.Errorf("open directory for sync: %w", err)
-	}
-	if err = directory.Sync(); err != nil {
-		directory.Close()
-		return [32]byte{}, fmt.Errorf("sync directory: %w", err)
-	}
-	if err = directory.Close(); err != nil {
-		return [32]byte{}, fmt.Errorf("close directory: %w", err)
+	if err := gate.Sync(); err != nil {
+		return [32]byte{}, fmt.Errorf("sync locked reservation directory: %w", err)
 	}
 	return key, nil
 }
