@@ -126,7 +126,19 @@ func TestVoteReplayConcurrentGoroutines(t *testing.T) {
 }
 
 func TestVoteReplayRejectsUntrustedDirectories(t *testing.T) {
-	dir := t.TempDir()
+	// testing.T.TempDir does not guarantee mode 0700; create a private
+	// child explicitly to test acceptance without weakening the guard.
+	dir := filepath.Join(t.TempDir(), "private")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0700 {
+		t.Fatalf("test setup: want private 0700, got %04o", info.Mode().Perm())
+	}
 	if _, err := OpenAdvisoryVoteReplayStore("relative"); err == nil {
 		t.Fatal("relative store path accepted")
 	}
@@ -144,7 +156,7 @@ func TestVoteReplayRejectsUntrustedDirectories(t *testing.T) {
 	if err := os.Chmod(unsafe, 0755); err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Lstat(unsafe)
+	info, err = os.Lstat(unsafe)
 	if err != nil {
 		t.Fatal(err)
 	}
