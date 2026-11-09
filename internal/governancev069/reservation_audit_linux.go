@@ -141,7 +141,7 @@ func AuditLocalAdvisoryReservations(store *AdvisoryVoteReplayStore, receipt Advi
 		if err != nil {
 			return zero, fmt.Errorf("invalid closure marker: %w", err)
 		}
-		if expectedClosure := makeLocalBallotClosure(receipt, audit); actual != expectedClosure {
+		if expectedClosure := makeLocalBallotClosure(receipt, audit); !closureBodyEqual(actual, expectedClosure) {
 			return zero, errors.New("closure marker not bound to the audited local ballot set")
 		}
 	}

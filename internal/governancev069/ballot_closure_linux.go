@@ -95,25 +95,47 @@ func readLocalClosureFromFD(dirFD int) (AdvisoryBallotClosure, error) {
 	if !bytes.Equal(payload, canonical) || c.Version != AdvisoryBallotClosureVersion {
 		return zero, errors.New("noncanonical closure record")
 	}
-	if !isLowerSHA256(c.ClosureSHA256) || !isLowerSHA256(c.ReservationAuditSHA256) ||
-		!isLowerSHA256(c.TallyReceiptSHA256) || !isLowerSHA256(c.SnapshotSHA256) ||
-		!isLowerSHA256(c.BallotSetSHA256) || !isLowerSHA256(c.ProposalSHA256) ||
-		!isLowerSHA256(c.GenesisSHA256) {
-		return zero, errors.New("malformed closure commitment fields")
-	}
-	digest := localBallotClosureCommitment(c)
-	if c.ClosureSHA256 != fmt.Sprintf("%x", digest[:]) {
-		return zero, errors.New("closure record SHA-256 mismatch")
+	if err := VerifyAdvisoryClosureAuthorization(c, c.Authorization, c.Authorization.SignerPublicKeyHex); err != nil {
+		return zero, fmt.Errorf("unverifiable closure authority record: %w", err)
 	}
 	return c, nil
+}
+
+// PrepareLocalAdvisoryClosureDraft computes the exact closure body under the
+// admission lock, without creating a marker. An operator may sign this draft
+// offline, but must re-submit it to Seal: another vote could be admitted between
+// preparation and sealing. Seal re-audits under lock and rejects stale proofs.
+func PrepareLocalAdvisoryClosureDraft(store *AdvisoryVoteReplayStore, receipt AdvisoryTallyReceipt, snapshot EligibilitySnapshot, snapshotPin, ballotPin string, proposal ProposalIntent, trusted Context, ballots []SignedAdvisoryVote) (AdvisoryBallotClosure, error) {
+	var zero AdvisoryBallotClosure
+	if store == nil {
+		return zero, errors.New("nil store")
+	}
+	gate, err := localAdvisoryGate(store.dir)
+	if err != nil {
+		return zero, err
+	}
+	defer gate.Close()
+	exists, err := gateHasClosure(int(gate.Fd()))
+	if err != nil {
+		return zero, err
+	}
+	if exists {
+		return zero, ErrAdvisoryBallotClosed
+	}
+	audit, err := AuditLocalAdvisoryReservations(store, receipt, snapshot, snapshotPin, ballotPin, proposal, trusted, ballots)
+	if err != nil {
+		return zero, err
+	}
+	return makeLocalBallotClosure(receipt, audit), nil
 }
 
 // SealLocalAdvisoryVoteStore obtains the same interprocess directory lock as
 // the revised 1B.2 writer, audits exactly the supplied independently-pinned
 // ballot set, then atomically creates a durable, no-overwrite gate marker.
-// The operator, not this unsigned function, is responsible for authorization
-// and for choosing the canonical close height / pins. NO auto-reopen exists.
-func SealLocalAdvisoryVoteStore(store *AdvisoryVoteReplayStore, receipt AdvisoryTallyReceipt, snapshot EligibilitySnapshot, snapshotPin, ballotPin string, proposal ProposalIntent, trusted Context, ballots []SignedAdvisoryVote) (AdvisoryBallotClosure, error) {
+// A valid, externally pinned operator authorization is now required. The
+// operator remains responsible for independently approving height and pins.
+// The old unsigned API signature is intentionally removed. NO auto-reopen.
+func SealLocalAdvisoryVoteStore(store *AdvisoryVoteReplayStore, receipt AdvisoryTallyReceipt, snapshot EligibilitySnapshot, snapshotPin, ballotPin string, proposal ProposalIntent, trusted Context, ballots []SignedAdvisoryVote, authorization AdvisoryClosureAuthorization, pinnedAuthorityPublicKeyHex string) (AdvisoryBallotClosure, error) {
 	var zero AdvisoryBallotClosure
 	if store == nil {
 		return zero, errors.New("nil store")
@@ -135,6 +157,10 @@ func SealLocalAdvisoryVoteStore(store *AdvisoryVoteReplayStore, receipt Advisory
 		return zero, fmt.Errorf("pre-closure reservation audit: %w", err)
 	}
 	closure := makeLocalBallotClosure(receipt, audit)
+	if err := VerifyAdvisoryClosureAuthorization(closure, authorization, pinnedAuthorityPublicKeyHex); err != nil {
+		return zero, fmt.Errorf("closure authorization rejected: %w", err)
+	}
+	closure.Authorization = authorization
 	payload, err := json.Marshal(closure)
 	if err != nil {
 		return zero, err
@@ -176,7 +202,7 @@ func SealLocalAdvisoryVoteStore(store *AdvisoryVoteReplayStore, receipt Advisory
 // VerifySealedLocalAdvisoryVoteStore re-audits the actual local vote records
 // and compares the durable closure marker to independently pinned inputs.
 // It acquires the same admission gate to prevent races with cooperating writers.
-func VerifySealedLocalAdvisoryVoteStore(store *AdvisoryVoteReplayStore, receipt AdvisoryTallyReceipt, snapshot EligibilitySnapshot, snapshotPin, ballotPin string, proposal ProposalIntent, trusted Context, ballots []SignedAdvisoryVote) (AdvisoryBallotClosure, error) {
+func VerifySealedLocalAdvisoryVoteStore(store *AdvisoryVoteReplayStore, receipt AdvisoryTallyReceipt, snapshot EligibilitySnapshot, snapshotPin, ballotPin string, proposal ProposalIntent, trusted Context, ballots []SignedAdvisoryVote, pinnedAuthorityPublicKeyHex string) (AdvisoryBallotClosure, error) {
 	var zero AdvisoryBallotClosure
 	if store == nil {
 		return zero, errors.New("nil store")
@@ -195,8 +221,11 @@ func VerifySealedLocalAdvisoryVoteStore(store *AdvisoryVoteReplayStore, receipt 
 		return zero, err
 	}
 	expected := makeLocalBallotClosure(receipt, audit)
-	if actual != expected {
+	if !closureBodyEqual(actual, expected) {
 		return zero, errors.New("local closure record differs from re-audited pinned ballots")
+	}
+	if err := VerifyAdvisoryClosureAuthorization(actual, actual.Authorization, pinnedAuthorityPublicKeyHex); err != nil {
+		return zero, fmt.Errorf("closure authority pin rejected: %w", err)
 	}
 	return actual, nil
 }

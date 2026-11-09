@@ -3,6 +3,8 @@
 package governancev069
 
 import (
+	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -19,11 +21,26 @@ func closeFixture(t *testing.T) (*AdvisoryVoteReplayStore, AdvisoryTallyReceipt,
 	return auditFixture(t)
 }
 
+func closureOperatorKey() ed25519.PrivateKey {
+	seed := sha256.Sum256([]byte("PRISM v0.69 PHASE1B7 DETERMINISTIC TEST AUTHORITY ONLY"))
+	return ed25519.NewKeyFromSeed(seed[:])
+}
+func closureOperatorPin() string {
+	return hex.EncodeToString(closureOperatorKey().Public().(ed25519.PublicKey))
+}
 func closeCall(store *AdvisoryVoteReplayStore, receipt AdvisoryTallyReceipt, snapshot EligibilitySnapshot, pin, ballotPin string, votes []SignedAdvisoryVote, p ProposalIntent, ctx Context) (AdvisoryBallotClosure, error) {
-	return SealLocalAdvisoryVoteStore(store, receipt, snapshot, pin, ballotPin, p, ctx, votes)
+	draft, err := PrepareLocalAdvisoryClosureDraft(store, receipt, snapshot, pin, ballotPin, p, ctx, votes)
+	if err != nil {
+		return AdvisoryBallotClosure{}, err
+	}
+	auth, err := SignAdvisoryClosureAuthorization(draft, 1, closureOperatorKey())
+	if err != nil {
+		return AdvisoryBallotClosure{}, err
+	}
+	return SealLocalAdvisoryVoteStore(store, receipt, snapshot, pin, ballotPin, p, ctx, votes, auth, closureOperatorPin())
 }
 func verifyClose(store *AdvisoryVoteReplayStore, receipt AdvisoryTallyReceipt, snapshot EligibilitySnapshot, pin, ballotPin string, votes []SignedAdvisoryVote, p ProposalIntent, ctx Context) (AdvisoryBallotClosure, error) {
-	return VerifySealedLocalAdvisoryVoteStore(store, receipt, snapshot, pin, ballotPin, p, ctx, votes)
+	return VerifySealedLocalAdvisoryVoteStore(store, receipt, snapshot, pin, ballotPin, p, ctx, votes, closureOperatorPin())
 }
 
 func TestLocalBallotClosureDurableAndDeterministic(t *testing.T) {
@@ -36,7 +53,7 @@ func TestLocalBallotClosureDurableAndDeterministic(t *testing.T) {
 		t.Fatalf("unexpected closure: %+v", c)
 	}
 	// Freeze the canonical vector to catch unintended format changes.
-	const expected = "290ebedf8f4cbf081a9674d8255316dfbb8736cbfef99ae9abea6397c6b70f02"
+	const expected = "59c6edd2e8aaba1b71c145326ff96d4bde47aac90f3b2af9c1e55d9b1998151c"
 	if c.ClosureSHA256 != expected {
 		t.Fatalf("canonical closure vector changed: got %s expected %s", c.ClosureSHA256, expected)
 	}

@@ -7,27 +7,28 @@ import (
 )
 
 const (
-	AdvisoryBallotClosureVersion = "PRISM_GOV_V069_LOCAL_BALLOT_CLOSURE_V1"
-	localBallotClosureDomain     = "PRISM-GOV-v0.69/LOCAL-BALLOT-CLOSURE/v1\x00"
+	AdvisoryBallotClosureVersion = "PRISM_GOV_V069_LOCAL_BALLOT_CLOSURE_V2"
+	localBallotClosureDomain     = "PRISM-GOV-v0.69/LOCAL-BALLOT-CLOSURE/v2\x00"
 )
 
 var ErrAdvisoryBallotClosed = errors.New("local advisory ballot store is sealed or has an ambiguous closure marker")
 
-// AdvisoryBallotClosure is an unsigned, single-host, operator-triggered
-// persistent admission gate and inspection receipt. It is NOT a signed
-// election certification, distributed finality, or execution authority.
+// AdvisoryBallotClosure is a single-host admission-gate receipt with a
+// separately verified operator Ed25519 authorization. It is NOT an on-chain
+// election certificate, distributed finality, or execution authority.
 type AdvisoryBallotClosure struct {
-	Version                string `json:"version"`
-	Network                string `json:"network"`
-	ChainID                string `json:"chain_id"`
-	GenesisSHA256          string `json:"genesis_sha256"`
-	ProposalSHA256         string `json:"proposal_sha256"`
-	SnapshotSHA256         string `json:"snapshot_sha256"`
-	BallotSetSHA256        string `json:"ballot_set_sha256"`
-	TallyReceiptSHA256     string `json:"tally_receipt_sha256"`
-	ReservationAuditSHA256 string `json:"reservation_audit_sha256"`
-	ClosedAtHeight         uint64 `json:"closed_at_height"`
-	ClosureSHA256          string `json:"closure_sha256"`
+	Version                string                       `json:"version"`
+	Network                string                       `json:"network"`
+	ChainID                string                       `json:"chain_id"`
+	GenesisSHA256          string                       `json:"genesis_sha256"`
+	ProposalSHA256         string                       `json:"proposal_sha256"`
+	SnapshotSHA256         string                       `json:"snapshot_sha256"`
+	BallotSetSHA256        string                       `json:"ballot_set_sha256"`
+	TallyReceiptSHA256     string                       `json:"tally_receipt_sha256"`
+	ReservationAuditSHA256 string                       `json:"reservation_audit_sha256"`
+	ClosedAtHeight         uint64                       `json:"closed_at_height"`
+	ClosureSHA256          string                       `json:"closure_sha256"`
+	Authorization          AdvisoryClosureAuthorization `json:"authorization"`
 }
 
 func makeLocalBallotClosure(receipt AdvisoryTallyReceipt, audit AdvisoryReservationAudit) AdvisoryBallotClosure {
